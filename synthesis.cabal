@@ -1,0 +1,133 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           synthesis
+version:        0.1.0.0
+description:    Please see the README on Github at <https://github.com/NiekM/synthesis#readme>
+homepage:       https://github.com/NiekM/synthesis#readme
+bug-reports:    https://github.com/NiekM/synthesis/issues
+author:         Niek Mulleners
+maintainer:     n.mulleners@uu.nl
+copyright:      2022 Niek Mulleners
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/NiekM/synthesis
+
+library
+  exposed-modules:
+      Import
+      Lang
+      Run
+      Subst
+      TermGen
+      Test
+      Types
+      Unify
+  other-modules:
+      Paths_synthesis
+  hs-source-dirs:
+      src
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveDataTypeable
+      DerivingStrategies
+      DerivingVia
+      GeneralizedNewtypeDeriving
+      KindSignatures
+      LambdaCase
+      NamedFieldPuns
+      NoImplicitPrelude
+      OverloadedStrings
+      PatternSynonyms
+      TupleSections
+      TypeApplications
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      base >=4.11 && <10
+    , containers
+    , lens
+    , rio >=0.1.12.0
+    , rio-prettyprint
+    , uniplate
+  default-language: Haskell2010
+
+executable synthesis-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_synthesis
+  hs-source-dirs:
+      app
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveDataTypeable
+      DerivingStrategies
+      DerivingVia
+      GeneralizedNewtypeDeriving
+      KindSignatures
+      LambdaCase
+      NamedFieldPuns
+      NoImplicitPrelude
+      OverloadedStrings
+      PatternSynonyms
+      TupleSections
+      TypeApplications
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.11 && <10
+    , containers
+    , lens
+    , optparse-simple
+    , rio >=0.1.12.0
+    , rio-prettyprint
+    , synthesis
+    , uniplate
+  default-language: Haskell2010
+
+test-suite synthesis-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_synthesis
+  hs-source-dirs:
+      test
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveDataTypeable
+      DerivingStrategies
+      DerivingVia
+      GeneralizedNewtypeDeriving
+      KindSignatures
+      LambdaCase
+      NamedFieldPuns
+      NoImplicitPrelude
+      OverloadedStrings
+      PatternSynonyms
+      TupleSections
+      TypeApplications
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.11 && <10
+    , containers
+    , hspec
+    , lens
+    , rio >=0.1.12.0
+    , rio-prettyprint
+    , synthesis
+    , uniplate
+  default-language: Haskell2010

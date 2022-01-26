@@ -1,0 +1,77 @@
+name:                synthesis
+version:             0.1.0.0
+github:              NiekM/synthesis
+license:             BSD3
+author:              Niek Mulleners
+maintainer:          n.mulleners@uu.nl
+copyright:           2022 Niek Mulleners
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+description: Please see the README on Github at
+  <https://github.com/NiekM/synthesis#readme>
+
+dependencies:
+- base >= 4.11 && < 10
+- containers
+- lens
+- rio >= 0.1.12.0
+- rio-prettyprint
+- uniplate
+
+ghc-options:
+- -Wall
+- -Wcompat
+- -Widentities
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wpartial-fields
+- -Wredundant-constraints
+
+default-extensions:
+- BlockArguments
+- DataKinds
+- DeriveDataTypeable
+- DerivingStrategies
+- DerivingVia
+- GeneralizedNewtypeDeriving
+- KindSignatures
+- LambdaCase
+- NamedFieldPuns
+- NoImplicitPrelude
+- OverloadedStrings
+- PatternSynonyms
+- TupleSections
+- TypeApplications
+- ViewPatterns
+
+library:
+  source-dirs: src
+
+executables:
+  synthesis-exe:
+    main:                Main.hs
+    source-dirs:         app
+    dependencies:
+    - synthesis
+    - optparse-simple
+
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+
+tests:
+  synthesis-test:
+    main:                Spec.hs
+    source-dirs:         test
+    dependencies:
+    - synthesis
+    - hspec
+
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
