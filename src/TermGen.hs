@@ -6,15 +6,26 @@ import Lang
 import Unify
 import Subst
 import Data.Generics.Uniplate.Data (transformBi)
-import Data.Tree (Tree(..))
+import Data.Tree (Tree(..), levels)
 import qualified RIO.Map as Map
+import qualified RIO.Set as Set
 
 data GenState = GenState
   { sketch :: Sketch
+  , env :: Env
   , contexts :: Map Hole Env
   , maxHole :: Hole
   , maxFree :: TFree
   } deriving (Eq, Read, Show)
+
+fromSketch :: Env -> Sketch -> GenState
+fromSketch env sketch@Sketch{ expr } = GenState
+  { sketch
+  , env
+  , contexts
+  , maxHole = 1 + fromMaybe 0 (Set.lookupMax $ Map.keysSet contexts)
+  , maxFree = 0
+  } where contexts = holeContexts Map.empty expr
 
 -- | All possible ways to take one value from a list.
 pick :: [a] -> [(a, [a])]
@@ -27,12 +38,10 @@ renumber :: (Num k, Data k, Data a) => k -> a -> a
 renumber = transformBi . (+)
 
 -- TODO: add weights to options, and/or add nr of uses to each option
--- TODO: there should probably be a shared global environment as well as
--- individual, local environments for each hole. The local environments should
--- be small enough that it does not really make a difference.
 step :: GenState -> [GenState]
 step GenState
   { sketch = Sketch { expr, goals }
+  , env
   , contexts
   , maxHole
   , maxFree
@@ -40,10 +49,9 @@ step GenState
     -- Select the first goal
     ((n, goal), goals') <- toList $ Map.minViewWithKey goals
     -- Select the corresponding environment
-    -- TODO: actually use separate environments
-    env <- toList $ contexts Map.!? 0
+    ctx <- toList $ contexts Map.!? n
     -- Pick an entry from the environment
-    (name, ty) <- Map.toList env
+    (name, ty) <- Map.toList (env <> ctx)
     -- Wrap name into a sketch
     let sk = Sketch (EVar (Left (Bound name))) mempty
     -- Renumber the type variables in ty
@@ -56,15 +64,21 @@ step GenState
     let maxFree' = fromIntegral . length . free $ typ
     -- Renumber type variables of sketch
     let Sketch hf new = sketch
+    -- Copy the context to new holes
+    let contexts' = const ctx <$> new
     return GenState
       { sketch = Sketch
         { expr = subst (Map.singleton n hf) expr
         , goals = subst th (goals' <> new)
         }
-      , contexts = Map.adjust (Map.delete name) 0 contexts
+      , env = Map.delete name env
+      , contexts = Map.delete n contexts <> contexts'
       , maxHole = maxHole + fromIntegral (length new)
       , maxFree = maxFree + maxFree'
       }
 
 genTree :: (state -> [state]) -> state -> Tree state
 genTree next start = Node start (genTree next <$> next start)
+
+synthesize :: Env -> Sketch -> [[GenState]]
+synthesize env = levels . genTree step . fromSketch env
