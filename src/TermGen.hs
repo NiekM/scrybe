@@ -10,12 +10,10 @@ import Data.Tree (Tree(..))
 import qualified RIO.Map as Map
 
 data GenState = GenState
-  { sketch :: Sketch              -- ^ The sketch
--- NOTE: The list of lists is used to not use the same option (represented by a
--- list of possible sketches) more than once
-  , options :: [[(Sketch, Type)]] -- ^ Possible hole fillings
-  , maxHole :: Hole               -- ^ Used to generate fresh holes
-  , maxTBound :: TBound           -- ^ Used to generate fresh variables
+  { sketch :: Sketch
+  , contexts :: Map Hole Env
+  , maxHole :: Hole
+  , maxFree :: TFree
   } deriving (Eq, Read, Show)
 
 -- | All possible ways to take one value from a list.
@@ -29,33 +27,44 @@ renumber :: (Num k, Data k, Data a) => k -> a -> a
 renumber = transformBi . (+)
 
 -- TODO: add weights to options, and/or add nr of uses to each option
+-- TODO: there should probably be a shared global environment as well as
+-- individual, local environments for each hole. The local environments should
+-- be small enough that it does not really make a difference.
 step :: GenState -> [GenState]
 step GenState
   { sketch = Sketch { expr, goals }
-  , options
+  , contexts
   , maxHole
-  , maxTBound
+  , maxFree
   } = do
     -- Select the first goal
     ((n, goal), goals') <- toList $ Map.minViewWithKey goals
-    -- Select a type along with all expressions of that type
-    (sketches, options') <- pick options
-    (s, t) <- sketches
-    let maxTBound' = fromIntegral . length $ bound t
-    -- Check that the selected unifies with the goal
-    th <- toList $ unify (renumber maxTBound t) goal
-    let Sketch hf new = renumber maxHole (renumber maxTBound s)
+    -- Select the corresponding environment
+    -- TODO: actually use separate environments
+    env <- toList $ contexts Map.!? 0
+    -- Pick an entry from the environment
+    (name, ty) <- Map.toList env
+    -- Wrap name into a sketch
+    let sk = Sketch (EVar (Left (Bound name))) mempty
+    -- Renumber the type variables in ty
+    let ty' = renumber maxFree ty
+    -- Generate all ways to instantiate sketch
+    (sketch, typ) <- expand maxHole sk ty'
+    -- Check that the type unifies with the goal
+    th <- toList $ unify typ goal
+    -- Compute new maximum Free variable
+    let maxFree' = fromIntegral . length . free $ typ
+    -- Renumber type variables of sketch
+    let Sketch hf new = sketch
     return GenState
       { sketch = Sketch
-        { expr  = subst (Map.singleton n hf) expr
+        { expr = subst (Map.singleton n hf) expr
         , goals = subst th (goals' <> new)
         }
-      -- , options = options
-      , options = options'
+      , contexts = Map.adjust (Map.delete name) 0 contexts
       , maxHole = maxHole + fromIntegral (length new)
-      , maxTBound = maxTBound + maxTBound'
+      , maxFree = maxFree + maxFree'
       }
-
 
 genTree :: (state -> [state]) -> state -> Tree state
 genTree next start = Node start (genTree next <$> next start)

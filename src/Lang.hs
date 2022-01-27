@@ -5,15 +5,12 @@ import Import
 import GHC.TypeLits
 import qualified RIO.Map as Map
 
--- | Bound type variables are bound locally, i.e. by forall quantifiers
-newtype TBound = TBound Int
+newtype TFree = TFree Int
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype Num
   deriving Pretty via (NumVar "a")
 
--- | Bound expression variables are bound locally, i.e. by let bindings and
--- lambda abstractions
-newtype EBound = EBound Int
+newtype EFree = EFree Int
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype Num
   deriving Pretty via (NumVar "x")
@@ -23,29 +20,30 @@ newtype Hole = Hole Int
   deriving newtype Num
   deriving Pretty via (NumVar "?")
 
--- | Free variables are bound globally, i.e. by a type definition, function
--- declaration or imported
-newtype Free = Free Text
+newtype Bound = Bound Text
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype (IsString, Pretty)
 
 -- * Types
 data Type
-  = TVar (Either TBound Free)
+  = TVar (Either Bound TFree)
   | TApp Type Type
   deriving stock (Eq, Ord, Read, Show, Data)
 
 pattern TArr :: Type -> Type -> Type
-pattern TArr t u = TApp (TApp (TVar (Right (Free "->"))) t) u
+pattern TArr t u = TApp (TApp (TVar (Left (Bound "->"))) t) u
+
+type Env = Map Text Type
 
 -- * Expressions
 data Expr
-  = ELam EBound Expr
+  = ELam Bound Type Expr
   | EApp Expr Expr
-  | EVar (Either EBound Free)
+  | EVar (Either Bound TFree)
   | EHole Hole
   deriving stock (Eq, Ord, Show, Read, Data)
 
+-- TODO: this should probably also have hole contexts, maybe more.
 data Sketch = Sketch
   { expr :: Expr
   , goals :: Map Hole Type
@@ -60,7 +58,6 @@ expand n sketch@(Sketch e ts) t = (sketch, t) : case t of
     expand (1 + n) (Sketch (EApp e (EHole n)) (Map.insert n t1 ts)) t2
   _ -> []
 
-
 -- * Pretty printing
 
 -- | A helper type for pretty printing variables
@@ -73,26 +70,35 @@ prettyParens t p
   | p t = parens (pretty t)
   | otherwise = pretty t
 
+isTArr :: Type -> Bool
+isTArr TArr {} = True
+isTArr _ = False
+
+isTVar :: Type -> Bool
+isTVar TVar {} = True
+isTVar _ = False
+
 instance Pretty Type where
   pretty = \case
-    TArr t u -> sep
-      [ prettyParens t \case TArr {} -> True; _ -> False
-      , "->"
-      , pretty u
-      ]
+    TArr t u -> sep [prettyParens t isTArr, "->", pretty u]
     TVar x -> pretty x
-    TApp t u -> sep
-      [ pretty t
-      , prettyParens u \case TVar {} -> False; _ -> True
-      ]
+    TApp t u -> sep [pretty t, prettyParens u (not . isTVar)]
+
+isELam :: Expr -> Bool
+isELam ELam {} = True
+isELam _ = False
+
+isEApp :: Expr -> Bool
+isEApp EApp {} = True
+isEApp _ = False
 
 instance Pretty Sketch where
   pretty Sketch { expr, goals } = go expr where
     go = \case
-      ELam x e -> "\\" <> pretty x <> "." <+> go e
+      ELam x t e -> "\\" <> pretty x <+> "::" <+> pretty t <> "." <+> go e
       EApp f x -> sep
-        [ case f of ELam {} -> parens (go f); _ -> go f
-        , (case x of EApp {} -> parens; ELam {} -> parens; _ -> id) $ go x
+        [ prettyParens f isELam
+        , prettyParens x \y -> isELam y || isEApp y
         ]
       EVar x -> pretty x
       EHole i | Just x <- goals Map.!? i ->
