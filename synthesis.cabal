@@ -26,13 +26,15 @@ source-repository head
 library
   exposed-modules:
       Import
-      Lang
+      Language
+      Language.Prelude
+      Language.Subst
+      Language.Syntax
+      Language.Unify
+      Language.Utils
       Run
-      Subst
       TermGen
-      Test
       Types
-      Unify
   other-modules:
       Paths_synthesis
   hs-source-dirs:

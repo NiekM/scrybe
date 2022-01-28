@@ -1,19 +1,14 @@
 {-# LANGUAGE RankNTypes #-}
-module Lang where
+module Language.Syntax where
 
 import Import
 import GHC.TypeLits
 import qualified RIO.Map as Map
 
-newtype TFree = TFree Int
+newtype Free = Free Int
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype Num
   deriving Pretty via (NumVar "a")
-
-newtype EFree = EFree Int
-  deriving stock (Eq, Ord, Read, Show, Data)
-  deriving newtype Num
-  deriving Pretty via (NumVar "x")
 
 newtype Hole = Hole Int
   deriving stock (Eq, Ord, Read, Show, Data)
@@ -26,7 +21,7 @@ newtype Bound = Bound Text
 
 -- * Types
 data Type
-  = TVar (Either Bound TFree)
+  = TVar (Either Bound Free)
   | TApp Type Type
   deriving stock (Eq, Ord, Read, Show, Data)
 
@@ -39,7 +34,7 @@ type Env = Map Text Type
 data Expr
   = ELam Bound Type Expr
   | EApp Expr Expr
-  | EVar (Either Bound TFree)
+  | EVar (Either Bound Free)
   | EHole Hole
   deriving stock (Eq, Ord, Show, Read, Data)
 
@@ -54,31 +49,6 @@ data Def = Def
   , sig :: Type
   , body :: Sketch
   } deriving stock (Eq, Ord, Read, Show, Data)
-
--- * Utility functions
-
--- | Generates all possible ways to apply holes to an expression
-expand :: Hole -> Sketch -> Type -> [(Sketch, Type)]
-expand n sketch@(Sketch e ts) t = (sketch, t) : case t of
-  TArr t1 t2 ->
-    expand (1 + n) (Sketch (EApp e (EHole n)) (Map.insert n t1 ts)) t2
-  _ -> []
-
--- | For each function signature, we compute all possible ways it can be
--- applied to holes.
-instantiations :: Env -> Map Text [(Sketch, Type)]
-instantiations = Map.mapWithKey \s t ->
-  expand 0 (Sketch (EVar (Left (Bound s))) mempty) t
-
-holeContexts :: Env -> Expr -> Map Hole Env
-holeContexts env = \case
-  ELam (Bound x) t e -> holeContexts (Map.insert x t env) e
-  EApp x y -> Map.unionsWith Map.intersection
-    [ holeContexts env x
-    , holeContexts env y
-    ]
-  EHole i -> Map.singleton i env
-  _ -> Map.empty
 
 -- * Pretty printing
 

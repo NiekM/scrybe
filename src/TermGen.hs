@@ -2,9 +2,7 @@
 module TermGen where
 
 import Import
-import Lang
-import Unify
-import Subst
+import Language
 import Data.Generics.Uniplate.Data (transformBi)
 import Data.Tree (Tree(..), levels)
 import qualified RIO.Map as Map
@@ -15,7 +13,7 @@ data GenState = GenState
   , env :: Env
   , contexts :: Map Hole Env
   , maxHole :: Hole
-  , maxFree :: TFree
+  , maxFree :: Free
   } deriving (Eq, Read, Show)
 
 fromSketch :: Env -> Sketch -> GenState
@@ -65,7 +63,7 @@ step GenState
     -- Renumber type variables of sketch
     let Sketch hf new = sketch
     -- Copy the context to new holes
-    let contexts' = const ctx <$> new
+    let contexts' = ctx <$ new
     return GenState
       { sketch = Sketch
         { expr = subst (Map.singleton n hf) expr

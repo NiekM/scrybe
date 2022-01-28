@@ -1,9 +1,9 @@
 module Run (run) where
 
 import Import
-import Test
 import TermGen
-import Lang
+import Language.Prelude
+import Language.Syntax
 import qualified RIO.Map as Map
 
 mapDef :: Def

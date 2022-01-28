@@ -1,9 +1,9 @@
 {-# options_ghc -Wno-orphans #-}
 
-module Test where
+module Language.Prelude where
 
 import Import hiding (bool)
-import Lang
+import Language.Syntax
 
 import qualified RIO.Map as Map
 

@@ -1,7 +1,7 @@
 {-# Language MultiParamTypeClasses #-}
-module Subst where
+module Language.Subst where
 
-import Lang
+import Language.Syntax
 
 import Import
 import Data.Generics.Uniplate.Data (transformBi)
@@ -10,7 +10,7 @@ import qualified RIO.Map as Map
 class Extract a b where
   extract :: a -> Maybe b
 
-instance Extract Type TFree where
+instance Extract Type Free where
   extract = \case
     TVar (Right a) -> Just a
     _ -> Nothing
