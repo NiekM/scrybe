@@ -3,9 +3,22 @@ module Language.Utils where
 
 import Import
 import Language.Syntax
+import Data.Foldable
 import qualified RIO.Map as Map
 
 -- * Utility functions
+
+tApps :: NonEmpty Type -> Type
+tApps = foldl1 TApp
+
+eApps :: NonEmpty Expr -> Expr
+eApps = foldl1 EApp
+
+tArrs :: NonEmpty Type -> Type
+tArrs = foldr1 TArr
+
+mkEnv :: [Binding] -> Env
+mkEnv = foldr (\(Binding (Bound x) t) -> Map.insert x t) Map.empty
 
 -- | Generates all possible ways to apply holes to an expression
 expand :: Hole -> Sketch -> Type -> [(Sketch, Type)]
@@ -22,7 +35,7 @@ instantiations = Map.mapWithKey \s t ->
 
 holeContexts :: Env -> Expr -> Map Hole Env
 holeContexts env = \case
-  ELam (Bound x) t e -> holeContexts (Map.insert x t env) e
+  ELam (Binding (Bound x) t) e -> holeContexts (Map.insert x t env) e
   EApp x y -> Map.unionsWith Map.intersection
     [ holeContexts env x
     , holeContexts env y

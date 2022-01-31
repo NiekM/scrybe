@@ -1,45 +1,44 @@
+{-# LANGUAGE QuasiQuotes #-}
 module Run (run) where
 
 import Import
 import TermGen
+import Language.Parser
 import Language.Prelude
 import Language.Syntax
+import Language.Utils
 import qualified RIO.Map as Map
 
-mapDef :: Def
-mapDef = Def
-  { name = "map"
-  , sig = TArr (TArr "a" "b") (TArr (list "a") (list "b"))
-  , body = Sketch
-    { expr = ELam "f" (TArr "a" "b") (EHole 0)
-    , goals = Map.singleton 0 (TArr (list "a") (list "b"))
-    }
+mapBinding :: Binding
+mapBinding = [bi|map :: (a -> b) -> List a -> List b|]
+
+mapBody :: Sketch
+mapBody = Sketch
+  { expr = [ex|\f :: a -> b. ?0|]
+  , goals = Map.singleton 0 [ty|List a -> List b|]
   }
 
 -- A slightly more refined definition of map
-mapDef2 :: Def
-mapDef2 = Def
-  { name = "map"
-  , sig = TArr (TArr "a" "b") (TArr (list "a") (list "b"))
-  , body = Sketch
-    { expr = ELam "f" (TArr "a" "b")
-      $ EApp (EApp (EVar (Left "foldr")) (EHole 0)) (EHole 1)
-    , goals = Map.fromList
-      [ (0, TArr "a" (TArr (list "b") (list "b")))
-      , (1, list "b")
-      ]
-    }
+mapBody2 :: Sketch
+mapBody2 = Sketch
+  { expr = [ex|\f :: a -> b. foldr ?0 ?1|]
+  , goals = Map.fromList
+    [ (0, [ty|a -> List b -> List b|])
+    , (1, [ty|List b|])
+    ]
   }
 
-runSyn :: Env -> Def -> RIO App ()
-runSyn env def = do
+runSyn :: [Binding] -> Binding -> Sketch -> RIO App ()
+runSyn ctx binding body = do
+  let env = mkEnv ctx
   logInfo "Sketch:"
   logInfo ""
-  logInfo <=< displayWithColor . indent 2 $ pretty def
+  logInfo <=< displayWithColor . indent 2 $
+    pretty binding <> linebreak <> "  =" <+> pretty body
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  let syn = synthesize env (body def)
+  let syn = synthesize env body
   let xss = takeWhile (not . null) . zip [0 :: Int ..] $ syn
   forM_ xss \(i, xs) -> do
     logInfo $ "Step: " <> fromString (show i)
@@ -49,7 +48,7 @@ runSyn env def = do
 
 run :: RIO App ()
 run = do
-  runSyn prelude mapDef
-  runSyn (Map.delete "foldr" prelude) mapDef2
+  runSyn prelude mapBinding mapBody
+  runSyn prelude mapBinding mapBody2
   logInfo ""
   logInfo "Finished!"

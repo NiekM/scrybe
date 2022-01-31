@@ -27,6 +27,7 @@ library
   exposed-modules:
       Import
       Language
+      Language.Parser
       Language.Prelude
       Language.Subst
       Language.Syntax
@@ -60,8 +61,10 @@ library
       base >=4.11 && <10
     , containers
     , lens
+    , megaparsec
     , rio >=0.1.12.0
     , rio-prettyprint
+    , template-haskell
     , uniplate
   default-language: Haskell2010
 
@@ -92,10 +95,12 @@ executable synthesis-exe
       base >=4.11 && <10
     , containers
     , lens
+    , megaparsec
     , optparse-simple
     , rio >=0.1.12.0
     , rio-prettyprint
     , synthesis
+    , template-haskell
     , uniplate
   default-language: Haskell2010
 
@@ -128,8 +133,10 @@ test-suite synthesis-test
     , containers
     , hspec
     , lens
+    , megaparsec
     , rio >=0.1.12.0
     , rio-prettyprint
     , synthesis
+    , template-haskell
     , uniplate
   default-language: Haskell2010

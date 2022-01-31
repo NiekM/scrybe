@@ -17,8 +17,10 @@ dependencies:
 - base >= 4.11 && < 10
 - containers
 - lens
+- megaparsec
 - rio >= 0.1.12.0
 - rio-prettyprint
+- template-haskell
 - uniplate
 
 ghc-options:

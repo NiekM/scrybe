@@ -32,7 +32,7 @@ type Env = Map Text Type
 
 -- * Expressions
 data Expr
-  = ELam Bound Type Expr
+  = ELam Binding Expr
   | EApp Expr Expr
   | EVar (Either Bound Free)
   | EHole Hole
@@ -44,11 +44,11 @@ data Sketch = Sketch
   , goals :: Map Hole Type
   } deriving stock (Eq, Ord, Read, Show, Data)
 
-data Def = Def
-  { name :: Text
-  , sig :: Type
-  , body :: Sketch
-  } deriving stock (Eq, Ord, Read, Show, Data)
+data Binding = Binding Bound Type
+  deriving stock (Eq, Ord, Read, Show, Data)
+
+data Decl = Decl Binding Expr
+  deriving stock (Eq, Ord, Read, Show, Data)
 
 -- * Pretty printing
 
@@ -87,7 +87,8 @@ isEApp _ = False
 instance Pretty Sketch where
   pretty Sketch { expr, goals } = go expr where
     go = \case
-      ELam x t e -> "\\" <> pretty x <+> "::" <+> pretty t <> "." <+> go e
+      ELam (Binding x t) e ->
+        "\\" <> pretty x <+> "::" <+> pretty t <> "." <+> go e
       EApp f x -> sep
         [ prettyParens f isELam
         , prettyParens x \y -> isELam y || isEApp y
@@ -100,8 +101,5 @@ instance Pretty Sketch where
 instance Pretty Expr where
   pretty e = pretty (Sketch e mempty)
 
-instance Pretty Def where
-  pretty Def { name, sig, body } =
-    pretty name <+> "::" <+> pretty sig
-    <> linebreak
-    <> pretty name <+> "=" <+> pretty body
+instance Pretty Binding where
+  pretty (Binding name ty) = pretty name <+> "::" <+> pretty ty
