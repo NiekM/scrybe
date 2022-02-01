@@ -44,7 +44,6 @@ class Parse a where
   parser :: Parser a
 
 instance KnownSymbol s => Parse (NumVar s) where
-  parser :: forall s. KnownSymbol s => Parser (NumVar s)
   parser = MkNumVar <$ symbol (fromString s) <*> number
     where s = symbolVal (undefined :: proxy s)
 

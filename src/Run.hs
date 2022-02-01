@@ -33,8 +33,8 @@ runSyn ctx binding body = do
   let env = mkEnv ctx
   logInfo "Sketch:"
   logInfo ""
-  logInfo <=< displayWithColor . indent 2 $
-    pretty binding <> linebreak <> "  =" <+> pretty body
+  logInfo . display . indent 2 $
+    pretty binding <> hardline <> "  =" <+> pretty body
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
@@ -42,9 +42,7 @@ runSyn ctx binding body = do
   let xss = takeWhile (not . null) . zip [0 :: Int ..] $ syn
   forM_ xss \(i, xs) -> do
     logInfo $ "Step: " <> fromString (show i)
-    forM_ xs \x -> do
-      d <- displayWithColor . expr $ sketch x
-      logInfo ("  " <> d)
+    forM_ xs (logInfo . display . indent 2 . pretty . expr . sketch)
 
 run :: RIO App ()
 run = do

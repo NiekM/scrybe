@@ -59,7 +59,7 @@ newtype NumVar (s :: Symbol) = MkNumVar Int
 instance KnownSymbol s => Pretty (NumVar s) where
   pretty var@(MkNumVar n) = fromString (symbolVal var) <> fromString (show n)
 
-prettyParens :: Pretty a => a -> (a -> Bool) -> StyleDoc
+prettyParens :: Pretty a => a -> (a -> Bool) -> Doc ann
 prettyParens t p
   | p t = parens (pretty t)
   | otherwise = pretty t
