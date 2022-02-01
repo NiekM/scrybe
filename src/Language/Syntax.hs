@@ -31,26 +31,28 @@ pattern TArr t u = TApp (TApp (TVar (Left (Bound "->"))) t) u
 type Env = Map Text Type
 
 -- * Expressions
-data Expr
-  = ELam Binding Expr
-  | EApp Expr Expr
+data Expr a
+  = ELam Binding (Expr a)
+  | EApp (Expr a) (Expr a)
   | EVar (Either Bound Free)
-  | EHole Hole
+  | EHole a
   deriving stock (Eq, Ord, Show, Read, Data)
 
 -- TODO: this should probably also have hole contexts, maybe more.
 data Sketch = Sketch
-  { expr :: Expr
+  { expr :: Expr Hole
   , goals :: Map Hole Type
   } deriving stock (Eq, Ord, Read, Show, Data)
 
 data Binding = Binding Bound Type
   deriving stock (Eq, Ord, Read, Show, Data)
 
-data Decl = Decl Binding Expr
+data Decl a = Decl Binding (Expr a)
   deriving stock (Eq, Ord, Read, Show, Data)
 
 -- * Pretty printing
+-- TODO: Use more generic pretty printing, then specialize to RIO.
+-- TODO: Use quickCheck to show that parsing and printing are related.
 
 -- | A helper type for pretty printing variables
 newtype NumVar (s :: Symbol) = MkNumVar Int
@@ -76,11 +78,11 @@ instance Pretty Type where
     TVar x -> pretty x
     TApp t u -> sep [pretty t, prettyParens u (not . isTVar)]
 
-isELam :: Expr -> Bool
+isELam :: Expr a -> Bool
 isELam ELam {} = True
 isELam _ = False
 
-isEApp :: Expr -> Bool
+isEApp :: Expr a -> Bool
 isEApp EApp {} = True
 isEApp _ = False
 
@@ -98,8 +100,16 @@ instance Pretty Sketch where
         braces $ sep [pretty i, "::", pretty x]
       EHole i -> pretty i
 
-instance Pretty Expr where
-  pretty e = pretty (Sketch e mempty)
+instance Pretty a => Pretty (Expr a) where
+  pretty = \case
+    ELam (Binding x t) e ->
+      "\\" <> pretty x <+> "::" <+> pretty t <> "." <+> pretty e
+    EApp f x -> sep
+      [ prettyParens f isELam
+      , prettyParens x \y -> isELam y || isEApp y
+      ]
+    EVar x -> pretty x
+    EHole i -> braces $ pretty i
 
 instance Pretty Binding where
   pretty (Binding name ty) = pretty name <+> "::" <+> pretty ty

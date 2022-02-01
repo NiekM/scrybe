@@ -1,4 +1,4 @@
-{-# Language MultiParamTypeClasses #-}
+{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances #-}
 module Language.Subst where
 
 import Language.Syntax
@@ -15,7 +15,7 @@ instance Extract Type Free where
     TVar (Right a) -> Just a
     _ -> Nothing
 
-instance Extract Expr Hole where
+instance Extract (Expr a) a where
   extract = \case
     EHole a -> Just a
     _ -> Nothing

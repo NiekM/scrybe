@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Language.Parser where
 
-import Import hiding (some, many, parens, lift)
+import Import hiding (some, many, parens, braces, lift)
 import RIO.Partial (read)
 import Language.Syntax
 import Language.Utils
@@ -12,6 +12,7 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Language.Haskell.TH.Quote
 import Language.Haskell.TH.Syntax hiding (Type)
+import GHC.TypeLits
 
 type Parser = Parsec Void Text
 
@@ -33,45 +34,54 @@ number = lexeme $ read <$> some digitChar
 parens :: Parser a -> Parser a
 parens = between (symbol "(") (symbol ")")
 
+braces :: Parser a -> Parser a
+braces = between (symbol "{") (symbol "}")
+
 interleaved :: Parser a -> Parser b -> Parser (NonEmpty a)
 interleaved p q = (:|) <$> p <*> many (q *> p)
 
+class Parse a where
+  parser :: Parser a
+
+instance KnownSymbol s => Parse (NumVar s) where
+  parser :: forall s. KnownSymbol s => Parser (NumVar s)
+  parser = MkNumVar <$ symbol (fromString s) <*> number
+    where s = symbolVal (undefined :: proxy s)
+
+instance Parse Bound where
+  parser = Bound <$> ident
+
+instance Parse Free where
+  parser = Free <$> number
+
 var :: Parser (Either Bound Free)
-var = Left . Bound <$> ident <|> Right . Free <$> number
+var = Left <$> parser <|> Right <$> parser
 
 -- * Types
 
 typeApps :: Parser Type
 typeApps = tApps <$> interleaved (parens typeApps <|> TVar <$> var) (pure ())
 
-arrs :: Parser Type
-arrs = tArrs <$> interleaved (parens arrs <|> typeApps) (symbol "->")
+instance Parse Type where
+  parser = tArrs <$> interleaved (parens parser <|> typeApps) (symbol "->")
 
-parseType :: Parser Type
-parseType = arrs
-
-parseBinding :: Parser Binding
-parseBinding = Binding <$> (Bound <$> ident) <* symbol "::" <*> parseType
+instance Parse Binding where
+  parser = Binding <$> (Bound <$> ident) <* symbol "::" <*> parser
 
 -- * Expressions
 
-hole :: Parser Expr
-hole = EHole . Hole <$> (char '?' *> number)
+deriving via NumVar "?" instance Parse Hole
 
-lam :: Parser Expr
-lam = ELam <$ symbol "\\" <*> parseBinding <* symbol "." <*> parseExpr
+simpleExpr :: Parse a => Parser (Expr a)
+simpleExpr = EHole <$> braces parser
+  <|> EVar <$> var
+  <|> ELam <$ symbol "\\" <*> parser <* symbol "." <*> parser
 
-simpleExpr :: Parser Expr
-simpleExpr = hole <|> EVar <$> var <|> lam
+instance Parse a => Parse (Expr a) where
+  parser = eApps <$> interleaved (parens parser <|> simpleExpr) (pure ())
 
-exprApps :: Parser Expr
-exprApps = eApps <$> interleaved (parens exprApps <|> simpleExpr) (pure ())
-
-parseExpr :: Parser Expr
-parseExpr = exprApps
-
-parseDecl :: Parser Decl
-parseDecl = Decl <$> parseBinding <* symbol "=" <*> parseExpr
+instance Parse a => Parse (Decl a) where
+  parser = Decl <$> parser <* symbol "=" <*> parser
 
 -- * Quasi quoters
 
@@ -90,18 +100,18 @@ basic = QuasiQuoter
   }
 
 quasiExp :: Data a => Parser a -> String -> QuasiQuoter
-quasiExp parser name = basic
-  { quoteExp = \s -> case runParser parser name (fromString s) of
+quasiExp p name = basic
+  { quoteExp = \s -> case runParser p name (fromString s) of
     Left e -> error (show e)
     Right x -> liftDataWithText x
   }
 
 ty :: QuasiQuoter
-ty = quasiExp parseType "Type"
+ty = quasiExp (parser @Type) "Type"
 
 ex :: QuasiQuoter
-ex = quasiExp parseExpr "Expr"
+ex = quasiExp (parser @(Expr Hole)) "Expr"
 
 bi :: QuasiQuoter
-bi = quasiExp parseBinding "Binding"
+bi = quasiExp (parser @Binding) "Binding"
 

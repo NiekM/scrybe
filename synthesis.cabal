@@ -47,12 +47,14 @@ library
       DerivingStrategies
       DerivingVia
       GeneralizedNewtypeDeriving
+      InstanceSigs
       KindSignatures
       LambdaCase
       NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
       PatternSynonyms
+      ScopedTypeVariables
       TupleSections
       TypeApplications
       ViewPatterns
@@ -81,12 +83,14 @@ executable synthesis-exe
       DerivingStrategies
       DerivingVia
       GeneralizedNewtypeDeriving
+      InstanceSigs
       KindSignatures
       LambdaCase
       NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
       PatternSynonyms
+      ScopedTypeVariables
       TupleSections
       TypeApplications
       ViewPatterns
@@ -118,12 +122,14 @@ test-suite synthesis-test
       DerivingStrategies
       DerivingVia
       GeneralizedNewtypeDeriving
+      InstanceSigs
       KindSignatures
       LambdaCase
       NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
       PatternSynonyms
+      ScopedTypeVariables
       TupleSections
       TypeApplications
       ViewPatterns

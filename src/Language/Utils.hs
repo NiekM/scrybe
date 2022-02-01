@@ -11,7 +11,7 @@ import qualified RIO.Map as Map
 tApps :: NonEmpty Type -> Type
 tApps = foldl1 TApp
 
-eApps :: NonEmpty Expr -> Expr
+eApps :: NonEmpty (Expr a) -> (Expr a)
 eApps = foldl1 EApp
 
 tArrs :: NonEmpty Type -> Type
@@ -33,7 +33,7 @@ instantiations :: Env -> Map Text [(Sketch, Type)]
 instantiations = Map.mapWithKey \s t ->
   expand 0 (Sketch (EVar (Left (Bound s))) mempty) t
 
-holeContexts :: Env -> Expr -> Map Hole Env
+holeContexts :: Env -> Expr Hole -> Map Hole Env
 holeContexts env = \case
   ELam (Binding (Bound x) t) e -> holeContexts (Map.insert x t env) e
   EApp x y -> Map.unionsWith Map.intersection

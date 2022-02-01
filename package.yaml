@@ -39,12 +39,14 @@ default-extensions:
 - DerivingStrategies
 - DerivingVia
 - GeneralizedNewtypeDeriving
+- InstanceSigs
 - KindSignatures
 - LambdaCase
 - NamedFieldPuns
 - NoImplicitPrelude
 - OverloadedStrings
 - PatternSynonyms
+- ScopedTypeVariables
 - TupleSections
 - TypeApplications
 - ViewPatterns
