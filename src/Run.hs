@@ -14,14 +14,14 @@ mapBinding = [bi|map :: (a -> b) -> List a -> List b|]
 
 mapBody :: Sketch
 mapBody = Sketch
-  { expr = [ex|\f :: a -> b. {?0}|]
+  { expr = [ex|\f :: a -> b. {0}|]
   , goals = Map.singleton 0 [ty|List a -> List b|]
   }
 
 -- A slightly more refined definition of map
 mapBody2 :: Sketch
 mapBody2 = Sketch
-  { expr = [ex|\f :: a -> b. foldr {?0} {?1}|]
+  { expr = [ex|\f :: a -> b. foldr {0} {1}|]
   , goals = Map.fromList
     [ (0, [ty|a -> List b -> List b|])
     , (1, [ty|List b|])

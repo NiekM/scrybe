@@ -10,9 +10,9 @@ import qualified RIO.Map as Map
 class Extract a b where
   extract :: a -> Maybe b
 
-instance Extract Type Free where
+instance Extract Type Hole where
   extract = \case
-    TVar (Right a) -> Just a
+    THole a -> Just a
     _ -> Nothing
 
 instance Extract (Expr a) a where

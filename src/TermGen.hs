@@ -13,7 +13,7 @@ data GenState = GenState
   , env :: Env
   , contexts :: Map Hole Env
   , maxHole :: Hole
-  , maxFree :: Free
+  , maxFree :: Hole
   } deriving (Eq, Read, Show)
 
 fromSketch :: Env -> Sketch -> GenState
@@ -51,7 +51,7 @@ step GenState
     -- Pick an entry from the environment
     (name, ty) <- Map.toList (env <> ctx)
     -- Wrap name into a sketch
-    let sk = Sketch (EVar (Left (Bound name))) mempty
+    let sk = Sketch (EVar name) mempty
     -- Renumber the type variables in ty
     let ty' = renumber maxFree ty
     -- Generate all ways to instantiate sketch

@@ -12,7 +12,6 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Language.Haskell.TH.Quote
 import Language.Haskell.TH.Syntax hiding (Type)
-import GHC.TypeLits
 
 type Parser = Parsec Void Text
 
@@ -43,39 +42,34 @@ interleaved p q = (:|) <$> p <*> many (q *> p)
 class Parse a where
   parser :: Parser a
 
-instance KnownSymbol s => Parse (NumVar s) where
-  parser = MkNumVar <$ symbol (fromString s) <*> number
-    where s = symbolVal (undefined :: proxy s)
-
 instance Parse Void where
   parser = mzero
 
-instance Parse Bound where
-  parser = Bound <$> ident
+instance Parse Var where
+  parser = Var <$> ident
 
-deriving via NumVar "_" instance Parse Free
-
-var :: Parser (Either Bound Free)
-var = Left <$> parser <|> Right <$> parser
+instance Parse Hole where
+  parser = Hole <$> number
 
 -- * Types
 
+simpleType :: Parser Type
+simpleType = THole <$> braces parser <|> TVar <$> parser
+
 typeApps :: Parser Type
-typeApps = tApps <$> interleaved (parens typeApps <|> TVar <$> var) (pure ())
+typeApps = tApps <$> interleaved (parens typeApps <|> simpleType) (pure ())
 
 instance Parse Type where
   parser = tArrs <$> interleaved (parens parser <|> typeApps) (symbol "->")
 
 instance Parse Binding where
-  parser = Binding <$> (Bound <$> ident) <* symbol "::" <*> parser
+  parser = Binding <$> (Var <$> ident) <* symbol "::" <*> parser
 
 -- * Expressions
 
-deriving via NumVar "?" instance Parse Hole
-
 simpleExpr :: Parse a => Parser (Expr a)
 simpleExpr = EHole <$> braces parser
-  <|> EVar <$> var
+  <|> EVar <$> parser
   <|> ELam <$ symbol "\\" <*> parser <* symbol "." <*> parser
 
 instance Parse a => Parse (Expr a) where

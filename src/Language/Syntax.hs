@@ -1,41 +1,35 @@
-{-# LANGUAGE RankNTypes, DeriveTraversable, FlexibleInstances #-}
+{-# LANGUAGE DeriveTraversable, FlexibleInstances #-}
 module Language.Syntax where
 
 import Import
-import GHC.TypeLits
 import qualified RIO.Map as Map
 import Test.QuickCheck
 
-newtype Free = Free Int
-  deriving stock (Eq, Ord, Read, Show, Data)
-  deriving newtype Num
-  deriving (Pretty, Arbitrary) via (NumVar "_")
-
 newtype Hole = Hole Int
   deriving stock (Eq, Ord, Read, Show, Data)
-  deriving newtype Num
-  deriving (Pretty, Arbitrary) via (NumVar "?")
+  deriving newtype (Num, Pretty)
 
-newtype Bound = Bound Text
+newtype Var = Var Text
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype (IsString, Pretty)
 
 -- * Types
 data Type
-  = TVar (Either Bound Free)
+  = TVar Var
   | TApp Type Type
+  | THole Hole
   deriving stock (Eq, Ord, Read, Show, Data)
 
 pattern TArr :: Type -> Type -> Type
-pattern TArr t u = TApp (TApp (TVar (Left (Bound "->"))) t) u
+pattern TArr t u = TApp (TApp (TVar (Var "->")) t) u
 
-type Env = Map Text Type
+type Env = Map Var Type
 
 -- * Expressions
 data Expr a
   = ELam Binding (Expr a)
   | EApp (Expr a) (Expr a)
-  | EVar (Either Bound Free)
+  | EVar Var
   | EHole a
   deriving stock (Eq, Ord, Show, Read, Data)
   deriving stock (Functor, Foldable, Traversable)
@@ -59,7 +53,7 @@ data Sketch = Sketch
   , goals :: Map Hole Type
   } deriving stock (Eq, Ord, Read, Show, Data)
 
-data Binding = Binding Bound Type
+data Binding = Binding Var Type
   deriving stock (Eq, Ord, Read, Show, Data)
 
 data Decl a = Decl Binding (Expr a)
@@ -85,16 +79,12 @@ isEApp _ = False
 
 -- * Pretty printing
 
--- | A helper type for pretty printing and parsing variables
-newtype NumVar (s :: Symbol) = MkNumVar Int
-instance KnownSymbol s => Pretty (NumVar s) where
-  pretty var@(MkNumVar n) = fromString (symbolVal var) <> fromString (show n)
-
 instance Pretty Type where
   pretty = \case
-    TArr t u -> sep [prettyParens t isTArr, "->", pretty u]
     TVar x -> pretty x
+    TArr t u -> sep [prettyParens t isTArr, "->", pretty u]
     TApp t u -> sep [pretty t, prettyParens u (not . isTVar)]
+    THole i -> braces $ pretty i
 
 instance Pretty Sketch where
   pretty Sketch { expr, goals } = go expr where
@@ -127,11 +117,11 @@ instance Pretty Binding where
 -- * QuickCheck
 -- TODO: make sure that these are good arbitrary instances
 
-instance Arbitrary (NumVar s) where
-  arbitrary = MkNumVar <$> sized \n -> chooseInt (0, n)
-
-instance Arbitrary Bound where
+instance Arbitrary Var where
   arbitrary = fromString <$> resize 5 (listOf1 (chooseEnum ('a', 'z')))
+
+instance Arbitrary Hole where
+  arbitrary = fromIntegral <$> sized \n -> choose (0, n)
 
 sizedType :: Int -> Gen Type
 sizedType 0 = TVar <$> arbitrary

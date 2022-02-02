@@ -20,7 +20,7 @@ tArrs :: NonEmpty Type -> Type
 tArrs = foldr1 TArr
 
 mkEnv :: [Binding] -> Env
-mkEnv = foldr (\(Binding (Bound x) t) -> Map.insert x t) Map.empty
+mkEnv = foldr (\(Binding x t) -> Map.insert x t) Map.empty
 
 -- | Generates all possible ways to apply holes to an expression.
 expand :: Hole -> Sketch -> Type -> [(Sketch, Type)]
@@ -31,14 +31,14 @@ expand n sketch@(Sketch e ts) t = (sketch, t) : case t of
 
 -- | For each function signature, we compute all possible ways it can be
 -- applied to holes.
-instantiations :: Env -> Map Text [(Sketch, Type)]
+instantiations :: Env -> Map Var [(Sketch, Type)]
 instantiations = Map.mapWithKey \s t ->
-  expand 0 (Sketch (EVar (Left (Bound s))) mempty) t
+  expand 0 (Sketch (EVar s) mempty) t
 
 -- | Compute the contexts of every hole in a sketch.
 holeContexts :: Env -> Expr Hole -> Map Hole Env
 holeContexts env = \case
-  ELam (Binding (Bound x) t) e -> holeContexts (Map.insert x t env) e
+  ELam (Binding x t) e -> holeContexts (Map.insert x t env) e
   EApp x y -> Map.unionsWith Map.intersection
     [ holeContexts env x
     , holeContexts env y
