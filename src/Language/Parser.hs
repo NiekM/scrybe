@@ -47,6 +47,9 @@ instance KnownSymbol s => Parse (NumVar s) where
   parser = MkNumVar <$ symbol (fromString s) <*> number
     where s = symbolVal (undefined :: proxy s)
 
+instance Parse Void where
+  parser = mzero
+
 instance Parse Bound where
   parser = Bound <$> ident
 

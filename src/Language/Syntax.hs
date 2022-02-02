@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, DeriveTraversable, FlexibleInstances #-}
 module Language.Syntax where
 
 import Import
@@ -38,6 +38,20 @@ data Expr a
   | EVar (Either Bound Free)
   | EHole a
   deriving stock (Eq, Ord, Show, Read, Data)
+  deriving stock (Functor, Foldable, Traversable)
+
+instance Applicative Expr where
+  pure = EHole
+  ELam b x <*> y = ELam b (x <*> y)
+  EApp f x <*> y = EApp (f <*> y) (x <*> y)
+  EVar   x <*> _ = EVar x
+  EHole  h <*> y = h <$> y
+
+instance Monad Expr where
+  ELam b f >>= k = ELam b (f >>= k)
+  EApp f x >>= k = EApp (f >>= k) (x >>= k)
+  EVar   x >>= _ = EVar x
+  EHole  h >>= k = k h
 
 -- TODO: this should probably also have hole contexts, maybe more.
 data Sketch = Sketch
@@ -143,7 +157,28 @@ sizedExpr n = do
     , ELam <$> (Binding <$> arbitrary <*> sizedType x) <*> sizedExpr y
     ]
 
-instance Arbitrary a => Arbitrary (Expr a) where
-  arbitrary = sized \n -> do
+arbExpr :: Arbitrary a => Gen (Expr a)
+arbExpr = sized \n -> do
+  m <- choose (0, n)
+  sizedExpr m
+
+instance Arbitrary (Expr Hole) where
+  arbitrary = arbExpr
+
+instance Arbitrary (Expr Type) where
+  arbitrary = arbExpr
+
+sizedExprVoid :: Int -> Gen (Expr Void)
+sizedExprVoid 0 = oneof [EVar <$> arbitrary]
+sizedExprVoid n = do
+  x <- choose (0, n - 1)
+  let y = n - x - 1
+  oneof
+    [ EApp <$> sizedExprVoid x <*> sizedExprVoid y
+    , ELam <$> (Binding <$> arbitrary <*> sizedType x) <*> sizedExprVoid y
+    ]
+
+instance Arbitrary (Expr Void) where
+  arbitrary = scale (`div` 3) $ sized \n -> do
     m <- choose (0, n)
-    sizedExpr m
+    sizedExprVoid m
