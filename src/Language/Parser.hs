@@ -50,8 +50,7 @@ instance KnownSymbol s => Parse (NumVar s) where
 instance Parse Bound where
   parser = Bound <$> ident
 
-instance Parse Free where
-  parser = Free <$> number
+deriving via NumVar "_" instance Parse Free
 
 var :: Parser (Either Bound Free)
 var = Left <$> parser <|> Right <$> parser
@@ -113,4 +112,3 @@ ex = quasiExp (parser @(Expr Hole)) "Expr"
 
 bi :: QuasiQuoter
 bi = quasiExp (parser @Binding) "Binding"
-

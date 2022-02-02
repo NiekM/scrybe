@@ -61,7 +61,8 @@ library
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
   build-depends:
-      base >=4.11 && <10
+      QuickCheck
+    , base >=4.11 && <10
     , containers
     , lens
     , megaparsec
@@ -98,7 +99,8 @@ executable synthesis-exe
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.11 && <10
+      QuickCheck
+    , base >=4.11 && <10
     , containers
     , lens
     , megaparsec
@@ -114,6 +116,7 @@ test-suite synthesis-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      SyntaxSpec
       Paths_synthesis
   hs-source-dirs:
       test
@@ -138,7 +141,8 @@ test-suite synthesis-test
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.11 && <10
+      QuickCheck
+    , base >=4.11 && <10
     , containers
     , hspec
     , lens

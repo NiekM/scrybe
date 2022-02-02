@@ -4,16 +4,17 @@ module Language.Syntax where
 import Import
 import GHC.TypeLits
 import qualified RIO.Map as Map
+import Test.QuickCheck
 
 newtype Free = Free Int
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype Num
-  deriving Pretty via (NumVar "a")
+  deriving (Pretty, Arbitrary) via (NumVar "_")
 
 newtype Hole = Hole Int
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype Num
-  deriving Pretty via (NumVar "?")
+  deriving (Pretty, Arbitrary) via (NumVar "?")
 
 newtype Bound = Bound Text
   deriving stock (Eq, Ord, Read, Show, Data)
@@ -50,19 +51,7 @@ data Binding = Binding Bound Type
 data Decl a = Decl Binding (Expr a)
   deriving stock (Eq, Ord, Read, Show, Data)
 
--- * Pretty printing
--- TODO: Use more generic pretty printing, then specialize to RIO.
--- TODO: Use quickCheck to show that parsing and printing are related.
-
--- | A helper type for pretty printing variables
-newtype NumVar (s :: Symbol) = MkNumVar Int
-instance KnownSymbol s => Pretty (NumVar s) where
-  pretty var@(MkNumVar n) = fromString (symbolVal var) <> fromString (show n)
-
-prettyParens :: Pretty a => a -> (a -> Bool) -> Doc ann
-prettyParens t p
-  | p t = parens (pretty t)
-  | otherwise = pretty t
+-- * Small helper functions
 
 isTArr :: Type -> Bool
 isTArr TArr {} = True
@@ -72,12 +61,6 @@ isTVar :: Type -> Bool
 isTVar TVar {} = True
 isTVar _ = False
 
-instance Pretty Type where
-  pretty = \case
-    TArr t u -> sep [prettyParens t isTArr, "->", pretty u]
-    TVar x -> pretty x
-    TApp t u -> sep [pretty t, prettyParens u (not . isTVar)]
-
 isELam :: Expr a -> Bool
 isELam ELam {} = True
 isELam _ = False
@@ -85,6 +68,19 @@ isELam _ = False
 isEApp :: Expr a -> Bool
 isEApp EApp {} = True
 isEApp _ = False
+
+-- * Pretty printing
+
+-- | A helper type for pretty printing and parsing variables
+newtype NumVar (s :: Symbol) = MkNumVar Int
+instance KnownSymbol s => Pretty (NumVar s) where
+  pretty var@(MkNumVar n) = fromString (symbolVal var) <> fromString (show n)
+
+instance Pretty Type where
+  pretty = \case
+    TArr t u -> sep [prettyParens t isTArr, "->", pretty u]
+    TVar x -> pretty x
+    TApp t u -> sep [pretty t, prettyParens u (not . isTVar)]
 
 instance Pretty Sketch where
   pretty Sketch { expr, goals } = go expr where
@@ -113,3 +109,41 @@ instance Pretty a => Pretty (Expr a) where
 
 instance Pretty Binding where
   pretty (Binding name ty) = pretty name <+> "::" <+> pretty ty
+
+-- * QuickCheck
+-- TODO: make sure that these are good arbitrary instances
+
+instance Arbitrary (NumVar s) where
+  arbitrary = MkNumVar <$> sized \n -> chooseInt (0, n)
+
+instance Arbitrary Bound where
+  arbitrary = fromString <$> resize 5 (listOf1 (chooseEnum ('a', 'z')))
+
+sizedType :: Int -> Gen Type
+sizedType 0 = TVar <$> arbitrary
+sizedType n = do
+  x <- choose (0, n - 1)
+  TApp <$> sizedType x <*> sizedType (n - x - 1)
+
+instance Arbitrary Type where
+  arbitrary = sized \n -> do
+    m <- choose (0, n)
+    sizedType m
+
+instance Arbitrary Binding where
+  arbitrary = Binding <$> arbitrary <*> arbitrary
+
+sizedExpr :: Arbitrary a => Int -> Gen (Expr a)
+sizedExpr 0 = oneof [EVar <$> arbitrary, EHole <$> arbitrary]
+sizedExpr n = do
+  x <- choose (0, n - 1)
+  let y = n - x - 1
+  oneof
+    [ EApp <$> sizedExpr x <*> sizedExpr y
+    , ELam <$> (Binding <$> arbitrary <*> sizedType x) <*> sizedExpr y
+    ]
+
+instance Arbitrary a => Arbitrary (Expr a) where
+  arbitrary = sized \n -> do
+    m <- choose (0, n)
+    sizedExpr m

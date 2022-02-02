@@ -5,6 +5,7 @@ module Import
   , module RIO
   , module RIO.Text
   , module Types
+  , prettyParens
   ) where
 
 import RIO
@@ -19,3 +20,8 @@ instance (Pretty a, Pretty b) => Pretty (Either a b) where
 
 instance Display (Doc ann) where
   textDisplay = fromString . show
+
+prettyParens :: Pretty a => a -> (a -> Bool) -> Doc ann
+prettyParens t p
+  | p t = parens (pretty t)
+  | otherwise = pretty t
