@@ -1,12 +1,11 @@
 {-# LANGUAGE QuasiQuotes #-}
-{-# options_ghc -Wno-orphans #-}
 
 module Language.Prelude where
 
 import Language.Syntax
 import Language.Parser
 
-prelude :: [Binding]
+prelude :: [Binding Hole]
 prelude =
   [ [bi|T :: Bool|]
   , [bi|F :: Bool|]

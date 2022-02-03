@@ -5,18 +5,19 @@ import Import
 import Language
 import Data.Generics.Uniplate.Data (transformBi)
 import Data.Tree (Tree(..), levels)
+import RIO.List
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 
 data GenState = GenState
-  { sketch :: Sketch
-  , env :: Env
-  , contexts :: Map Hole Env
+  { sketch :: Sketch Hole
+  , env :: Env Hole
+  , contexts :: Map Hole (Env Hole)
   , maxHole :: Hole
   , maxFree :: Hole
   } deriving (Eq, Read, Show)
 
-fromSketch :: Env -> Sketch -> GenState
+fromSketch :: Env Hole -> Sketch Hole -> GenState
 fromSketch env sketch@Sketch{ expr } = GenState
   { sketch
   , env
@@ -59,7 +60,7 @@ step GenState
     -- Check that the type unifies with the goal
     th <- toList $ unify typ goal
     -- Compute new maximum Free variable
-    let maxFree' = fromIntegral . length . free $ typ
+    let maxFree' = fromMaybe 0 . maximumMaybe . free $ typ
     -- Renumber type variables of sketch
     let Sketch hf new = sketch
     -- Copy the context to new holes
@@ -67,7 +68,7 @@ step GenState
     return GenState
       { sketch = Sketch
         { expr = subst (Map.singleton n hf) expr
-        , goals = subst th (goals' <> new)
+        , goals = subst th <$> (goals' <> new)
         }
       , env = Map.delete name env
       , contexts = Map.delete n contexts <> contexts'
@@ -78,5 +79,5 @@ step GenState
 genTree :: (state -> [state]) -> state -> Tree state
 genTree next start = Node start (genTree next <$> next start)
 
-synthesize :: Env -> Sketch -> [[GenState]]
+synthesize :: Env Hole -> Sketch Hole -> [[GenState]]
 synthesize env = levels . genTree step . fromSketch env

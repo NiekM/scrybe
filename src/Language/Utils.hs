@@ -10,20 +10,20 @@ import Control.Monad.State
 
 -- * Utility functions
 
-tApps :: NonEmpty Type -> Type
+tApps :: NonEmpty (Type a) -> Type a
 tApps = foldl1 TApp
 
 eApps :: NonEmpty (Expr a) -> Expr a
 eApps = foldl1 EApp
 
-tArrs :: NonEmpty Type -> Type
+tArrs :: NonEmpty (Type a) -> Type a
 tArrs = foldr1 TArr
 
-mkEnv :: [Binding] -> Env
+mkEnv :: [Binding a] -> Env a
 mkEnv = foldr (\(Binding x t) -> Map.insert x t) Map.empty
 
 -- | Generates all possible ways to apply holes to an expression.
-expand :: Hole -> Sketch -> Type -> [(Sketch, Type)]
+expand :: Hole -> Sketch a -> Type a -> [(Sketch a, Type a)]
 expand n sketch@(Sketch e ts) t = (sketch, t) : case t of
   TArr t1 t2 ->
     expand (1 + n) (Sketch (EApp e (EHole n)) (Map.insert n t1 ts)) t2
@@ -31,12 +31,12 @@ expand n sketch@(Sketch e ts) t = (sketch, t) : case t of
 
 -- | For each function signature, we compute all possible ways it can be
 -- applied to holes.
-instantiations :: Env -> Map Var [(Sketch, Type)]
+instantiations :: Env a -> Map Var [(Sketch a, Type a)]
 instantiations = Map.mapWithKey \s t ->
   expand 0 (Sketch (EVar s) mempty) t
 
 -- | Compute the contexts of every hole in a sketch.
-holeContexts :: Env -> Expr Hole -> Map Hole Env
+holeContexts :: Env Hole -> Expr Hole -> Map Hole (Env Hole)
 holeContexts env = \case
   ELam (Binding x t) e -> holeContexts (Map.insert x t env) e
   EApp x y -> Map.unionsWith Map.intersection

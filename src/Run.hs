@@ -9,17 +9,17 @@ import Language.Syntax
 import Language.Utils
 import qualified RIO.Map as Map
 
-mapBinding :: Binding
+mapBinding :: Binding Hole
 mapBinding = [bi|map :: (a -> b) -> List a -> List b|]
 
-mapBody :: Sketch
+mapBody :: Sketch Hole
 mapBody = Sketch
   { expr = [ex|\f :: a -> b. {0}|]
   , goals = Map.singleton 0 [ty|List a -> List b|]
   }
 
 -- A slightly more refined definition of map
-mapBody2 :: Sketch
+mapBody2 :: Sketch Hole
 mapBody2 = Sketch
   { expr = [ex|\f :: a -> b. foldr {0} {1}|]
   , goals = Map.fromList
@@ -28,7 +28,7 @@ mapBody2 = Sketch
     ]
   }
 
-runSyn :: [Binding] -> Binding -> Sketch -> RIO App ()
+runSyn :: [Binding Hole] -> Binding Hole -> Sketch Hole -> RIO App ()
 runSyn ctx binding body = do
   let env = mkEnv ctx
   logInfo "Sketch:"

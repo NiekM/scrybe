@@ -26,7 +26,9 @@ punchAndDissect x =
 spec :: Spec
 spec = do
   describe "parse is inverse of pretty" do
-    prop "Type" $ prettyThenParse @Type
+    prop "Type" $ prettyThenParse @(Type Hole)
     prop "Expr Hole" $ prettyThenParse @(Expr Hole)
-    prop "Expr Type" $ prettyThenParse @(Expr Type)
-  prop "punch-dissect" $ punchAndDissect
+    prop "Expr Type" $ prettyThenParse @(Expr (Type Hole))
+  prop "punch-dissect" punchAndDissect
+
+-- TODO: add unit tests to check some common synthesis examples

@@ -14,20 +14,32 @@ newtype Var = Var Text
   deriving newtype (IsString, Pretty)
 
 -- * Types
-data Type
+data Type a
   = TVar Var
-  | TApp Type Type
-  | THole Hole
+  | TApp (Type a) (Type a)
+  | THole a
   deriving stock (Eq, Ord, Read, Show, Data)
+  deriving stock (Functor, Foldable, Traversable)
 
-pattern TArr :: Type -> Type -> Type
+instance Applicative Type where
+  pure = THole
+  TApp f x <*> y = TApp (f <*> y) (x <*> y)
+  TVar   x <*> _ = TVar x
+  THole  h <*> y = h <$> y
+
+instance Monad Type where
+  TApp f x >>= k = TApp (f >>= k) (x >>= k)
+  TVar   x >>= _ = TVar x
+  THole  h >>= k = k h
+
+pattern TArr :: Type a -> Type a -> Type a
 pattern TArr t u = TApp (TApp (TVar (Var "->")) t) u
 
-type Env = Map Var Type
+type Env a = Map Var (Type a)
 
 -- * Expressions
 data Expr a
-  = ELam Binding (Expr a)
+  = ELam (Binding Hole) (Expr a)
   | EApp (Expr a) (Expr a)
   | EVar Var
   | EHole a
@@ -48,24 +60,24 @@ instance Monad Expr where
   EHole  h >>= k = k h
 
 -- TODO: this should probably also have hole contexts, maybe more.
-data Sketch = Sketch
+data Sketch a = Sketch
   { expr :: Expr Hole
-  , goals :: Map Hole Type
+  , goals :: Map Hole (Type a)
   } deriving stock (Eq, Ord, Read, Show, Data)
 
-data Binding = Binding Var Type
+data Binding a = Binding Var (Type a)
   deriving stock (Eq, Ord, Read, Show, Data)
 
-data Decl a = Decl Binding (Expr a)
+data Decl a = Decl (Binding Hole) (Expr a)
   deriving stock (Eq, Ord, Read, Show, Data)
 
 -- * Small helper functions
 
-isTArr :: Type -> Bool
+isTArr :: Type a -> Bool
 isTArr TArr {} = True
 isTArr _ = False
 
-isTVar :: Type -> Bool
+isTVar :: Type a -> Bool
 isTVar TVar {} = True
 isTVar _ = False
 
@@ -79,14 +91,14 @@ isEApp _ = False
 
 -- * Pretty printing
 
-instance Pretty Type where
+instance Pretty a => Pretty (Type a) where
   pretty = \case
     TVar x -> pretty x
     TArr t u -> sep [prettyParens t isTArr, "->", pretty u]
     TApp t u -> sep [pretty t, prettyParens u (not . isTVar)]
     THole i -> braces $ pretty i
 
-instance Pretty Sketch where
+instance Pretty a => Pretty (Sketch a) where
   pretty Sketch { expr, goals } = go expr where
     go = \case
       ELam (Binding x t) e ->
@@ -111,7 +123,7 @@ instance Pretty a => Pretty (Expr a) where
     EVar x -> pretty x
     EHole i -> braces $ pretty i
 
-instance Pretty Binding where
+instance Pretty a => Pretty (Binding a) where
   pretty (Binding name ty) = pretty name <+> "::" <+> pretty ty
 
 -- * QuickCheck
@@ -123,18 +135,18 @@ instance Arbitrary Var where
 instance Arbitrary Hole where
   arbitrary = fromIntegral <$> sized \n -> choose (0, n)
 
-sizedType :: Int -> Gen Type
+sizedType :: Int -> Gen (Type Hole)
 sizedType 0 = TVar <$> arbitrary
 sizedType n = do
   x <- choose (0, n - 1)
   TApp <$> sizedType x <*> sizedType (n - x - 1)
 
-instance Arbitrary Type where
+instance Arbitrary (Type Hole) where
   arbitrary = sized \n -> do
     m <- choose (0, n)
     sizedType m
 
-instance Arbitrary Binding where
+instance Arbitrary (Binding Hole) where
   arbitrary = Binding <$> arbitrary <*> arbitrary
 
 sizedExpr :: Arbitrary a => Int -> Gen (Expr a)
@@ -155,7 +167,7 @@ arbExpr = sized \n -> do
 instance Arbitrary (Expr Hole) where
   arbitrary = arbExpr
 
-instance Arbitrary (Expr Type) where
+instance Arbitrary (Expr (Type Hole)) where
   arbitrary = arbExpr
 
 sizedExprVoid :: Int -> Gen (Expr Void)

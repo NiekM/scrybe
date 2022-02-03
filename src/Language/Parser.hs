@@ -53,16 +53,16 @@ instance Parse Hole where
 
 -- * Types
 
-simpleType :: Parser Type
+simpleType :: Parse a => Parser (Type a)
 simpleType = THole <$> braces parser <|> TVar <$> parser
 
-typeApps :: Parser Type
+typeApps :: Parse a => Parser (Type a)
 typeApps = tApps <$> interleaved (parens typeApps <|> simpleType) (pure ())
 
-instance Parse Type where
+instance Parse a => Parse (Type a) where
   parser = tArrs <$> interleaved (parens parser <|> typeApps) (symbol "->")
 
-instance Parse Binding where
+instance Parse a => Parse (Binding a) where
   parser = Binding <$> (Var <$> ident) <* symbol "::" <*> parser
 
 -- * Expressions
@@ -102,10 +102,10 @@ quasiExp p name = basic
   }
 
 ty :: QuasiQuoter
-ty = quasiExp (parser @Type) "Type"
+ty = quasiExp (parser @(Type Hole)) "Type"
 
 ex :: QuasiQuoter
 ex = quasiExp (parser @(Expr Hole)) "Expr"
 
 bi :: QuasiQuoter
-bi = quasiExp (parser @Binding) "Binding"
+bi = quasiExp (parser @(Binding Hole)) "Binding"

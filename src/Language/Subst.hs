@@ -1,37 +1,14 @@
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances #-}
 module Language.Subst where
 
-import Language.Syntax
-
 import Import
-import Data.Generics.Uniplate.Data (transformBi)
 import qualified RIO.Map as Map
 
-class Extract a b where
-  extract :: a -> Maybe b
+subst :: (Monad m, Ord a) => Map a (m a) -> m a -> m a
+subst th e = e >>= \i -> fromMaybe (return i) (Map.lookup i th)
 
-instance Extract Type Hole where
-  extract = \case
-    THole a -> Just a
-    _ -> Nothing
-
-instance Extract (Expr a) a where
-  extract = \case
-    EHole a -> Just a
-    _ -> Nothing
-
-pattern Extract :: Extract a b => b -> a
-pattern Extract a <- (extract -> Just a)
-
-subst :: (Ord k, Data a, Data v, Extract v k) => Map k v -> a -> a
-subst th = transformBi \case
-  Extract a | Just x <- Map.lookup a th -> x
-  a -> a
-
-compose :: (Data v, Data k, Ord k, Extract v k)
-        => Map k v -> Map k v -> Map k v
+compose :: (Monad m, Ord a) => Map a (m a) -> Map a (m a) -> Map a (m a)
 compose sigma gamma = Map.unions
-  [ subst sigma gamma
+  [ subst sigma <$> gamma
   , Map.withoutKeys sigma (Map.keysSet gamma)
   ]
-
