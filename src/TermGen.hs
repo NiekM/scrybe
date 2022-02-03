@@ -3,7 +3,6 @@ module TermGen where
 
 import Import
 import Language
-import Data.Generics.Uniplate.Data (transformBi)
 import Data.Tree (Tree(..), levels)
 import RIO.List
 import qualified RIO.Map as Map
@@ -31,11 +30,6 @@ pick :: [a] -> [(a, [a])]
 pick [] = []
 pick (x:xs) = (x,xs) : (second (x:) <$> pick xs)
 
--- | Renumbers all numbers of a specific type in a datatype by increasing them
--- by a fixed amount.
-renumber :: (Num k, Data k, Data a) => k -> a -> a
-renumber = transformBi . (+)
-
 -- TODO: add weights to options, and/or add nr of uses to each option
 step :: GenState -> [GenState]
 step GenState
@@ -50,11 +44,11 @@ step GenState
     -- Select the corresponding environment
     ctx <- toList $ contexts Map.!? n
     -- Pick an entry from the environment
-    (name, ty) <- Map.toList (env <> ctx)
+    (name, t) <- Map.toList (env <> ctx)
     -- Wrap name into a sketch
     let sk = Sketch (EVar name) mempty
     -- Renumber the type variables in ty
-    let ty' = renumber maxFree ty
+    let ty' = fmap (+ maxFree) t
     -- Generate all ways to instantiate sketch
     (sketch, typ) <- expand maxHole sk ty'
     -- Check that the type unifies with the goal

@@ -29,7 +29,6 @@ library
       Language
       Language.Parser
       Language.Prelude
-      Language.Subst
       Language.Syntax
       Language.Unify
       Language.Utils

@@ -77,9 +77,9 @@ isTArr :: Type a -> Bool
 isTArr TArr {} = True
 isTArr _ = False
 
-isTVar :: Type a -> Bool
-isTVar TVar {} = True
-isTVar _ = False
+isTApp :: Type a -> Bool
+isTApp TApp {} = True
+isTApp _ = False
 
 isELam :: Expr a -> Bool
 isELam ELam {} = True
@@ -95,7 +95,10 @@ instance Pretty a => Pretty (Type a) where
   pretty = \case
     TVar x -> pretty x
     TArr t u -> sep [prettyParens t isTArr, "->", pretty u]
-    TApp t u -> sep [pretty t, prettyParens u (not . isTVar)]
+    TApp t u -> sep
+      [ pretty t
+      , prettyParens u isTApp
+      ]
     THole i -> braces $ pretty i
 
 instance Pretty a => Pretty (Sketch a) where

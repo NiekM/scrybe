@@ -47,15 +47,18 @@ holeContexts env = \case
   _ -> Map.empty
 
 -- | Holes
-holes :: Expr a -> [a]
+holes :: Foldable m => m a -> [a]
 holes = toList
 
 -- | Renumber all holes in an expression.
-renum :: Num n => Expr a -> State n (Expr n)
-renum = traverse \_ -> do
+renumber :: (Num n, Traversable m) => m a -> State n (m n)
+renumber = traverse \_ -> do
   n <- get
   put (n + 1)
   return n
+
+-- TODO: find a way to generalize these functions to both expressions and
+-- types. Similarly for unification
 
 -- | All possible ways to `punch' holes into an expression, including zero
 -- holes.

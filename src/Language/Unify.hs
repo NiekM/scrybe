@@ -2,7 +2,6 @@ module Language.Unify where
 
 import Import
 import Language.Syntax
-import Language.Subst
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 
