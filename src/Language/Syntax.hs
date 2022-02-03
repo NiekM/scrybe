@@ -2,7 +2,6 @@
 module Language.Syntax where
 
 import Import
-import qualified RIO.Map as Map
 import Test.QuickCheck
 
 newtype Hole = Hole Int
@@ -59,12 +58,6 @@ instance Monad Expr where
   EVar   x >>= _ = EVar x
   EHole  h >>= k = k h
 
--- TODO: this should probably also have hole contexts, maybe more.
-data Sketch a = Sketch
-  { expr :: Expr Hole
-  , goals :: Map Hole (Type a)
-  } deriving stock (Eq, Ord, Read, Show, Data)
-
 data Binding a = Binding Var (Type a)
   deriving stock (Eq, Ord, Read, Show, Data)
 
@@ -100,20 +93,6 @@ instance Pretty a => Pretty (Type a) where
       , prettyParens u isTApp
       ]
     THole i -> braces $ pretty i
-
-instance Pretty a => Pretty (Sketch a) where
-  pretty Sketch { expr, goals } = go expr where
-    go = \case
-      ELam (Binding x t) e ->
-        "\\" <> pretty x <+> "::" <+> pretty t <> "." <+> go e
-      EApp f x -> sep
-        [ prettyParens f isELam
-        , prettyParens x \y -> isELam y || isEApp y
-        ]
-      EVar x -> pretty x
-      EHole i | Just x <- goals Map.!? i ->
-        braces $ sep [pretty i, "::", pretty x]
-      EHole i -> pretty i
 
 instance Pretty a => Pretty (Expr a) where
   pretty = \case

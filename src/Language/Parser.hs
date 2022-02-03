@@ -27,8 +27,8 @@ symbol = L.symbol sc
 ident :: Parser Text
 ident = lexeme $ fromString <$> ((:) <$> letterChar <*> many alphaNumChar)
 
-number :: Parser Int
-number = lexeme $ read <$> some digitChar
+int :: Parser Int
+int = lexeme $ read <$> some digitChar
 
 parens :: Parser a -> Parser a
 parens = between (symbol "(") (symbol ")")
@@ -49,7 +49,7 @@ instance Parse Var where
   parser = Var <$> ident
 
 instance Parse Hole where
-  parser = Hole <$> number
+  parser = Hole <$> int
 
 -- * Types
 
@@ -106,6 +106,9 @@ ty = quasiExp (parser @(Type Hole)) "Type"
 
 ex :: QuasiQuoter
 ex = quasiExp (parser @(Expr Hole)) "Expr"
+
+ext :: QuasiQuoter
+ext = quasiExp (parser @(Expr (Type Void))) "Expr"
 
 bi :: QuasiQuoter
 bi = quasiExp (parser @(Binding Hole)) "Binding"

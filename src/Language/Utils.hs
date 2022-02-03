@@ -22,18 +22,13 @@ tArrs = foldr1 TArr
 mkEnv :: [Binding a] -> Env a
 mkEnv = foldr (\(Binding x t) -> Map.insert x t) Map.empty
 
--- | Generates all possible ways to apply holes to an expression.
-expand :: Hole -> Sketch a -> Type a -> [(Sketch a, Type a)]
-expand n sketch@(Sketch e ts) t = (sketch, t) : case t of
-  TArr t1 t2 ->
-    expand (1 + n) (Sketch (EApp e (EHole n)) (Map.insert n t1 ts)) t2
+xpnd :: Expr (Type a) -> Type a -> [(Expr (Type a), Type a)]
+xpnd e t = (e, t) : case t of
+  TArr t1 t2 -> xpnd (EApp e (EHole t1)) t2
   _ -> []
 
--- | For each function signature, we compute all possible ways it can be
--- applied to holes.
-instantiations :: Env a -> Map Var [(Sketch a, Type a)]
-instantiations = Map.mapWithKey \s t ->
-  expand 0 (Sketch (EVar s) mempty) t
+intsts :: Env a -> Map Var [(Expr (Type a), Type a)]
+intsts = Map.mapWithKey (xpnd . EVar)
 
 -- | Compute the contexts of every hole in a sketch.
 holeContexts :: Env Hole -> Expr Hole -> Map Hole (Env Hole)
@@ -50,12 +45,12 @@ holeContexts env = \case
 holes :: Foldable m => m a -> [a]
 holes = toList
 
--- | Renumber all holes in an expression.
-renumber :: (Num n, Traversable m) => m a -> State n (m n)
-renumber = traverse \_ -> do
+-- | Number all holes in an expression.
+number :: (Num n, Traversable m) => m a -> State n (m (n, a))
+number = traverse \x -> do
   n <- get
   put (n + 1)
-  return n
+  return (n, x)
 
 -- TODO: find a way to generalize these functions to both expressions and
 -- types. Similarly for unification
