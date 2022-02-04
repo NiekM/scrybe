@@ -10,15 +10,15 @@ import qualified RIO.Set as Set
 import Control.Monad.State
 
 data GenSt = GenSt
-  { expr :: Expr Hole
+  { expr :: Term Hole
   , goals :: Map Hole (Type Hole)
-  , env :: Env Hole
-  , ctxs :: Map Hole (Env Hole)
+  , env :: Map Var (Type Hole)
+  , ctxs :: Map Hole (Map Var (Type Hole))
   , maxHole :: Hole
   , maxFree :: Hole
-  } deriving (Eq, Read, Show)
+  } deriving (Eq, Ord, Show)
 
-fromSketch :: Env Hole -> Expr (Type Void) -> GenSt
+fromSketch :: Map Var (Type Hole) -> Term (Type Void) -> GenSt
 fromSketch env sketch = GenSt
   { expr
   , goals = fmap absurd <$> Map.fromList (holes sketch')
@@ -51,7 +51,7 @@ step GenSt
     -- let t' = fst <$> evalState (number t) maxFr
     let t' = (+ maxFree) <$> t
     -- Generate all ways to instantiate sketch
-    (sketch, typ) <- xpnd (EVar name) t'
+    (sketch, typ) <- expand (Var name) t'
     -- Check that the type unifies with the goal
     th <- toList $ unify typ goal
     -- Compute new maximum Free variable
@@ -73,5 +73,5 @@ step GenSt
 genTree :: (state -> [state]) -> state -> Tree state
 genTree next start = Node start (genTree next <$> next start)
 
-synthesize :: Env Hole -> Expr (Type Void) -> [[GenSt]]
+synthesize :: Map Var (Type Hole) -> Term (Type Void) -> [[GenSt]]
 synthesize env = levels . genTree step . fromSketch env

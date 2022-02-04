@@ -8,7 +8,7 @@ data Options = Options
   { optionsVerbose :: !Bool
   }
 
-data App = App
+data App = MkApp
   { appLogFunc :: !LogFunc
   , appProcessContext :: !ProcessContext
   , appOptions :: !Options

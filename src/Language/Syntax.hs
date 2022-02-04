@@ -1,115 +1,96 @@
-{-# LANGUAGE DeriveTraversable, FlexibleInstances #-}
+{-# LANGUAGE DeriveTraversable, FlexibleInstances, DataKinds, GADTs #-}
 module Language.Syntax where
 
 import Import
 import Test.QuickCheck
 
-newtype Hole = Hole Int
+newtype Hole = MkHole Int
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype (Num, Pretty)
 
-newtype Var = Var Text
+newtype Var = MkVar Text
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype (IsString, Pretty)
 
--- * Types
-data Type a
-  = TVar Var
-  | TApp (Type a) (Type a)
-  | THole a
-  deriving stock (Eq, Ord, Read, Show, Data)
-  deriving stock (Functor, Foldable, Traversable)
+-- TODO: maybe add kinds?
+-- TODO: term level might get extra parameters for e.g. type annotations
+data Level = Term | Type
+  deriving (Eq, Ord, Show, Read)
 
-instance Applicative Type where
-  pure = THole
-  TApp f x <*> y = TApp (f <*> y) (x <*> y)
-  TVar   x <*> _ = TVar x
-  THole  h <*> y = h <$> y
+data Expr (l :: Level) a where
+  Hole :: a -> Expr l a
+  Var  :: Var -> Expr l a
+  App  :: Expr l a -> Expr l a -> Expr l a
+  -- Level specific
+  Lam  :: (Var, Expr 'Type Hole) -> Expr 'Term a -> Expr 'Term a
 
-instance Monad Type where
-  TApp f x >>= k = TApp (f >>= k) (x >>= k)
-  TVar   x >>= _ = TVar x
-  THole  h >>= k = k h
+pattern Arr :: Expr l a -> Expr l a -> Expr l a
+pattern Arr t u = App (App (Var (MkVar "->")) t) u
 
-pattern TArr :: Type a -> Type a -> Type a
-pattern TArr t u = TApp (TApp (TVar (Var "->")) t) u
+type Term = Expr 'Term
+type Type = Expr 'Type
 
-type Env a = Map Var (Type a)
+deriving instance Eq a => Eq (Expr l a)
+deriving instance Ord a => Ord (Expr l a)
+deriving instance Show a => Show (Expr l a)
+deriving instance Functor (Expr l)
+deriving instance Foldable (Expr l)
+deriving instance Traversable (Expr l)
 
--- * Expressions
-data Expr a
-  = ELam (Binding Hole) (Expr a)
-  | EApp (Expr a) (Expr a)
-  | EVar Var
-  | EHole a
-  deriving stock (Eq, Ord, Show, Read, Data)
-  deriving stock (Functor, Foldable, Traversable)
+instance Applicative (Expr l) where
+  pure = Hole
+  Hole  h <*> y = h <$> y
+  Var   x <*> _ = Var x
+  App f x <*> y = App (f <*> y) (x <*> y)
+  Lam b x <*> y = Lam b (x <*> y)
 
-instance Applicative Expr where
-  pure = EHole
-  ELam b x <*> y = ELam b (x <*> y)
-  EApp f x <*> y = EApp (f <*> y) (x <*> y)
-  EVar   x <*> _ = EVar x
-  EHole  h <*> y = h <$> y
-
-instance Monad Expr where
-  ELam b f >>= k = ELam b (f >>= k)
-  EApp f x >>= k = EApp (f >>= k) (x >>= k)
-  EVar   x >>= _ = EVar x
-  EHole  h >>= k = k h
-
-data Binding a = Binding Var (Type a)
-  deriving stock (Eq, Ord, Read, Show, Data)
-
-data Decl a = Decl (Binding Hole) (Expr a)
-  deriving stock (Eq, Ord, Read, Show, Data)
-
--- * Small helper functions
-
-isTArr :: Type a -> Bool
-isTArr TArr {} = True
-isTArr _ = False
-
-isTApp :: Type a -> Bool
-isTApp TApp {} = True
-isTApp _ = False
-
-isELam :: Expr a -> Bool
-isELam ELam {} = True
-isELam _ = False
-
-isEApp :: Expr a -> Bool
-isEApp EApp {} = True
-isEApp _ = False
+instance Monad (Expr l) where
+  Hole  h >>= k = k h
+  Var   x >>= _ = Var x
+  App f x >>= k = App (f >>= k) (x >>= k)
+  Lam b f >>= k = Lam b (f >>= k)
 
 -- * Pretty printing
 
-instance Pretty a => Pretty (Type a) where
-  pretty = \case
-    TVar x -> pretty x
-    TArr t u -> sep [prettyParens t isTArr, "->", pretty u]
-    TApp t u -> sep
-      [ pretty t
-      , prettyParens u isTApp
-      ]
-    THole i -> braces $ pretty i
+isArr :: Expr l a -> Bool
+isArr Arr {} = True
+isArr _ = False
 
-instance Pretty a => Pretty (Expr a) where
+isLam :: Expr l a -> Bool
+isLam Lam {} = True
+isLam _ = False
+
+isApp :: Expr l a -> Bool
+isApp App {} = True
+isApp _ = False
+
+instance Pretty a => Pretty (Expr l a) where
   pretty = \case
-    ELam (Binding x t) e ->
+    Hole i -> braces $ pretty i
+    Var x -> pretty x
+    Arr t u -> sep [prettyParens t isArr, "->", pretty u]
+    App f x -> sep
+      [ prettyParens f isLam
+      , prettyParens x \y -> isLam y || isApp y
+      ]
+    Lam (x, t) e ->
       "\\" <> pretty x <+> "::" <+> pretty t <> "." <+> pretty e
-    EApp f x -> sep
-      [ prettyParens f isELam
-      , prettyParens x \y -> isELam y || isEApp y
-      ]
-    EVar x -> pretty x
-    EHole i -> braces $ pretty i
-
-instance Pretty a => Pretty (Binding a) where
-  pretty (Binding name ty) = pretty name <+> "::" <+> pretty ty
 
 -- * QuickCheck
 -- TODO: make sure that these are good arbitrary instances
+
+-- TODO: Arbitrary instance for Expr l a
+
+sizedTyp :: Int -> Gen (Type Hole)
+sizedTyp 0 = Var <$> arbitrary
+sizedTyp n = do
+  x <- choose (0, n - 1)
+  App <$> sizedTyp x <*> sizedTyp (n - x - 1)
+
+instance Arbitrary (Expr 'Type Hole) where
+  arbitrary = sized \n -> do
+    m <- choose (0, n)
+    sizedTyp m
 
 instance Arbitrary Var where
   arbitrary = fromString <$> resize 5 (listOf1 (chooseEnum ('a', 'z')))
@@ -117,52 +98,38 @@ instance Arbitrary Var where
 instance Arbitrary Hole where
   arbitrary = fromIntegral <$> sized \n -> choose (0, n)
 
-sizedType :: Int -> Gen (Type Hole)
-sizedType 0 = TVar <$> arbitrary
-sizedType n = do
-  x <- choose (0, n - 1)
-  TApp <$> sizedType x <*> sizedType (n - x - 1)
-
-instance Arbitrary (Type Hole) where
-  arbitrary = sized \n -> do
-    m <- choose (0, n)
-    sizedType m
-
-instance Arbitrary (Binding Hole) where
-  arbitrary = Binding <$> arbitrary <*> arbitrary
-
-sizedExpr :: Arbitrary a => Int -> Gen (Expr a)
-sizedExpr 0 = oneof [EVar <$> arbitrary, EHole <$> arbitrary]
-sizedExpr n = do
+sizedExp :: Arbitrary a => Int -> Gen (Term a)
+sizedExp 0 = oneof [Var <$> arbitrary, Hole <$> arbitrary]
+sizedExp n = do
   x <- choose (0, n - 1)
   let y = n - x - 1
   oneof
-    [ EApp <$> sizedExpr x <*> sizedExpr y
-    , ELam <$> (Binding <$> arbitrary <*> sizedType x) <*> sizedExpr y
+    [ App <$> sizedExp x <*> sizedExp y
+    , Lam <$> ((,) <$> arbitrary <*> sizedTyp x) <*> sizedExp y
     ]
 
-arbExpr :: Arbitrary a => Gen (Expr a)
-arbExpr = sized \n -> do
+arbExp :: Arbitrary a => Gen (Term a)
+arbExp = sized \n -> do
   m <- choose (0, n)
-  sizedExpr m
+  sizedExp m
 
-instance Arbitrary (Expr Hole) where
-  arbitrary = arbExpr
+instance Arbitrary (Term Hole) where
+  arbitrary = arbExp
 
-instance Arbitrary (Expr (Type Hole)) where
-  arbitrary = arbExpr
+instance Arbitrary (Term (Type Hole)) where
+  arbitrary = arbExp
 
-sizedExprVoid :: Int -> Gen (Expr Void)
-sizedExprVoid 0 = oneof [EVar <$> arbitrary]
+sizedExprVoid :: Int -> Gen (Term Void)
+sizedExprVoid 0 = oneof [Var <$> arbitrary]
 sizedExprVoid n = do
   x <- choose (0, n - 1)
   let y = n - x - 1
   oneof
-    [ EApp <$> sizedExprVoid x <*> sizedExprVoid y
-    , ELam <$> (Binding <$> arbitrary <*> sizedType x) <*> sizedExprVoid y
+    [ App <$> sizedExprVoid x <*> sizedExprVoid y
+    , Lam <$> ((,) <$> arbitrary <*> sizedTyp x) <*> sizedExprVoid y
     ]
 
-instance Arbitrary (Expr Void) where
-  arbitrary = scale (`div` 3) $ sized \n -> do
+instance Arbitrary (Term Void) where
+  arbitrary = sized \n -> do
     m <- choose (0, n)
     sizedExprVoid m

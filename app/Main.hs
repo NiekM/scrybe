@@ -23,7 +23,7 @@ main = do
   lo <- logOptionsHandle stderr (optionsVerbose options)
   pc <- mkDefaultProcessContext
   withLogFunc lo $ \lf ->
-    let app = App
+    let app = MkApp
           { appLogFunc = lf
           , appProcessContext = pc
           , appOptions = options

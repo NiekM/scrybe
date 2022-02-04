@@ -45,6 +45,7 @@ library
       DeriveDataTypeable
       DerivingStrategies
       DerivingVia
+      GADTs
       GeneralizedNewtypeDeriving
       InstanceSigs
       KindSignatures
@@ -85,6 +86,7 @@ executable synthesis-exe
       DeriveDataTypeable
       DerivingStrategies
       DerivingVia
+      GADTs
       GeneralizedNewtypeDeriving
       InstanceSigs
       KindSignatures
@@ -129,6 +131,7 @@ test-suite synthesis-test
       DeriveDataTypeable
       DerivingStrategies
       DerivingVia
+      GADTs
       GeneralizedNewtypeDeriving
       InstanceSigs
       KindSignatures

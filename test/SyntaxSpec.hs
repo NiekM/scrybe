@@ -3,6 +3,7 @@ module SyntaxSpec where
 import Import
 import Test.Hspec
 import Test.Hspec.QuickCheck
+import Test.QuickCheck
 import Language.Syntax
 import Language.Parser
 import Language.Utils
@@ -17,7 +18,7 @@ prettyThenParse x =
     Right y -> x == y
     Left _ -> False
 
-punchAndDissect :: Expr Void -> Bool
+punchAndDissect :: Term Void -> Bool
 punchAndDissect x =
   ((==) `on` Set.fromList)
     (dissect x)
@@ -26,9 +27,9 @@ punchAndDissect x =
 spec :: Spec
 spec = do
   describe "parse is inverse of pretty" do
-    prop "Type" $ prettyThenParse @(Type Hole)
-    prop "Expr Hole" $ prettyThenParse @(Expr Hole)
-    prop "Expr Type" $ prettyThenParse @(Expr (Type Hole))
-  prop "punch-dissect" punchAndDissect
+    prop "Type Hole" $ prettyThenParse @(Type Hole)
+    prop "Term Hole" $ prettyThenParse @(Term Hole)
+    prop "Term (Type Hole)" $ prettyThenParse @(Term (Type Hole))
+  prop "punch-dissect" (forAll (scale (`div` 3) arbitrary) punchAndDissect)
 
 -- TODO: add unit tests to check some common synthesis examples

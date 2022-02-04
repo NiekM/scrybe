@@ -1,44 +1,54 @@
-{-# LANGUAGE EmptyCase #-}
 module Language.Utils where
 
 import Import
 import Language.Syntax
 import Data.Foldable
-import Data.Generics.Uniplate.Data
+-- import Data.Generics.Uniplate.Data
 import qualified RIO.Map as Map
 import Control.Monad.State
 
 -- * Utility functions
 
-tApps :: NonEmpty (Type a) -> Type a
-tApps = foldl1 TApp
+apps :: NonEmpty (Expr l a) -> Expr l a
+apps = foldl1 App
 
-eApps :: NonEmpty (Expr a) -> Expr a
-eApps = foldl1 EApp
+-- TODO: replace with more general infix function
+arrs :: NonEmpty (Expr l a) -> Expr l a
+arrs = foldr1 Arr
 
-tArrs :: NonEmpty (Type a) -> Type a
-tArrs = foldr1 TArr
+punch :: Expr l Void -> [Expr l (Expr l Void)]
+punch = punch' . fmap absurd
 
-mkEnv :: [Binding a] -> Env a
-mkEnv = foldr (\(Binding x t) -> Map.insert x t) Map.empty
+punch' :: Expr l (Expr l a) -> [Expr l (Expr l a)]
+punch' (Hole a) = [Hole a]
+punch' e = Hole (join e) : case e of
+  Hole  _ -> []
+  Var   x -> [Var x]
+  App f x -> App <$> punch' f <*> punch' x
+  Lam b x -> Lam b <$> punch' x
 
-xpnd :: Expr (Type a) -> Type a -> [(Expr (Type a), Type a)]
-xpnd e t = (e, t) : case t of
-  TArr t1 t2 -> xpnd (EApp e (EHole t1)) t2
+-- | All subexpressions, including the expression itself.
+dissect :: Expr l a -> [Expr l a]
+dissect e = e : case e of
+  Hole  _ -> []
+  Var   _ -> []
+  App f x -> dissect f ++ dissect x
+  Lam _ x -> dissect x
+
+expand :: Expr e (Expr t a) -> Expr t a -> [(Expr e (Expr t a), Expr t a)]
+expand e t = (e, t) : case t of
+  Arr t1 t2 -> expand (App e (Hole t1)) t2
   _ -> []
 
-intsts :: Env a -> Map Var [(Expr (Type a), Type a)]
-intsts = Map.mapWithKey (xpnd . EVar)
-
--- | Compute the contexts of every hole in a sketch.
-holeContexts :: Env Hole -> Expr Hole -> Map Hole (Env Hole)
+holeContexts :: Map Var (Type Hole) -> Term Hole
+  -> Map Hole (Map Var (Type Hole))
 holeContexts env = \case
-  ELam (Binding x t) e -> holeContexts (Map.insert x t env) e
-  EApp x y -> Map.unionsWith Map.intersection
+  Lam (x, t) e -> holeContexts (Map.insert x t env) e
+  App x y -> Map.unionsWith Map.intersection
     [ holeContexts env x
     , holeContexts env y
     ]
-  EHole i -> Map.singleton i env
+  Hole i -> Map.singleton i env
   _ -> Map.empty
 
 -- | Holes
@@ -51,19 +61,3 @@ number = traverse \x -> do
   n <- get
   put (n + 1)
   return (n, x)
-
--- TODO: find a way to generalize these functions to both expressions and
--- types. Similarly for unification
-
--- | All possible ways to `punch' holes into an expression, including zero
--- holes.
-punch :: Expr Void -> [Expr (Expr Void)]
-punch = punch' . fmap \case
-
-punch' :: Data a => Expr (Expr a) -> [Expr (Expr a)]
-punch' (EHole a) = pure (EHole a)
-punch' e = pure (EHole (join e)) <|> descendM punch' e
-
--- | All subexpressions, including the expression itself.
-dissect :: Data a => Expr a -> [Expr a]
-dissect = universe
