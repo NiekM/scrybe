@@ -11,10 +11,10 @@ import Prettyprinter.Render.Text
 import Text.Megaparsec
 import RIO.Set as Set
 
-prettyThenParse :: forall a. (Pretty a, Parse a, Eq a) => a -> Bool
+prettyThenParse :: (Pretty a, Parse a, Eq a) => a -> Bool
 prettyThenParse x =
   let t = renderStrict . layoutCompact . pretty $ x
-  in case parse (parser @a) "" t of
+  in case parse parser "" t of
     Right y -> x == y
     Left _ -> False
 

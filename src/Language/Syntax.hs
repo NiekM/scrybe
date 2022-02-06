@@ -17,12 +17,16 @@ newtype Var = MkVar Text
 data Level = Term | Type
   deriving (Eq, Ord, Show, Read)
 
+-- TODO: make Binding generic in the annotation kind
+data Binding a = Bind Var a
+  deriving (Eq, Ord, Show, Read)
+
 data Expr (l :: Level) a where
   Hole :: a -> Expr l a
   Var  :: Var -> Expr l a
   App  :: Expr l a -> Expr l a -> Expr l a
   -- Level specific
-  Lam  :: (Var, Expr 'Type Hole) -> Expr 'Term a -> Expr 'Term a
+  Lam  :: Binding (Expr 'Type Hole) -> Expr 'Term a -> Expr 'Term a
 
 pattern Arr :: Expr l a -> Expr l a -> Expr l a
 pattern Arr t u = App (App (Var (MkVar "->")) t) u
@@ -64,6 +68,9 @@ isApp :: Expr l a -> Bool
 isApp App {} = True
 isApp _ = False
 
+instance Pretty a => Pretty (Binding a) where
+  pretty (Bind x t) = pretty x <+> "::" <+> pretty t
+
 instance Pretty a => Pretty (Expr l a) where
   pretty = \case
     Hole i -> braces $ pretty i
@@ -73,8 +80,7 @@ instance Pretty a => Pretty (Expr l a) where
       [ prettyParens f isLam
       , prettyParens x \y -> isLam y || isApp y
       ]
-    Lam (x, t) e ->
-      "\\" <> pretty x <+> "::" <+> pretty t <> "." <+> pretty e
+    Lam b e -> "\\" <> pretty b <> "." <+> pretty e
 
 -- * QuickCheck
 -- TODO: make sure that these are good arbitrary instances
@@ -103,7 +109,7 @@ sizedExp n = do
   let y = n - x - 1
   oneof
     [ App <$> sizedExp x <*> sizedExp y
-    , Lam <$> ((,) <$> arbitrary <*> sizedTyp x) <*> sizedExp y
+    , Lam <$> (Bind <$> arbitrary <*> sizedTyp x) <*> sizedExp y
     ]
 
 arbExp :: Arbitrary a => Gen (Term a)
@@ -124,7 +130,7 @@ sizedExprVoid n = do
   let y = n - x - 1
   oneof
     [ App <$> sizedExprVoid x <*> sizedExprVoid y
-    , Lam <$> ((,) <$> arbitrary <*> sizedTyp x) <*> sizedExprVoid y
+    , Lam <$> (Bind <$> arbitrary <*> sizedTyp x) <*> sizedExprVoid y
     ]
 
 instance Arbitrary (Term Void) where

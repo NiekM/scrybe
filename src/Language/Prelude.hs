@@ -3,11 +3,9 @@ module Language.Prelude where
 import Import
 import Language.Syntax
 import Language.Parser
-import Text.Megaparsec
 
-prelude :: [(Var, Type Hole)]
-prelude = fromRight undefined
-  . parse ((,) <$> parser <* symbol "::" <*> parser) "" <$>
+prelude :: [Binding (Type Hole)]
+prelude = parseUnsafe <$>
   [ "T :: Bool"
   , "F :: Bool"
   , "Nil :: List {0}"

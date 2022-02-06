@@ -50,14 +50,15 @@ instance Parse Var where
 instance Parse Hole where
   parser = MkHole <$> int
 
+instance Parse a => Parse (Binding a) where
+  parser = Bind <$> parser <* symbol "::" <*> parser
+
 class ParseAtom l where
   parseAtom :: Parse a => Parser (Expr l a)
 
 instance ParseAtom 'Term where
   parseAtom = Hole <$> braces parser <|> Var <$> parser
-    <|> Lam <$ symbol "\\"
-    <*> ((,) <$> parser <* symbol "::" <*> parser)
-    <* symbol "." <*> parser
+    <|> Lam <$ symbol "\\" <*> parser <* symbol "." <*> parser
 
 instance ParseAtom 'Type where
   parseAtom = Hole <$> braces parser <|> Var <$> parser

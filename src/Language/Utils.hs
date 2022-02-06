@@ -43,7 +43,7 @@ expand e t = (e, t) : case t of
 holeContexts :: Map Var (Type Hole) -> Term Hole
   -> Map Hole (Map Var (Type Hole))
 holeContexts env = \case
-  Lam (x, t) e -> holeContexts (Map.insert x t env) e
+  Lam (Bind x t) e -> holeContexts (Map.insert x t env) e
   App x y -> Map.unionsWith Map.intersection
     [ holeContexts env x
     , holeContexts env y
