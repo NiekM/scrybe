@@ -16,14 +16,12 @@ description: Please see the README on Github at
 dependencies:
 - base >= 4.11 && < 10
 - containers
-- lens
 - megaparsec
 - mtl
 - prettyprinter
 - QuickCheck
 - rio >= 0.1.12.0
 - template-haskell
-- uniplate
 
 ghc-options:
 - -Wall

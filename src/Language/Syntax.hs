@@ -79,8 +79,6 @@ instance Pretty a => Pretty (Expr l a) where
 -- * QuickCheck
 -- TODO: make sure that these are good arbitrary instances
 
--- TODO: Arbitrary instance for Expr l a
-
 sizedTyp :: Int -> Gen (Type Hole)
 sizedTyp 0 = Var <$> arbitrary
 sizedTyp n = do
