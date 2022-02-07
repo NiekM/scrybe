@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module TermGen where
 
-import Import
+import Import hiding (local)
 import Language
 import Data.Tree (Tree(..), levels)
 import RIO.List
@@ -9,46 +9,49 @@ import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import Control.Monad.State
 
+type Env = Map Var (Type Hole)
+
 data GenSt = GenSt
   { expr :: Term Hole
   , goals :: Map Hole (Type Hole)
-  , env :: Map Var (Type Hole)
-  , ctxs :: Map Hole (Map Var (Type Hole))
+  , global :: Env
+  , locals :: Map Hole Env
   , maxHole :: Hole
   , maxFree :: Hole
   } deriving (Eq, Ord, Show)
 
-fromSketch :: Map Var (Type Hole) -> Term (Type Void) -> GenSt
-fromSketch env sketch = GenSt
+fromSketch :: Env -> Term (Type Void) -> GenSt
+fromSketch global sketch = GenSt
   { expr
   , goals = fmap absurd <$> Map.fromList (holes sketch')
-  , env
-  , ctxs
-  , maxHole = 1 + fromMaybe 0 (Set.lookupMax $ Map.keysSet ctxs)
+  , global
+  , locals
+  , maxHole = 1 + fromMaybe 0 (Set.lookupMax $ Map.keysSet locals)
   , maxFree = 0
   } where
     sketch' = evalState (number sketch) 0
     expr = fst <$> sketch'
-    ctxs = holeContexts Map.empty expr
+    locals = holeContexts Map.empty expr
 
 -- TODO: add weights to options, and/or add nr of uses to each option
+-- TODO: can step be generalized, or should it be a method of some class over
+-- genstates or environments?
 step :: GenSt -> [GenSt]
 step GenSt
   { expr
   , goals
-  , env
-  , ctxs
+  , global
+  , locals
   , maxHole
   , maxFree
   } = do
     -- Select the first goal
     ((n, goal), goals') <- toList $ Map.minViewWithKey goals
     -- Select the corresponding environment
-    ctx <- toList $ ctxs Map.!? n
+    local <- toList $ locals Map.!? n
     -- Pick an entry from the environment
-    (name, t) <- Map.toList (env <> ctx)
+    (name, t) <- Map.toList (global <> local)
     -- Renumber the type variables in ty
-    -- let t' = fst <$> evalState (number t) maxFr
     let t' = (+ maxFree) <$> t
     -- Generate all ways to instantiate sketch
     (sketch, typ) <- expand (Var name) t'
@@ -60,12 +63,12 @@ step GenSt
     let hf = fst <$> sk
     let new = Map.fromList . holes $ sk
     -- Copy the context to new holes
-    let ctxts' = ctx <$ new
+    let locals' = local <$ new
     return GenSt
       { expr = subst (Map.singleton n hf) expr
       , goals = subst th <$> (goals' <> new)
-      , env = Map.delete name env
-      , ctxs = Map.delete n ctxs <> ctxts'
+      , global = Map.delete name global
+      , locals = Map.delete n locals <> locals'
       , maxHole = maxHole + fromIntegral (length new)
       , maxFree = maxFree + maxFree'
       }
@@ -73,5 +76,5 @@ step GenSt
 genTree :: (state -> [state]) -> state -> Tree state
 genTree next start = Node start (genTree next <$> next start)
 
-synthesize :: Map Var (Type Hole) -> Term (Type Void) -> [[GenSt]]
+synthesize :: Env -> Term (Type Void) -> [[GenSt]]
 synthesize env = levels . genTree step . fromSketch env
