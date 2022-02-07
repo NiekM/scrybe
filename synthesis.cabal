@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Algorithms.Naive
       Algorithms.TypeIndexed
       Import
       Language

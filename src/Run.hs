@@ -6,6 +6,7 @@ import Language.Parser
 import Language.Prelude
 import Language.Syntax
 import qualified RIO.Map as Map
+import Algorithms.Naive
 
 mapSketch :: Term (Type Void)
 mapSketch = parseUnsafe "\\f :: a -> b. {List a -> List b}"

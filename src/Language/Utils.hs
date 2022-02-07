@@ -16,11 +16,24 @@ apps = foldl1 App
 arrs :: NonEmpty (Expr l a) -> Expr l a
 arrs = foldr1 Arr
 
+-- | Return all holes in an expression.
+holes :: Expr l a -> [a]
+holes = toList
+
+-- | Number all holes in an expression.
+number :: (Num n, Traversable m) => m a -> State n (m (n, a))
+number = traverse \x -> do
+  n <- get
+  put (n + 1)
+  return (n, x)
+
+-- | All ways to 'punch' holes into an expression without holes.
 punch :: Expr l Void -> [Expr l (Expr l Void)]
 punch = punch' . fmap absurd
 
+-- | All ways to 'punch' holes into an expression, flattening any 'recursive'
+-- holes.
 punch' :: Expr l (Expr l a) -> [Expr l (Expr l a)]
-punch' (Hole a) = [Hole a]
 punch' e = Hole (join e) : case e of
   Hole  _ -> []
   Var   x -> [Var x]
@@ -35,11 +48,13 @@ dissect e = e : case e of
   App f x -> dissect f ++ dissect x
   Lam _ x -> dissect x
 
+-- | All possible ways to use an expression by applying it to a number of holes
 expand :: Expr e (Expr t a) -> Expr t a -> [(Expr e (Expr t a), Expr t a)]
 expand e t = (e, t) : case t of
   Arr t1 t2 -> expand (App e (Hole t1)) t2
   _ -> []
 
+-- | Compute the contexts for each hole in a sketch.
 holeContexts :: Map Var (Type Hole) -> Term Hole
   -> Map Hole (Map Var (Type Hole))
 holeContexts env = \case
@@ -50,14 +65,3 @@ holeContexts env = \case
     ]
   Hole i -> Map.singleton i env
   _ -> Map.empty
-
--- | Holes
-holes :: Foldable m => m a -> [a]
-holes = toList
-
--- | Number all holes in an expression.
-number :: (Num n, Traversable m) => m a -> State n (m (n, a))
-number = traverse \x -> do
-  n <- get
-  put (n + 1)
-  return (n, x)
