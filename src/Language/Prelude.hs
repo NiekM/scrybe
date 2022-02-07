@@ -4,6 +4,7 @@ import Import
 import Language.Syntax
 import Language.Parser
 
+-- TODO: load preludes/modules and such from files.
 prelude :: [Binding (Type Hole)]
 prelude = parseUnsafe <$>
   [ "T :: Bool"

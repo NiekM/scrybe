@@ -40,6 +40,17 @@ punch' e = Hole (join e) : case e of
   App f x -> App <$> punch' f <*> punch' x
   Lam b x -> Lam b <$> punch' x
 
+-- | Replace all holes with numbers and return a mapping from numbers to the
+-- initial hole values.
+extract :: (Num k, Traversable m, Ord k) => m a -> (m k, Map k a)
+extract t = fmap fst &&& Map.fromList . toList $
+  flip evalState 0 $ number t
+
+-- | Compute all possible ways to replace subexpressions with holes, along with
+-- the hole fillings to reverse this.
+generalize :: Expr l Void -> Map (Expr l Hole) (Map Hole (Expr l Void))
+generalize = Map.fromList . fmap extract . punch
+
 -- | All subexpressions, including the expression itself.
 dissect :: Expr l a -> [Expr l a]
 dissect e = e : case e of

@@ -14,6 +14,8 @@ newtype Var = MkVar Text
 
 -- TODO: maybe add kinds?
 -- TODO: term level might get extra parameters for e.g. type annotations
+-- TODO: maybe level should contain values (concrete evaluation results) as
+-- well as 'results' (as seen in Smyth)
 data Level = Term | Type
   deriving (Eq, Ord, Show, Read)
 
