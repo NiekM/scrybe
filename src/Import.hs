@@ -4,7 +4,6 @@ module Import
   ( module RIO
   , module RIO.Text
   , Pretty(..)
-  , prettyParens
   , subst
   , compose
   ) where
@@ -21,11 +20,6 @@ instance (Pretty a, Pretty b) => Pretty (Either a b) where
 
 instance Display (Doc ann) where
   textDisplay = fromString . show
-
-prettyParens :: Pretty a => a -> (a -> Bool) -> Doc ann
-prettyParens t p
-  | p t = parens (pretty t)
-  | otherwise = pretty t
 
 subst :: (Monad m, Ord a) => Map a (m a) -> m a -> m a
 subst th e = e >>= \i -> fromMaybe (return i) (Map.lookup i th)

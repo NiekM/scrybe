@@ -4,19 +4,7 @@ import Import hiding (reverse)
 import Language.Syntax
 import Data.Foldable
 import qualified RIO.Map as Map
-import RIO.NonEmpty (cons, reverse)
 import Control.Monad.State
-
--- * Utility functions
-
-apps :: App l => NonEmpty (Expr l a) -> Expr l a
-apps = foldl1 App
-
-unApps :: Expr l a -> NonEmpty (Expr l a)
-unApps = reverse . go where
-  go = \case
-    App f x -> x `cons` go f
-    e -> pure e
 
 -- TODO: replace with more general infix function
 arrs :: App l => NonEmpty (Expr l a) -> Expr l a
@@ -43,8 +31,10 @@ punch' :: Expr l (Expr l a) -> [Expr l (Expr l a)]
 punch' e = Hole (join e) : case e of
   Hole  _ -> []
   Var   x -> [Var x]
+  Ctr _ _ -> undefined
   App f x -> App <$> punch' f <*> punch' x
   Lam b x -> Lam b <$> punch' x
+  -- TODO: this is incorrect ...
   Case xs -> Case . sequenceA <$> (fmap punch' <$> xs)
 
 -- | Replace all holes with numbers and return a mapping from numbers to the
@@ -61,8 +51,9 @@ generalize = Map.fromList . fmap extract . punch
 -- | All subexpressions, including the expression itself.
 dissect :: Expr l a -> [Expr l a]
 dissect e = e : case e of
-  Hole  _ -> []
-  Var   _ -> []
+  Hole _ -> []
+  Var _ -> []
+  Ctr _ xs -> concatMap dissect xs
   App f x -> dissect f ++ dissect x
   Lam _ x -> dissect x
   Case xs -> concatMap (dissect . arm) xs

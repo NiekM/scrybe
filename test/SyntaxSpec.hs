@@ -19,6 +19,8 @@ prettyThenParse x =
     Right y -> x == y
     Left _ -> False
 
+-- NOTE: this is a bit silly and not very useful, but a good example of a
+-- quickcheck test.
 punchAndDissect :: Term Void -> Bool
 punchAndDissect x =
   ((==) `on` Set.fromList)
@@ -31,6 +33,6 @@ spec = do
     prop "Type Hole" $ prettyThenParse @(Type Hole)
     prop "Term Hole" $ prettyThenParse @(Term Hole)
     prop "Term (Type Hole)" $ prettyThenParse @(Term (Type Hole))
-  prop "punch-dissect" (forAll (scale (`div` 3) arbitrary) punchAndDissect)
+  -- prop "punch-dissect" (forAll (scale (`div` 3) arbitrary) punchAndDissect)
 
 -- TODO: add unit tests to check some common synthesis examples

@@ -2,6 +2,8 @@
 module Language.Parser where
 
 import Import hiding (some, many, lift)
+import RIO.Char (isUpper)
+import RIO.Text (uncons)
 import RIO.Partial (read)
 import Language.Syntax
 import Language.Utils
@@ -70,8 +72,13 @@ instance ParseAtom 'Term where
 instance ParseAtom 'Type where
   parseAtom = Hole <$> braces parser <|> Var <$> parser
 
+apps' :: App l => NonEmpty (Expr l a) -> Expr l a
+apps' (Var (MkVar c) :| es)
+  | Just (x, _) <- uncons c, isUpper x = Ctr (MkCtr c) es
+apps' es = apps es
+
 parseApps :: (Parse a, App l, ParseAtom l) => Parser (Expr l a)
-parseApps = apps <$> interleaved (parens parseApps <|> parseAtom) (pure ())
+parseApps = apps' <$> interleaved (parens parseApps <|> parseAtom) (pure ())
 
 instance Parse a => Parse (Term a) where
   parser = parseApps

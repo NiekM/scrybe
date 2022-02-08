@@ -2,7 +2,6 @@ module Language.Eval where
 
 import Import
 import Language.Syntax
-import Language.Utils
 import RIO.List
 import qualified RIO.Map as Map
 
@@ -10,8 +9,9 @@ import qualified RIO.Map as Map
 -- as if when they cannot be evaluated further.
 eval :: Map Var (Term a) -> Term a -> Term a
 eval env = \case
-  Hole  h -> Hole h
-  Var   x -> fromMaybe (Var x) $ Map.lookup x env
+  Hole h -> Hole h
+  Var x -> fromMaybe (Var x) $ Map.lookup x env
+  Ctr x xs -> Ctr x $ eval env <$> xs
   App f x -> let y = eval env x in case eval env f of
     Lam (Bind b _) z -> eval (Map.insert b y env) z
     Case xs | (Var a :| args) <- unApps y ->
