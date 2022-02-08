@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveTraversable, FlexibleInstances, DataKinds, GADTs #-}
+{-# LANGUAGE TypeFamilies, ConstraintKinds #-}
 module Language.Syntax where
 
 import Import
@@ -14,12 +15,35 @@ newtype Var = MkVar Text
   deriving stock (Eq, Ord, Read, Show, Data)
   deriving newtype (IsString, Pretty)
 
+-- Levels {{{
+
 -- TODO: maybe add kinds?
 -- TODO: term level might get extra parameters for e.g. type annotations
 -- TODO: maybe level should contain values (concrete evaluation results) as
 -- well as 'results' (as seen in Smyth)
-data Level = Term | Type
+data Level = Term | Type | Pattern
   deriving (Eq, Ord, Show, Read)
+
+type family HasLam (l :: Level) where
+  HasLam 'Term = 'True
+  HasLam _     = 'False
+
+type Lam l = HasLam l ~ 'True
+
+type family HasCase (l :: Level) where
+  HasCase 'Term = 'True
+  HasCase _     = 'False
+
+type Case l = HasCase l ~ 'True
+
+type family HasApp (l :: Level) where
+  HasApp 'Term = 'True
+  HasApp 'Type = 'True
+  HasApp _     = 'False
+
+type App l = HasApp l ~ 'True
+
+-- }}}
 
 -- TODO: make Binding generic in the annotation kind
 data Binding a = Bind Var a
@@ -33,16 +57,18 @@ data Branch a = Branch { pat :: Var, arm :: a }
 data Expr (l :: Level) a where
   Hole :: a -> Expr l a
   Var  :: Var -> Expr l a
-  App  :: Expr l a -> Expr l a -> Expr l a
-  -- Term specific
-  Lam  :: Binding (Expr 'Type Hole) -> Expr 'Term a -> Expr 'Term a
-  Case :: [Branch (Expr 'Term a)] -> Expr 'Term a
 
-pattern Arr :: Expr l a -> Expr l a -> Expr l a
+  App  :: App  l => Expr l a -> Expr l a -> Expr l a
+  Lam  :: Lam  l => Binding (Expr 'Type Hole) -> Expr l a -> Expr l a
+  Case :: Case l => [Branch (Expr l a)] -> Expr l a
+
+pattern Arr :: () => App l => Expr l a -> Expr l a -> Expr l a
 pattern Arr t u = App (App (Var (MkVar "->")) t) u
 
 type Term = Expr 'Term
 type Type = Expr 'Type
+
+-- Instances {{{
 
 deriving instance Eq a => Eq (Expr l a)
 deriving instance Ord a => Ord (Expr l a)
@@ -65,6 +91,8 @@ instance Monad (Expr l) where
   App f x >>= k = App (f >>= k) (x >>= k)
   Lam b f >>= k = Lam b (f >>= k)
   Case xs >>= k = Case (fmap (fmap (>>= k)) xs)
+
+-- }}}
 
 -- * Pretty printing
 

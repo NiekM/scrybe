@@ -1,8 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Main (main) where
 
-import Import
+import Types
 import Run
+import RIO
 import RIO.Process
 import Options.Applicative.Simple
 import qualified Paths_synthesis
@@ -23,7 +24,7 @@ main = do
   lo <- logOptionsHandle stderr (optionsVerbose options)
   pc <- mkDefaultProcessContext
   withLogFunc lo $ \lf ->
-    let app = MkApp
+    let app = Application
           { appLogFunc = lf
           , appProcessContext = pc
           , appOptions = options

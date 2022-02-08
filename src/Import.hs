@@ -3,7 +3,6 @@
 module Import
   ( module RIO
   , module RIO.Text
-  , module Types
   , Pretty(..)
   , prettyParens
   , subst
@@ -14,7 +13,6 @@ import RIO
 import RIO.Text (unpack)
 import qualified RIO.Map as Map
 import Prettyprinter
-import Types
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case

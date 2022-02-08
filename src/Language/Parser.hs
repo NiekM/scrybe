@@ -70,7 +70,7 @@ instance ParseAtom 'Term where
 instance ParseAtom 'Type where
   parseAtom = Hole <$> braces parser <|> Var <$> parser
 
-parseApps :: (Parse a, ParseAtom l) => Parser (Expr l a)
+parseApps :: (Parse a, App l, ParseAtom l) => Parser (Expr l a)
 parseApps = apps <$> interleaved (parens parseApps <|> parseAtom) (pure ())
 
 instance Parse a => Parse (Term a) where

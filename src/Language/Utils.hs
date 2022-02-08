@@ -9,7 +9,7 @@ import Control.Monad.State
 
 -- * Utility functions
 
-apps :: NonEmpty (Expr l a) -> Expr l a
+apps :: App l => NonEmpty (Expr l a) -> Expr l a
 apps = foldl1 App
 
 unApps :: Expr l a -> NonEmpty (Expr l a)
@@ -19,7 +19,7 @@ unApps = reverse . go where
     e -> pure e
 
 -- TODO: replace with more general infix function
-arrs :: NonEmpty (Expr l a) -> Expr l a
+arrs :: App l => NonEmpty (Expr l a) -> Expr l a
 arrs = foldr1 Arr
 
 -- | Return all holes in an expression.
@@ -68,7 +68,8 @@ dissect e = e : case e of
   Case xs -> concatMap (dissect . arm) xs
 
 -- | All possible ways to use an expression by applying it to a number of holes
-expand :: Expr e (Expr t a) -> Expr t a -> [(Expr e (Expr t a), Expr t a)]
+expand :: App e => Expr e (Expr t a) -> Expr t a
+  -> [(Expr e (Expr t a), Expr t a)]
 expand e t = (e, t) : case t of
   Arr t1 t2 -> expand (App e (Hole t1)) t2
   _ -> []

@@ -8,13 +8,13 @@ data Options = Options
   { optionsVerbose :: !Bool
   }
 
-data App = MkApp
+data Application = Application
   { appLogFunc :: !LogFunc
   , appProcessContext :: !ProcessContext
   , appOptions :: !Options
   }
 
-instance HasLogFunc App where
+instance HasLogFunc Application where
   logFuncL = lens appLogFunc \x y -> x { appLogFunc = y }
-instance HasProcessContext App where
+instance HasProcessContext Application where
   processContextL = lens appProcessContext \x y -> x { appProcessContext = y }
