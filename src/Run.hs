@@ -7,6 +7,7 @@ import Language.Prelude
 import Language.Syntax
 import qualified RIO.Map as Map
 import Algorithms.Naive
+import Prettyprinter
 
 mapSketch :: Term (Type Void)
 mapSketch = parseUnsafe "\\f :: a -> b. {List a -> List b}"

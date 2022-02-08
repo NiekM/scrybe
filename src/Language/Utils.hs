@@ -1,16 +1,22 @@
 module Language.Utils where
 
-import Import
+import Import hiding (reverse)
 import Language.Syntax
 import Data.Foldable
--- import Data.Generics.Uniplate.Data
 import qualified RIO.Map as Map
+import RIO.NonEmpty (cons, reverse)
 import Control.Monad.State
 
 -- * Utility functions
 
 apps :: NonEmpty (Expr l a) -> Expr l a
 apps = foldl1 App
+
+unApps :: Expr l a -> NonEmpty (Expr l a)
+unApps = reverse . go where
+  go = \case
+    App f x -> x `cons` go f
+    e -> pure e
 
 -- TODO: replace with more general infix function
 arrs :: NonEmpty (Expr l a) -> Expr l a
@@ -39,6 +45,7 @@ punch' e = Hole (join e) : case e of
   Var   x -> [Var x]
   App f x -> App <$> punch' f <*> punch' x
   Lam b x -> Lam b <$> punch' x
+  Case xs -> Case . sequenceA <$> (fmap punch' <$> xs)
 
 -- | Replace all holes with numbers and return a mapping from numbers to the
 -- initial hole values.
@@ -58,6 +65,7 @@ dissect e = e : case e of
   Var   _ -> []
   App f x -> dissect f ++ dissect x
   Lam _ x -> dissect x
+  Case xs -> concatMap (dissect . arm) xs
 
 -- | All possible ways to use an expression by applying it to a number of holes
 expand :: Expr e (Expr t a) -> Expr t a -> [(Expr e (Expr t a), Expr t a)]

@@ -1,10 +1,10 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Import
-  ( module Prettyprinter
-  , module RIO
+  ( module RIO
   , module RIO.Text
   , module Types
+  , Pretty(..)
   , prettyParens
   , subst
   , compose

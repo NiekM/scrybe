@@ -7,6 +7,7 @@ import Test.QuickCheck
 import Language.Syntax
 import Language.Parser
 import Language.Utils
+import Prettyprinter
 import Prettyprinter.Render.Text
 import Text.Megaparsec
 import RIO.Set as Set

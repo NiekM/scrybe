@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Language.Parser where
 
-import Import hiding (some, many, parens, braces, lift)
+import Import hiding (some, many, lift)
 import RIO.Partial (read)
 import Language.Syntax
 import Language.Utils
@@ -32,6 +32,9 @@ parens = between (symbol "(") (symbol ")")
 braces :: Parser a -> Parser a
 braces = between (symbol "{") (symbol "}")
 
+brackets :: Parser a -> Parser a
+brackets = between (symbol "[") (symbol "]")
+
 interleaved :: Parser a -> Parser b -> Parser (NonEmpty a)
 interleaved p q = (:|) <$> p <*> many (q *> p)
 
@@ -53,12 +56,16 @@ instance Parse Hole where
 instance Parse a => Parse (Binding a) where
   parser = Bind <$> parser <* symbol "::" <*> parser
 
+instance Parse a => Parse (Branch a) where
+  parser = Branch <$> parser <* symbol "=>" <*> parser
+
 class ParseAtom l where
   parseAtom :: Parse a => Parser (Expr l a)
 
 instance ParseAtom 'Term where
   parseAtom = Hole <$> braces parser <|> Var <$> parser
     <|> Lam <$ symbol "\\" <*> parser <* symbol "." <*> parser
+    <|> Case . toList <$> brackets (interleaved parser (symbol ";"))
 
 instance ParseAtom 'Type where
   parseAtom = Hole <$> braces parser <|> Var <$> parser
