@@ -31,7 +31,7 @@ punch' :: Expr l (Expr l a) -> [Expr l (Expr l a)]
 punch' e = Hole (join e) : case e of
   Hole  _ -> []
   Var   x -> [Var x]
-  Ctr _ _ -> undefined
+  Ctr   c -> [Ctr c]
   App f x -> App <$> punch' f <*> punch' x
   Lam b x -> Lam b <$> punch' x
   -- TODO: this is incorrect ...
@@ -53,7 +53,7 @@ dissect :: Expr l a -> [Expr l a]
 dissect e = e : case e of
   Hole _ -> []
   Var _ -> []
-  Ctr _ xs -> concatMap dissect xs
+  Ctr _ -> []
   App f x -> dissect f ++ dissect x
   Lam _ x -> dissect x
   Case xs -> concatMap (dissect . arm) xs

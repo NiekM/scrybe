@@ -16,17 +16,19 @@ import TermGen
 data Naive = Naive
   { expr :: Term Hole
   , goals :: Map Hole (Type Hole)
-  , global :: Env
-  , locals :: Map Hole Env
+  , datatypes :: Map Ctr (Type Hole)
+  , global :: Map Var (Type Hole)
+  , locals :: Map Hole (Map Var (Type Hole))
   , maxHole :: Hole
   , maxFree :: Hole
   } deriving (Eq, Ord, Show)
 
 instance Gen Naive where
-  fromSketch :: Env -> Term (Type Void) -> Naive
-  fromSketch global sketch = Naive
+  fromSketch :: Module -> Term (Type Void) -> Naive
+  fromSketch Module { ctrs = datatypes, vars = global } sketch = Naive
     { expr
     , goals = fmap absurd <$> Map.fromList (holes sketch')
+    , datatypes
     , global
     , locals
     , maxHole = 1 + fromMaybe 0 (Set.lookupMax $ Map.keysSet locals)
@@ -40,6 +42,7 @@ instance Gen Naive where
   step Naive
     { expr
     , goals
+    , datatypes
     , global
     , locals
     , maxHole
@@ -49,12 +52,13 @@ instance Gen Naive where
       ((n, goal), goals') <- toList $ Map.minViewWithKey goals
       -- Select the corresponding environment
       local <- toList $ locals Map.!? n
+      let env = Map.mapKeys Var (global <> local) <> Map.mapKeys Ctr datatypes
       -- Pick an entry from the environment
-      (name, t) <- Map.toList (global <> local)
+      (name, t) <- Map.toList env
       -- Renumber the type variables in ty
       let t' = (+ maxFree) <$> t
       -- Generate all ways to instantiate sketch
-      (sketch, typ) <- expand (Var name) t'
+      (sketch, typ) <- expand name t'
       -- Check that the type unifies with the goal
       th <- toList $ unify typ goal
       -- Compute new maximum Free variable
@@ -67,8 +71,9 @@ instance Gen Naive where
       return Naive
         { expr = subst (Map.singleton n hf) expr
         , goals = subst th <$> (goals' <> new)
+        , datatypes = case name of Ctr x -> Map.delete x datatypes; _ -> datatypes
         -- Delete the used expression from the environment.
-        , global = Map.delete name global
+        , global = case name of Var x -> Map.delete x global; _ -> global
         -- Remove the filled hole's context
         , locals = Map.delete n locals <> locals'
         , maxHole = maxHole + fromIntegral (length new)

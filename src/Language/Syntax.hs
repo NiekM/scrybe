@@ -56,14 +56,14 @@ data Binding a = Bind Var a
   deriving (Eq, Ord, Show, Read)
   deriving (Functor, Foldable, Traversable)
 
-data Branch a = Branch { pat :: Var, arm :: a }
+data Branch a = Branch { pat :: Ctr, arm :: a }
   deriving (Eq, Ord, Show, Read)
   deriving (Functor, Foldable, Traversable)
 
 data Expr (l :: Level) a where
   Hole :: a -> Expr l a
   Var  :: Var -> Expr l a
-  Ctr  :: Ctr -> [Expr l a] -> Expr l a
+  Ctr  :: Ctr -> Expr l a
 
   App  :: App  l => Expr l a -> Expr l a -> Expr l a
   Lam  :: Lam  l => Binding (Expr 'Type Hole) -> Expr l a -> Expr l a
@@ -74,6 +74,11 @@ pattern Arr t u = App (App (Var (MkVar "->")) t) u
 
 type Term = Expr 'Term
 type Type = Expr 'Type
+
+data Module = Module
+  { ctrs :: Map Ctr (Type Hole)
+  , vars :: Map Var (Type Hole)
+  }
 
 -- Instances {{{
 
@@ -88,7 +93,7 @@ instance Applicative (Expr l) where
   pure = Hole
   Hole h <*> y = h <$> y
   Var x <*> _ = Var x
-  Ctr c xs <*> y = Ctr c (fmap (<*> y) xs)
+  Ctr c <*> _ = Ctr c
   App f x <*> y = App (f <*> y) (x <*> y)
   Lam b x <*> y = Lam b (x <*> y)
   Case xs <*> y = Case (fmap (fmap (<*> y)) xs)
@@ -96,7 +101,7 @@ instance Applicative (Expr l) where
 instance Monad (Expr l) where
   Hole h >>= k = k h
   Var x >>= _ = Var x
-  Ctr c xs >>= k = Ctr c (fmap (>>= k) xs)
+  Ctr c >>= _ = Ctr c
   App f x >>= k = App (f >>= k) (x >>= k)
   Lam b f >>= k = Lam b (f >>= k)
   Case xs >>= k = Case (fmap (fmap (>>= k)) xs)
@@ -113,13 +118,8 @@ isLam :: Expr l a -> Bool
 isLam Lam {} = True
 isLam _ = False
 
-isCtr :: Expr l a -> Bool
-isCtr Ctr {} = True
-isCtr _ = False
-
 isApp :: Expr l a -> Bool
 isApp App {} = True
-isApp Ctr {} = True
 isApp _ = False
 
 prettyParens :: Pretty a => (a -> Bool) -> a -> Doc ann
@@ -137,11 +137,10 @@ instance Pretty a => Pretty (Expr l a) where
   pretty = \case
     Hole i -> braces $ pretty i
     Var x -> pretty x
-    Ctr c xs -> sep (pretty c
-      : map (prettyParens (\x -> isLam x || isApp x || isArr x)) xs)
+    Ctr c -> pretty c
     Arr t u -> sep [prettyParens isArr t, "->", pretty u]
     App f x -> sep
-      [ prettyParens (\y -> isLam y || isCtr y) f
+      [ prettyParens isLam f
       , prettyParens (\y -> isLam y || isApp y) x
       ]
     Lam b e -> "\\" <> pretty b <> "." <+> pretty e
@@ -200,7 +199,6 @@ sizedExp as n = do
     [] -> error "unreachable"
     ys@(z:zs) -> oneof
       [ Case <$> mapM (\i -> Branch <$> arbitrary <*> sizedExp as i) ys
-      , Ctr <$> arbitrary <*> mapM (sizedExp as) ys
       , apps <$> mapM (sizedExp as) ys
       , lams <$> mapM (\i -> Bind <$> arbitrary <*> sizedTyp i) zs
         <*> sizedExp as z
@@ -209,7 +207,7 @@ sizedExp as n = do
 arbExp :: Arbitrary a => Gen (Term a)
 arbExp = sized \n -> do
   m <- choose (0, n)
-  sizedExp [Var <$> arbitrary, Hole <$> arbitrary] m
+  sizedExp [Var <$> arbitrary, Ctr <$> arbitrary, Hole <$> arbitrary] m
 
 instance Arbitrary (Term Hole) where
   arbitrary = arbExp
@@ -220,6 +218,6 @@ instance Arbitrary (Term (Type Hole)) where
 instance Arbitrary (Term Void) where
   arbitrary = sized \n -> do
     m <- choose (0, n)
-    sizedExp [Var <$> arbitrary] m
+    sizedExp [Var <$> arbitrary, Ctr <$> arbitrary] m
 
 -- }}}

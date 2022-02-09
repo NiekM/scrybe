@@ -11,15 +11,14 @@ import Algorithms.Naive
 import Prettyprinter
 
 mapSketch :: Term (Type Void)
-mapSketch = parseUnsafe "\\f :: a -> b. {List a -> List b}"
+mapSketch = parseUnsafe parser "\\f :: a -> b. {List a -> List b}"
 
 mapSketch2 :: Term (Type Void)
-mapSketch2 = parseUnsafe
+mapSketch2 = parseUnsafe parser
   "\\f :: a -> b. foldr {a -> List b -> List b} {List b}"
 
-runSyn :: [Binding (Type Hole)] -> Term (Type Void) -> RIO Application ()
-runSyn ctx body = do
-  let env = Map.fromList ((\(Bind x t) -> (x, t)) <$> ctx)
+runSyn :: Module -> Term (Type Void) -> RIO Application ()
+runSyn env body = do
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 $ pretty body
@@ -35,6 +34,6 @@ runSyn ctx body = do
 run :: RIO Application ()
 run = do
   runSyn prelude mapSketch
-  runSyn (filter (\(Bind n _) -> n /= "foldr") prelude) mapSketch2
+  runSyn prelude { vars = Map.delete "foldr" $ vars prelude } mapSketch2
   logInfo ""
   logInfo "Finished!"

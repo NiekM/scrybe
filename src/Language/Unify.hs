@@ -16,6 +16,7 @@ unify :: Ord a => Expr l a -> Expr l a -> Maybe (Map a (Expr l a))
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
+  (Ctr  a, Ctr  b) | a == b -> return Map.empty
   (Hole a, Hole b) | a == b -> return Map.empty
   (Hole a, _) | occursCheck a u -> return $ Map.singleton a u
   (_, Hole a) | occursCheck a t -> return $ Map.singleton a t

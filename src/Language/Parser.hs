@@ -2,8 +2,6 @@
 module Language.Parser where
 
 import Import hiding (some, many, lift)
-import RIO.Char (isUpper)
-import RIO.Text (uncons)
 import RIO.Partial (read)
 import Language.Syntax
 import Language.Utils
@@ -22,8 +20,11 @@ lexeme = L.lexeme sc
 symbol :: Text -> Parser Text
 symbol = L.symbol sc
 
-ident :: Parser Text
-ident = lexeme $ fromString <$> ((:) <$> letterChar <*> many alphaNumChar)
+var :: Parser Text
+var = lexeme $ fromString <$> ((:) <$> lowerChar <*> many alphaNumChar)
+
+ctr :: Parser Text
+ctr = lexeme $ fromString <$> ((:) <$> upperChar <*> many alphaNumChar)
 
 int :: Parser Int
 int = lexeme $ read <$> some digitChar
@@ -43,14 +44,17 @@ interleaved p q = (:|) <$> p <*> many (q *> p)
 class Parse a where
   parser :: Parser a
 
-parseUnsafe :: Parse a => Text -> a
-parseUnsafe = fromRight undefined . parse parser ""
+parseUnsafe :: Parser a -> Text -> a
+parseUnsafe p = either (error . show) id . parse p ""
 
 instance Parse Void where
   parser = mzero
 
 instance Parse Var where
-  parser = MkVar <$> ident
+  parser = MkVar <$> var
+
+instance Parse Ctr where
+  parser = MkCtr <$> ctr
 
 instance Parse Hole where
   parser = MkHole <$> int
@@ -65,20 +69,15 @@ class ParseAtom l where
   parseAtom :: Parse a => Parser (Expr l a)
 
 instance ParseAtom 'Term where
-  parseAtom = Hole <$> braces parser <|> Var <$> parser
+  parseAtom = Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser
     <|> Lam <$ symbol "\\" <*> parser <* symbol "." <*> parser
     <|> Case . toList <$> brackets (interleaved parser (symbol ";"))
 
 instance ParseAtom 'Type where
-  parseAtom = Hole <$> braces parser <|> Var <$> parser
-
-apps' :: App l => NonEmpty (Expr l a) -> Expr l a
-apps' (Var (MkVar c) :| es)
-  | Just (x, _) <- uncons c, isUpper x = Ctr (MkCtr c) es
-apps' es = apps es
+  parseAtom = Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser
 
 parseApps :: (Parse a, App l, ParseAtom l) => Parser (Expr l a)
-parseApps = apps' <$> interleaved (parens parseApps <|> parseAtom) (pure ())
+parseApps = apps <$> interleaved (parens parseApps <|> parseAtom) (pure ())
 
 instance Parse a => Parse (Term a) where
   parser = parseApps
