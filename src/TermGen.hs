@@ -17,3 +17,5 @@ genTree next start = Node start (genTree next <$> next start)
 
 synthesize :: Gen a => Module -> Term (Type Void) -> [[a]]
 synthesize env = levels . genTree step . fromSketch env
+
+-- TODO: implement 'naive' program synthesis with eta expansion

@@ -27,27 +27,33 @@ newtype Ctr = MkCtr Text
 -- TODO: term level might get extra parameters for e.g. type annotations
 -- TODO: maybe level should contain values (concrete evaluation results) as
 -- well as 'results' (as seen in Smyth)
-data Level = Term | Type | Pattern
+data Level = Term | Type | Pattern | Value
   deriving (Eq, Ord, Show, Read)
 
-type family HasLam (l :: Level) where
-  HasLam 'Term = 'True
-  HasLam _     = 'False
+type family HasVar' (l :: Level) where
+  HasVar' 'Value = 'False
+  HasVar' _      = 'True
 
-type Lam l = HasLam l ~ 'True
+type HasVar l = HasVar' l ~ 'True
 
-type family HasCase (l :: Level) where
-  HasCase 'Term = 'True
-  HasCase _     = 'False
+type family HasLam' (l :: Level) where
+  HasLam' 'Term = 'True
+  HasLam' _     = 'False
 
-type Case l = HasCase l ~ 'True
+type HasLam l = HasLam' l ~ 'True
 
-type family HasApp (l :: Level) where
-  HasApp 'Term = 'True
-  HasApp 'Type = 'True
-  HasApp _     = 'False
+type family HasCase' (l :: Level) where
+  HasCase' 'Term = 'True
+  HasCase' _     = 'False
 
-type App l = HasApp l ~ 'True
+type HasCase l = HasCase' l ~ 'True
+
+type family HasApp' (l :: Level) where
+  HasApp' 'Term = 'True
+  HasApp' 'Type = 'True
+  HasApp' _     = 'False
+
+type HasApp l = HasApp' l ~ 'True
 
 -- }}}
 
@@ -62,14 +68,14 @@ data Branch a = Branch { pat :: Ctr, arm :: a }
 
 data Expr (l :: Level) a where
   Hole :: a -> Expr l a
-  Var  :: Var -> Expr l a
   Ctr  :: Ctr -> Expr l a
 
-  App  :: App  l => Expr l a -> Expr l a -> Expr l a
-  Lam  :: Lam  l => Binding (Expr 'Type Hole) -> Expr l a -> Expr l a
-  Case :: Case l => [Branch (Expr l a)] -> Expr l a
+  Var  :: HasVar  l => Var -> Expr l a
+  App  :: HasApp  l => Expr l a -> Expr l a -> Expr l a
+  Lam  :: HasLam  l => Binding (Expr 'Type Hole) -> Expr l a -> Expr l a
+  Case :: HasCase l => [Branch (Expr l a)] -> Expr l a
 
-pattern Arr :: () => App l => Expr l a -> Expr l a -> Expr l a
+pattern Arr :: () => (HasVar l, HasApp l) => Expr l a -> Expr l a -> Expr l a
 pattern Arr t u = App (App (Var (MkVar "->")) t) u
 
 type Term = Expr 'Term
@@ -178,7 +184,7 @@ perms n k = do
   x <- [1..(n - k + 1)]
   (x:) <$> perms (n - x) (k - 1)
 
-apps :: (Foldable f, App l) => f (Expr l a) -> Expr l a
+apps :: (Foldable f, HasApp l) => f (Expr l a) -> Expr l a
 apps = foldl1 App
 
 unApps :: Expr l a -> NonEmpty (Expr l a)
@@ -187,7 +193,7 @@ unApps = reverse . go where
     App f x -> x `cons` go f
     e -> pure e
 
-lams :: (Foldable f, Lam l) => f (Binding (Type Hole)) -> Expr l a -> Expr l a
+lams :: (Foldable f, HasLam l) => f (Binding (Type Hole)) -> Expr l a -> Expr l a
 lams = flip (foldr Lam)
 
 sizedExp :: [Gen (Term a)] -> Int -> Gen (Term a)
