@@ -10,6 +10,7 @@ import Data.Tree (Tree(..), levels)
 -- functions more than once.
 class Gen a where
   fromSketch :: Module -> Term (Type Void) -> a
+  result :: a -> Term Hole
   step :: a -> [a]
 
 genTree :: (state -> [state]) -> state -> Tree state
