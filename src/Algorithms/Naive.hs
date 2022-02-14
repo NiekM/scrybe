@@ -48,11 +48,18 @@ data GenSt = GenSt
   , maxFree :: Hole
   } deriving (Eq, Ord, Show)
 
+-- | All possible ways to use an expression by applying it to a number of holes
+expand :: HasApp e => Expr e (Expr t a) -> Expr t a
+  -> [(Expr e (Expr t a), Expr t a)]
+expand e t = (e, t) : case t of
+  Arr t1 t2 -> expand (App e (Hole t1)) t2
+  _ -> []
+
 instance Gen GenSt where
-  fromSketch :: Module -> Term (Type Void) -> GenSt
+  fromSketch :: Module -> Term (Type Hole) -> GenSt
   fromSketch Module { ctrs = datatypes, vars = global } sketch = GenSt
     { expr
-    , goals = fmap absurd <$> Map.fromList (holes sketch')
+    , goals = Map.fromList (holes sketch')
     , datatypes
     , global
     , locals
@@ -61,7 +68,7 @@ instance Gen GenSt where
     } where
       sketch' = evalState (number sketch) 0
       expr = fst <$> sketch'
-      locals = holeContexts Map.empty expr
+      locals = Map.fromList . holes $ holeContexts Map.empty expr
 
   result :: GenSt -> Term Hole
   result = expr

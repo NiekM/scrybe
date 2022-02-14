@@ -21,3 +21,6 @@ prelude = Module
     , "foldr :: ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
     ]
   }
+
+prelude' :: Module
+prelude' = prelude { vars = Map.delete "compose" $ vars prelude }

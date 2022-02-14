@@ -29,14 +29,6 @@ don't have to perform the same unification twice.
 lookup :: Expr l Void -> Map (Expr l Hole) a -> [(a, Map Hole (Expr l Void))]
 lookup t m = Map.elems $ Map.intersectionWith (,) m (generalize t)
 
--- | Compute a type-indexed map from a module.
-fromModule :: [Binding (Type Hole)] -> Map (Type Hole) [Term (Type Hole)]
-fromModule env = Map.fromListWith (++) do
-  Bind name t <- env
-  (sk, ty) <- expand (Var name) t
-  let (ty', sk') = normalize ty sk
-  return (ty', [sk'])
-
 -- | Normalize a type along with an expression with types in the holes, such
 -- that the holes are numbered in order of their appearance.
 normalize :: Type Hole -> Term (Type Hole) -> (Type Hole, Term (Type Hole))

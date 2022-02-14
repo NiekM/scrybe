@@ -10,14 +10,14 @@ import qualified RIO.Map as Map
 import Algorithms.Naive as Naive
 import Prettyprinter
 
-mapSketch :: Term (Type Void)
+mapSketch :: Term (Type Hole)
 mapSketch = parseUnsafe parser "\\f :: a -> b. {List a -> List b}"
 
-mapSketch2 :: Term (Type Void)
+mapSketch2 :: Term (Type Hole)
 mapSketch2 = parseUnsafe parser
   "\\f :: a -> b. foldr {a -> List b -> List b} {List b}"
 
-runSyn :: Module -> Term (Type Void) -> RIO Application ()
+runSyn :: Module -> Term (Type Hole) -> RIO Application ()
 runSyn env body = do
   logInfo "Sketch:"
   logInfo ""

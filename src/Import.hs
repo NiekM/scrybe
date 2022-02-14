@@ -6,6 +6,7 @@ module Import
   , Pretty(..)
   , subst
   , compose
+  , unsnoc
   ) where
 
 import RIO
@@ -29,3 +30,7 @@ compose sigma gamma = Map.unions
   [ subst sigma <$> gamma
   , Map.withoutKeys sigma (Map.keysSet gamma)
   ]
+
+unsnoc :: NonEmpty a -> ([a], a)
+unsnoc (x :| []) = ([], x)
+unsnoc (x :| y:ys) = (x:) `first` unsnoc (y :| ys)

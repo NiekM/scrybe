@@ -84,7 +84,7 @@ type Type = Expr 'Type
 data Module = Module
   { ctrs :: Map Ctr (Type Hole)
   , vars :: Map Var (Type Hole)
-  }
+  } deriving (Eq, Ord, Show)
 
 -- Instances {{{
 
@@ -193,7 +193,8 @@ unApps = reverse . go where
     App f x -> x `cons` go f
     e -> pure e
 
-lams :: (Foldable f, HasLam l) => f (Binding (Type Hole)) -> Expr l a -> Expr l a
+lams :: (Foldable f, HasLam l) =>
+  f (Binding (Type Hole)) -> Expr l a -> Expr l a
 lams = flip (foldr Lam)
 
 sizedExp :: [Gen (Term a)] -> Int -> Gen (Term a)
