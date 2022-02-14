@@ -2,14 +2,17 @@
 module Main (main) where
 
 import Types
-import Run
+import qualified Run
 import RIO
 import RIO.Process
 import Options.Applicative.Simple
 import qualified Paths_synthesis
 
 main :: IO ()
-main = do
+main = runApp Run.run
+
+runApp :: RIO Application () -> IO ()
+runApp run = do
   (options, ()) <- simpleOptions
     $(simpleVersion Paths_synthesis.version)
     "Header for command line arguments"
