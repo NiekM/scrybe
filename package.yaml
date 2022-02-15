@@ -35,7 +35,7 @@ ghc-options:
 default-extensions:
 - BlockArguments
 - DataKinds
-- DeriveDataTypeable
+- DeriveTraversable
 - DerivingStrategies
 - DerivingVia
 - GADTs

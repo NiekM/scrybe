@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveTraversable, FlexibleInstances, DataKinds, GADTs #-}
+{-# LANGUAGE FlexibleInstances, DataKinds, GADTs #-}
 {-# LANGUAGE TypeFamilies, ConstraintKinds #-}
 module Language.Syntax where
 
@@ -10,15 +10,15 @@ import RIO.NonEmpty (cons, reverse)
 import Prettyprinter
 
 newtype Hole = MkHole Int
-  deriving stock (Eq, Ord, Read, Show, Data)
+  deriving stock (Eq, Ord, Read, Show)
   deriving newtype (Num, Pretty)
 
 newtype Var = MkVar Text
-  deriving stock (Eq, Ord, Read, Show, Data)
+  deriving stock (Eq, Ord, Read, Show)
   deriving newtype (IsString, Pretty)
 
 newtype Ctr = MkCtr Text
-  deriving stock (Eq, Ord, Read, Show, Data)
+  deriving stock (Eq, Ord, Read, Show)
   deriving newtype (IsString, Pretty)
 
 -- Levels {{{

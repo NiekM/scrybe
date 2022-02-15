@@ -45,7 +45,7 @@ library
   default-extensions:
       BlockArguments
       DataKinds
-      DeriveDataTypeable
+      DeriveTraversable
       DerivingStrategies
       DerivingVia
       GADTs
@@ -84,7 +84,7 @@ executable synthesis-exe
   default-extensions:
       BlockArguments
       DataKinds
-      DeriveDataTypeable
+      DeriveTraversable
       DerivingStrategies
       DerivingVia
       GADTs
@@ -127,7 +127,7 @@ test-suite synthesis-test
   default-extensions:
       BlockArguments
       DataKinds
-      DeriveDataTypeable
+      DeriveTraversable
       DerivingStrategies
       DerivingVia
       GADTs
