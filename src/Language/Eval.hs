@@ -13,7 +13,7 @@ eval env = \case
   Var x -> fromMaybe (Var x) $ Map.lookup x env
   Ctr c -> Ctr c
   App f x -> let y = eval env x in case eval env f of
-    Lam (Bind b _) z -> eval (Map.insert b y env) z
+    Lam a z -> eval (Map.insert a y env) z
     Case xs | (Ctr a :| args) <- unApps y ->
       case find ((a ==) . pat) xs of
         Nothing -> App (Case xs) y

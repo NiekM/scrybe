@@ -25,10 +25,6 @@ don't have to perform the same unification twice.
 
 -}
 
--- | Lookup all values in a map whose keys unify with the lookup value.
-lookup :: Expr l Void -> Map (Expr l Hole) a -> [(a, Map Hole (Expr l Void))]
-lookup t m = Map.elems $ Map.intersectionWith (,) m (generalize t)
-
 -- | Normalize a type along with an expression with types in the holes, such
 -- that the holes are numbered in order of their appearance.
 normalize :: Type Hole -> Term (Type Hole) -> (Type Hole, Term (Type Hole))

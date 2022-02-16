@@ -1,10 +1,9 @@
-module Algorithms.Naive (GenSt()) where
+module Algorithms.Naive where
 
 import Import hiding (local)
 import Language
 import RIO.List
 import qualified RIO.Map as Map
-import qualified RIO.Set as Set
 import Control.Monad.State
 import TermGen
 
@@ -56,19 +55,18 @@ expand e t = (e, t) : case t of
   _ -> []
 
 instance Gen GenSt where
-  fromSketch :: Module -> Term (Type Hole) -> GenSt
-  fromSketch Module { ctrs = datatypes, vars = global } sketch = GenSt
-    { expr
-    , goals = Map.fromList (holes sketch')
-    , datatypes
-    , global
-    , locals
-    , maxHole = 1 + fromMaybe 0 (Set.lookupMax $ Map.keysSet locals)
-    , maxFree = 0
+  fromSketch :: Module -> Dec -> GenSt
+  fromSketch m@Module { ctrs, vars } Dec { def, sig } = GenSt
+    { expr = def
+    , goals = fst <$> ctx
+    , datatypes = ctrs
+    , global = vars
+    , locals = snd <$> ctx
+    , maxHole
+    , maxFree = 0 -- TODO: compute from type checking result
     } where
-      sketch' = evalState (number sketch) 0
-      expr = fst <$> sketch'
-      locals = Map.fromList . holes $ holeContexts Map.empty expr
+      ((_, _, ctx), maxHole) =
+        fromMaybe undefined $ runStateT (check m def sig) 0
 
   result :: GenSt -> Term Hole
   result = expr

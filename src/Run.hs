@@ -1,4 +1,4 @@
-module Run (run) where
+module Run where
 
 import Types
 import Import
@@ -6,18 +6,22 @@ import TermGen
 import Language.Parser
 import Language.Prelude
 import Language.Syntax
-import qualified RIO.Map as Map
 import Algorithms.Naive as Naive
 import Prettyprinter
 
-mapSketch :: Term (Type Hole)
-mapSketch = parseUnsafe parser "\\f :: a -> b. {List a -> List b}"
+mapSketch :: Dec
+mapSketch = Dec
+  { sig = parseUnsafe parser "(a -> b) -> List a -> List b"
+  , def = parseUnsafe parser "\\f. {0}"
+  }
 
-mapSketch2 :: Term (Type Hole)
-mapSketch2 = parseUnsafe parser
-  "\\f :: a -> b. foldr {a -> List b -> List b} {List b}"
+mapSketch2 :: Dec
+mapSketch2 = Dec
+  { sig = parseUnsafe parser "(a -> b) -> List a -> List b"
+  , def = parseUnsafe parser "\\f. foldr {0} {1}"
+  }
 
-runSyn :: Module -> Term (Type Hole) -> RIO Application ()
+runSyn :: Module -> Dec -> RIO Application ()
 runSyn env body = do
   logInfo "Sketch:"
   logInfo ""
@@ -34,6 +38,6 @@ runSyn env body = do
 run :: RIO Application ()
 run = do
   runSyn prelude mapSketch
-  runSyn prelude { vars = Map.delete "foldr" $ vars prelude } mapSketch2
+  runSyn prelude mapSketch2
   logInfo ""
   logInfo "Finished!"

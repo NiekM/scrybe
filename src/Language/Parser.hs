@@ -59,9 +59,6 @@ instance Parse Ctr where
 instance Parse Hole where
   parser = MkHole <$> int
 
-instance Parse a => Parse (Binding a) where
-  parser = Bind <$> parser <* symbol "::" <*> parser
-
 instance Parse a => Parse (Branch a) where
   parser = Branch <$> parser <* symbol "=>" <*> parser
 

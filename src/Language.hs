@@ -1,12 +1,14 @@
 module Language
-  ( module Language.Parser
+  ( module Language.Eval
+  , module Language.Parser
   , module Language.Syntax
-  , module Language.Unify
+  , module Language.Type
   , module Language.Utils
   )
   where
 
+import Language.Eval
 import Language.Parser
 import Language.Syntax
-import Language.Unify
+import Language.Type
 import Language.Utils

@@ -27,7 +27,7 @@ newtype Ctr = MkCtr Text
 -- TODO: term level might get extra parameters for e.g. type annotations
 -- TODO: maybe level should contain values (concrete evaluation results) as
 -- well as 'results' (as seen in Smyth)
-data Level = Term | Type | Pattern | Value
+data Level = Type | Term | Pattern | Value
   deriving (Eq, Ord, Show, Read)
 
 type family HasVar' (l :: Level) where
@@ -57,11 +57,6 @@ type HasApp l = HasApp' l ~ 'True
 
 -- }}}
 
--- TODO: make Binding generic in the annotation kind
-data Binding a = Bind Var a
-  deriving (Eq, Ord, Show, Read)
-  deriving (Functor, Foldable, Traversable)
-
 data Branch a = Branch { pat :: Ctr, arm :: a }
   deriving (Eq, Ord, Show, Read)
   deriving (Functor, Foldable, Traversable)
@@ -72,7 +67,7 @@ data Expr (l :: Level) a where
 
   Var  :: HasVar  l => Var -> Expr l a
   App  :: HasApp  l => Expr l a -> Expr l a -> Expr l a
-  Lam  :: HasLam  l => Binding (Expr 'Type Hole) -> Expr l a -> Expr l a
+  Lam  :: HasLam  l => Var -> Expr l a -> Expr l a
   Case :: HasCase l => [Branch (Expr l a)] -> Expr l a
 
 pattern Arr :: () => (HasVar l, HasApp l) => Expr l a -> Expr l a -> Expr l a
@@ -80,6 +75,13 @@ pattern Arr t u = App (App (Var (MkVar "->")) t) u
 
 type Term = Expr 'Term
 type Type = Expr 'Type
+
+type HoleCtx = (Type Hole, Map Var (Type Hole))
+
+data Dec = Dec
+  { sig :: Type Hole
+  , def :: Term Hole
+  } deriving (Eq, Ord, Show)
 
 data Module = Module
   { ctrs :: Map Ctr (Type Hole)
@@ -109,7 +111,7 @@ instance Monad (Expr l) where
   Var x >>= _ = Var x
   Ctr c >>= _ = Ctr c
   App f x >>= k = App (f >>= k) (x >>= k)
-  Lam b f >>= k = Lam b (f >>= k)
+  Lam b x >>= k = Lam b (x >>= k)
   Case xs >>= k = Case (fmap (fmap (>>= k)) xs)
 
 -- }}}
@@ -133,8 +135,8 @@ prettyParens p t
   | p t = parens (pretty t)
   | otherwise = pretty t
 
-instance Pretty a => Pretty (Binding a) where
-  pretty (Bind x t) = pretty x <+> "::" <+> pretty t
+instance Pretty Dec where
+  pretty Dec { sig, def } = pretty def <+> "::" <+> pretty sig
 
 instance Pretty a => Pretty (Branch a) where
   pretty (Branch c e) = pretty c <+> "=>" <+> pretty e
@@ -194,7 +196,7 @@ unApps = reverse . go where
     e -> pure e
 
 lams :: (Foldable f, HasLam l) =>
-  f (Binding (Type Hole)) -> Expr l a -> Expr l a
+  f Var -> Expr l a -> Expr l a
 lams = flip (foldr Lam)
 
 sizedExp :: [Gen (Term a)] -> Int -> Gen (Term a)
@@ -207,7 +209,8 @@ sizedExp as n = do
     ys@(z:zs) -> oneof
       [ Case <$> mapM (\i -> Branch <$> arbitrary <*> sizedExp as i) ys
       , apps <$> mapM (sizedExp as) ys
-      , lams <$> mapM (\i -> Bind <$> arbitrary <*> sizedTyp i) zs
+      -- TODO: don't throw away size parameter
+      , lams <$> mapM (const arbitrary) zs
         <*> sizedExp as z
       ]
 

@@ -33,7 +33,7 @@ library
       Language.Parser
       Language.Prelude
       Language.Syntax
-      Language.Unify
+      Language.Type
       Language.Utils
       Run
       TermGen

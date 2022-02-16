@@ -7,10 +7,12 @@ module Import
   , subst
   , compose
   , unsnoc
+  , maximumDef
   ) where
 
 import RIO
 import RIO.Text (unpack)
+import RIO.List
 import qualified RIO.Map as Map
 import Prettyprinter
 
@@ -34,3 +36,6 @@ compose sigma gamma = Map.unions
 unsnoc :: NonEmpty a -> ([a], a)
 unsnoc (x :| []) = ([], x)
 unsnoc (x :| y:ys) = (x:) `first` unsnoc (y :| ys)
+
+maximumDef :: (Ord a, Foldable f) => a -> f a -> a
+maximumDef d = fromMaybe d . maximumMaybe
