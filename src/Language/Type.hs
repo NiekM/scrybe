@@ -18,7 +18,6 @@ unify t u = case (t, u) of
   (Var  a, Var  b) | a == b -> return Map.empty
   (Ctr  a, Ctr  b) | a == b -> return Map.empty
   (Hole a, Hole b) | a == b -> return Map.empty
-  -- (Hole a, Hole b) -> return $ Map.fromList [(a, Hole b), (b, Hole a)]
   (Hole a, _) | occursCheck a u -> return $ Map.singleton a u
   (_, Hole a) | occursCheck a t -> return $ Map.singleton a t
   _ -> Nothing
@@ -30,7 +29,7 @@ unifies :: Ord a => [(Type a, Type a)] -> Maybe (Map a (Type a))
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)
-  return $ compose th0 th1
+  return $ compose th1 th0
 
 infer :: Module -> Term Hole -> StateT Free Maybe
   (Type Free, Map Free (Type Free), Map Hole HoleCtx)
