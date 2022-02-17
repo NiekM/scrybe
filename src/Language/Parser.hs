@@ -59,6 +59,9 @@ instance Parse Ctr where
 instance Parse Hole where
   parser = MkHole <$> int
 
+instance Parse Free where
+  parser = MkFree <$> int
+
 instance Parse a => Parse (Branch a) where
   parser = Branch <$> parser <* symbol "=>" <*> parser
 

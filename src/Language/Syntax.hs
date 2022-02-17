@@ -13,6 +13,10 @@ newtype Hole = MkHole Int
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (Num, Pretty)
 
+newtype Free = MkFree Int
+  deriving stock (Eq, Ord, Read, Show)
+  deriving newtype (Num, Pretty)
+
 newtype Var = MkVar Text
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (IsString, Pretty)
@@ -76,16 +80,16 @@ pattern Arr t u = App (App (Var (MkVar "->")) t) u
 type Term = Expr 'Term
 type Type = Expr 'Type
 
-type HoleCtx = (Type Hole, Map Var (Type Hole))
+type HoleCtx = (Type Free, Map Var (Type Free))
 
 data Dec = Dec
-  { sig :: Type Hole
+  { sig :: Type Free
   , def :: Term Hole
   } deriving (Eq, Ord, Show)
 
 data Module = Module
-  { ctrs :: Map Ctr (Type Hole)
-  , vars :: Map Var (Type Hole)
+  { ctrs :: Map Ctr (Type Free)
+  , vars :: Map Var (Type Free)
   } deriving (Eq, Ord, Show)
 
 -- Instances {{{
@@ -159,13 +163,13 @@ instance Pretty a => Pretty (Expr l a) where
 -- QuickCheck {{{
 -- TODO: make sure that these are good arbitrary instances
 
-sizedTyp :: Int -> Gen (Type Hole)
+sizedTyp :: Int -> Gen (Type Free)
 sizedTyp 0 = Var <$> arbitrary
 sizedTyp n = do
   x <- choose (0, n - 1)
   App <$> sizedTyp x <*> sizedTyp (n - x - 1)
 
-instance Arbitrary (Expr 'Type Hole) where
+instance Arbitrary (Expr 'Type Free) where
   arbitrary = sized \n -> do
     m <- choose (0, n)
     sizedTyp m
@@ -222,7 +226,7 @@ arbExp = sized \n -> do
 instance Arbitrary (Term Hole) where
   arbitrary = arbExp
 
-instance Arbitrary (Term (Type Hole)) where
+instance Arbitrary (Term (Type Free)) where
   arbitrary = arbExp
 
 instance Arbitrary (Term Void) where

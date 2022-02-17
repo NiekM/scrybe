@@ -37,7 +37,7 @@ nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
 
 -- Eta-expand a hole.
-eta :: Hole -> Type Hole -> State Int (Term Hole, HoleCtx)
+eta :: Hole -> Type Free -> State Int (Term Hole, HoleCtx)
 eta i ty = do
   let (ts, u) = unsnoc (unArrs ty)
   ys <- fmap (first nVar) <$> number ts

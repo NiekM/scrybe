@@ -32,8 +32,8 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th0 th1
 
-infer :: Module -> Term Hole -> StateT Hole Maybe
-  (Type Hole, Map Hole (Type Hole), Map Hole HoleCtx)
+infer :: Module -> Term Hole -> StateT Free Maybe
+  (Type Free, Map Free (Type Free), Map Hole HoleCtx)
 infer Module { ctrs, vars } = go Map.empty where
   go env = \case
     Hole i -> do
@@ -69,12 +69,11 @@ infer Module { ctrs, vars } = go Map.empty where
       let t = Hole n
       put (n + 1)
       (u, th, ctx) <- go (Map.insert x t env) e
-      -- traceShowM . fmap pretty $ th
       return (subst th t `Arr` u, th, ctx)
     Case xs -> undefined
 
-check :: Module -> Term Hole -> Type Hole -> StateT Hole Maybe
-  (Type Hole, Map Hole (Type Hole), Map Hole HoleCtx)
+check :: Module -> Term Hole -> Type Free -> StateT Free Maybe
+  (Type Free, Map Free (Type Free), Map Hole HoleCtx)
 check m e t = do
   (u, th1, ctx1) <- infer m e
   th2 <- lift $ unify t u

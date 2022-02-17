@@ -39,12 +39,12 @@ and recursive calls, since `foldr` uses both internally.
 
 data GenSt = GenSt
   { expr :: Term Hole
-  , goals :: Map Hole (Type Hole)
-  , datatypes :: Map Ctr (Type Hole)
-  , global :: Map Var (Type Hole)
-  , locals :: Map Hole (Map Var (Type Hole))
+  , goals :: Map Hole (Type Free)
+  , datatypes :: Map Ctr (Type Free)
+  , global :: Map Var (Type Free)
+  , locals :: Map Hole (Map Var (Type Free))
   , maxHole :: Hole
-  , maxFree :: Hole
+  , maxFree :: Free
   } deriving (Eq, Ord, Show)
 
 -- | All possible ways to use an expression by applying it to a number of holes
@@ -62,10 +62,10 @@ instance Gen GenSt where
     , datatypes = ctrs
     , global = vars
     , locals = snd <$> ctx
-    , maxHole
-    , maxFree = 0 -- TODO: compute from type checking result
+    , maxHole = 1 + maximumDef (-1) def
+    , maxFree
     } where
-      ((_, _, ctx), maxHole) =
+      ((_, _, ctx), maxFree) =
         fromMaybe undefined $ runStateT (check m def sig) 0
 
   result :: GenSt -> Term Hole
