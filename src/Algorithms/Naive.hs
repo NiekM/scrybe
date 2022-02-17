@@ -1,10 +1,10 @@
 module Algorithms.Naive where
 
 import Import hiding (local)
+import Fresh
 import Language
 import RIO.List
 import qualified RIO.Map as Map
-import Control.Monad.State
 import TermGen
 
 -- TODO: add environment in here, or at least keep a specific test suit for
@@ -66,7 +66,7 @@ instance Gen GenSt where
     , maxFree
     } where
       ((_, _, ctx), maxFree) =
-        fromMaybe undefined $ runStateT (check m def sig) 0
+        fromMaybe undefined $ runFreshT (check m def sig) 0
 
   result :: GenSt -> Term Hole
   result = expr
@@ -96,7 +96,7 @@ instance Gen GenSt where
       th <- toList $ unify typ goal
       -- Compute new maximum Free variable
       let maxFree' = fromMaybe 0 . maximumMaybe . free $ typ
-      let sk = evalState (number sketch) maxHole
+      let sk = evalFresh (number sketch) maxHole
       let hf = fst <$> sk
       let new = Map.fromList . holes $ sk
       -- Copy the context to new holes

@@ -1,9 +1,12 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Language.Utils where
 
 import Import hiding (reverse)
+import Fresh
 import Language.Syntax
 import Data.Foldable
 import qualified RIO.Map as Map
+import qualified RIO.Set as Set
 import Control.Monad.State
 import RIO.NonEmpty (cons)
 
@@ -20,24 +23,30 @@ unArrs = \case
 holes :: Expr l a -> [a]
 holes = toList
 
--- | Number all holes in an expression.
-number :: (Num n, Traversable m) => m a -> State n (m (n, a))
-number = traverse \x -> do
-  n <- get
-  put (n + 1)
-  return (n, x)
+free :: Ord a => Type a -> Set a
+free = Set.fromList . holes
+
+-- | Uniquely number all holes in an expression.
+number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
+number = traverse \x -> (,x) <$> fresh
+
+-- | Renumber all holes in an expression.
+renumber :: (Ord n, Monad t, Traversable t, MonadFresh n m) => t n -> m (t n)
+renumber t = do
+  xs <- traverse (\x -> (x,) . return <$> fresh) (nubOrd $ toList t)
+  return $ subst (Map.fromList xs) t
 
 -- | Replace all holes with numbers and return a mapping from numbers to the
 -- initial hole values.
-extract :: (Num k, Traversable m, Ord k) => k -> m a -> (m k, Map k a)
+extract :: (Next k, Traversable t, Ord k) => k -> t a -> (t k, Map k a)
 extract n t = fmap fst &&& Map.fromList . toList $
-  flip evalState n $ number t
+  flip evalFresh n $ number t
 
 nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
 
 -- Eta-expand a hole.
-eta :: Hole -> Type Free -> State Int (Term Hole, HoleCtx)
+eta :: MonadFresh Int m => Hole -> Type Free -> m (Term Hole, HoleCtx)
 eta i ty = do
   let (ts, u) = unsnoc (unArrs ty)
   ys <- fmap (first nVar) <$> number ts
@@ -50,7 +59,7 @@ etaAll = fmap join . traverse \i -> do
   case Map.lookup i ctxs of
     Nothing -> return $ Hole i
     Just (t, ctx) -> do
-      let ((e, (u, ctx')), n') = runState (eta i t) n
+      let ((e, (u, ctx')), n') = runFresh (eta i t) n
       put (n', Map.insert i (u, ctx' <> ctx) ctxs)
       return e
 

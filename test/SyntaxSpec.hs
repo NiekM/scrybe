@@ -3,14 +3,11 @@ module SyntaxSpec where
 import Import
 import Test.Hspec
 import Test.Hspec.QuickCheck
-import Test.QuickCheck
 import Language.Syntax
 import Language.Parser
-import Language.Utils
 import Prettyprinter
 import Prettyprinter.Render.Text
 import Text.Megaparsec
-import RIO.Set as Set
 
 prettyThenParse :: (Pretty a, Parse a, Eq a) => a -> Bool
 prettyThenParse x =
@@ -19,20 +16,11 @@ prettyThenParse x =
     Right y -> x == y
     Left _ -> False
 
--- NOTE: this is a bit silly and not very useful, but a good example of a
--- quickcheck test.
-punchAndDissect :: Term Void -> Bool
-punchAndDissect x =
-  ((==) `on` Set.fromList)
-    (dissect x)
-    (concatMap holes $ punch x)
-
 spec :: Spec
 spec = do
   describe "parse is inverse of pretty" do
-    prop "Type Hole" $ prettyThenParse @(Type Hole)
+    prop "Type Free" $ prettyThenParse @(Type Free)
     prop "Term Hole" $ prettyThenParse @(Term Hole)
-    prop "Term (Type Hole)" $ prettyThenParse @(Term (Type Hole))
-  -- prop "punch-dissect" (forAll (scale (`div` 3) arbitrary) punchAndDissect)
+    prop "Term (Type Free)" $ prettyThenParse @(Term (Type Free))
 
 -- TODO: add unit tests to check some common synthesis examples

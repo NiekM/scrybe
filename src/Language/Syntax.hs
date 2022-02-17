@@ -3,6 +3,7 @@
 module Language.Syntax where
 
 import Import hiding (reverse)
+import Fresh
 import Test.QuickCheck
 import Data.Foldable
 import RIO.List (intersperse)
@@ -11,11 +12,11 @@ import Prettyprinter
 
 newtype Hole = MkHole Int
   deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (Num, Pretty)
+  deriving newtype (Num, Next, Pretty)
 
 newtype Free = MkFree Int
   deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (Num, Pretty)
+  deriving newtype (Num, Next, Pretty)
 
 newtype Var = MkVar Text
   deriving stock (Eq, Ord, Read, Show)
