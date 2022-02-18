@@ -9,8 +9,7 @@ import qualified RIO.Map as Map
 
 type Unify a = Map a (Type a)
 
--- TODO: Should we have MonadPlus here or MonadFail? Can we somehow convert
--- between them?
+-- TODO: Add unit tests to test type unification, inference and checking
 
 -- | Unify two types, by checking if their holes can be filled such that
 -- they are equivalent.

@@ -73,6 +73,8 @@ data Expr (l :: Level) a where
   Var  :: HasVar  l => Var -> Expr l a
   App  :: HasApp  l => Expr l a -> Expr l a -> Expr l a
   Lam  :: HasLam  l => Var -> Expr l a -> Expr l a
+  -- TODO: make Case expressions more similar to Haskell case expressions and
+  -- use real patterns
   Case :: HasCase l => [Branch (Expr l a)] -> Expr l a
 
 pattern Arr :: () => (HasVar l, HasApp l) => Expr l a -> Expr l a -> Expr l a
@@ -80,6 +82,9 @@ pattern Arr t u = App (App (Var (MkVar "->")) t) u
 
 type Term = Expr 'Term
 type Type = Expr 'Type
+
+-- TODO: Have Mono and Poly types, where Poly types are isomorphic to
+-- ([Free], Expr 'Type Free)
 
 type HoleCtx = (Type Free, Map Var (Type Free))
 

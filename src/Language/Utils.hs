@@ -31,6 +31,8 @@ number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
 
 -- | Renumber all holes in an expression.
+-- TODO: Rewrite for polytypes and use the quantified type variables to do more
+-- efficient renumbering
 renumber :: (Ord n, Monad t, Traversable t, MonadFresh n m) => t n -> m (t n)
 renumber t = do
   xs <- traverse (\x -> (x,) . return <$> fresh) (nubOrd $ toList t)
@@ -52,6 +54,7 @@ eta i ty = do
   ys <- fmap (first nVar) <$> number ts
   return (lams (fst <$> ys) (Hole i), (u, Map.fromList ys))
 
+-- TODO: use MonadFresh here and reintroduce eta-expansion synthesis
 -- Eta-expand all holes in an expression.
 etaAll :: Term Hole -> State (Int, Map Hole HoleCtx) (Term Hole)
 etaAll = fmap join . traverse \i -> do

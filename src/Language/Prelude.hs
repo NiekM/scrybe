@@ -6,6 +6,7 @@ import Language.Parser
 import qualified RIO.Map as Map
 
 -- TODO: load preludes/modules and such from files.
+-- TODO: use poly types
 prelude :: Module
 prelude = Module
   { ctrs = Map.fromList

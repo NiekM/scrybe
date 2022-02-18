@@ -52,7 +52,11 @@ step Sketch
   }
   = do
     -- Select the first hole
+    -- TODO: have some way to better (interactively) choose which goal gets
+    -- chosen during synthesis.
     ((i, (goal, local)), ctx') <- mfold $ Map.minViewWithKey ctx
+    -- TODO: have a better representation of the environment so no duplicate
+    -- unification is attempted
     let options = Map.mapKeys Var (vars env <> local)
                <> Map.mapKeys Ctr (ctrs env)
     -- Pick an expression from the environment
@@ -75,4 +79,4 @@ step Sketch
         , vars = (case name of Var x -> Map.delete x; _ -> id) $ vars env
         }
       , ctx = (subst th *** fmap (subst th)) <$> (ctx' <> fmap (,local) new)
-      }
+      } -- TODO: have some nicer way to do substitution for holectxs
