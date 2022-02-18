@@ -34,10 +34,13 @@ ghc-options:
 
 default-extensions:
 - BlockArguments
+- ConstraintKinds
 - DataKinds
 - DeriveTraversable
 - DerivingStrategies
 - DerivingVia
+- FlexibleContexts
+- FlexibleInstances
 - GADTs
 - GeneralizedNewtypeDeriving
 - InstanceSigs

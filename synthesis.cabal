@@ -45,10 +45,13 @@ library
       src
   default-extensions:
       BlockArguments
+      ConstraintKinds
       DataKinds
       DeriveTraversable
       DerivingStrategies
       DerivingVia
+      FlexibleContexts
+      FlexibleInstances
       GADTs
       GeneralizedNewtypeDeriving
       InstanceSigs
@@ -84,10 +87,13 @@ executable synthesis-exe
       app
   default-extensions:
       BlockArguments
+      ConstraintKinds
       DataKinds
       DeriveTraversable
       DerivingStrategies
       DerivingVia
+      FlexibleContexts
+      FlexibleInstances
       GADTs
       GeneralizedNewtypeDeriving
       InstanceSigs
@@ -127,10 +133,13 @@ test-suite synthesis-test
       test
   default-extensions:
       BlockArguments
+      ConstraintKinds
       DataKinds
       DeriveTraversable
       DerivingStrategies
       DerivingVia
+      FlexibleContexts
+      FlexibleInstances
       GADTs
       GeneralizedNewtypeDeriving
       InstanceSigs

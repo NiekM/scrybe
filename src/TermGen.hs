@@ -2,19 +2,37 @@
 module TermGen where
 
 import Import hiding (local)
+import Fresh
 import Language
-import Data.Tree (Tree(..), levels)
+import Data.Tree
+import Data.Coerce
 
--- TODO: perhaps an associated data type of options/parameters is appropriate?
--- For example the naive synthesizer could have an option of whether to use
--- functions more than once.
-class Gen a where
-  fromSketch :: Module -> Dec -> a
-  result :: a -> Term Hole
-  step :: a -> [a]
+data Sketch = Sketch
+  { expr :: Term Hole
+  , env :: Module
+  , ctx :: Map Hole HoleCtx
+  } deriving (Eq, Ord, Show)
 
-genTree :: (state -> [state]) -> state -> Tree state
-genTree next start = Node start (genTree next <$> next start)
+newtype GenT m a = GenT (FreshT (Hole, Free) m a)
+  deriving newtype (Functor, Applicative, Monad, Alternative, MonadTrans)
+  deriving newtype (MonadFail, MonadPlus, MonadFresh Hole, MonadFresh Free)
 
-synthesize :: Gen a => Module -> Dec -> [[a]]
-synthesize env = levels . genTree step . fromSketch env
+runGenT :: Hole -> Free -> GenT m a -> m (a, (Hole, Free))
+runGenT h f (GenT m) = runFreshT m (h, f)
+
+evalGenT :: Monad m => Hole -> Free -> GenT m a -> m a
+evalGenT h f (GenT m) = evalFreshT m (h, f)
+
+mapGenT :: (m (a, (Hole, Free)) -> n (b, (Hole, Free))) -> GenT m a -> GenT n b
+mapGenT f (GenT m) = GenT $ mapFreshT f m
+
+type Gen = GenT Identity
+
+runGen :: Hole -> Free -> Gen a -> (a, (Hole, Free))
+runGen h f = runIdentity . runGenT h f
+
+evalGen :: Hole -> Free -> Gen a -> a
+evalGen h f = fst . runGen h f
+
+genTree :: forall a. (a -> GenT [] a) -> a -> GenT Tree a
+genTree = coerce (search @a @(Hole, Free))

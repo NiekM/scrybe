@@ -8,6 +8,9 @@ module Import
   , compose
   , unsnoc
   , maximumDef
+  , mfold
+  , failMaybe
+  , search
   ) where
 
 import RIO
@@ -15,6 +18,8 @@ import RIO.Text (unpack)
 import RIO.List
 import qualified RIO.Map as Map
 import Prettyprinter
+import Data.Tree
+import Control.Monad.State
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case
@@ -42,3 +47,15 @@ unsnoc (x :| y:ys) = (x:) `first` unsnoc (y :| ys)
 
 maximumDef :: (Ord a, Foldable f) => a -> f a -> a
 maximumDef d = fromMaybe d . maximumMaybe
+
+mfold :: (Foldable f, MonadPlus m) => f a -> m a
+mfold = msum . fmap return . toList
+
+failMaybe :: MonadFail m => Maybe a -> m a
+failMaybe = \case
+  Nothing -> fail ""
+  Just x -> return x
+
+search :: (a -> StateT s [] a) -> a -> StateT s Tree a
+search step init = StateT $ go . (init,) where
+  go (x, s) = Node (x, s) (go <$> runStateT (step x) s)

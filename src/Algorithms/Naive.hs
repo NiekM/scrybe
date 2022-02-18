@@ -1,14 +1,9 @@
 module Algorithms.Naive where
 
 import Import hiding (local)
-import Fresh
 import Language
-import RIO.List
 import qualified RIO.Map as Map
 import TermGen
-
--- TODO: add environment in here, or at least keep a specific test suit for
--- each kind of synthesizer.
 
 {-
 
@@ -37,16 +32,6 @@ and recursive calls, since `foldr` uses both internally.
 
 -}
 
-data GenSt = GenSt
-  { expr :: Term Hole
-  , goals :: Map Hole (Type Free)
-  , datatypes :: Map Ctr (Type Free)
-  , global :: Map Var (Type Free)
-  , locals :: Map Hole (Map Var (Type Free))
-  , maxHole :: Hole
-  , maxFree :: Free
-  } deriving (Eq, Ord, Show)
-
 -- | All possible ways to use an expression by applying it to a number of holes
 expand :: HasApp e => Expr e (Expr t a) -> Expr t a
   -> [(Expr e (Expr t a), Expr t a)]
@@ -54,61 +39,36 @@ expand e t = (e, t) : case t of
   Arr t1 t2 -> expand (App e (Hole t1)) t2
   _ -> []
 
-instance Gen GenSt where
-  fromSketch :: Module -> Dec -> GenSt
-  fromSketch m@Module { ctrs, vars } Dec { def, sig } = GenSt
-    { expr = def
-    , goals = fst <$> ctx
-    , datatypes = ctrs
-    , global = vars
-    , locals = snd <$> ctx
-    , maxHole = 1 + maximumDef (-1) def
-    , maxFree
-    } where
-      ((_, _, ctx), maxFree) =
-        fromMaybe undefined $ runFreshT (check m def sig) 0
+fromSketch :: Module -> Dec -> GenT Maybe Sketch
+fromSketch env dec  = do
+  (_, _, ctx) <- check env dec
+  return Sketch
+    { expr = def dec
+    , env
+    , ctx
+    }
 
-  result :: GenSt -> Term Hole
-  result = expr
-
-  step :: GenSt -> [GenSt]
-  step GenSt
-    { expr
-    , goals
-    , datatypes
-    , global
-    , locals
-    , maxHole
-    , maxFree
-    } = do
-      -- Select the first goal
-      ((n, goal), goals') <- toList $ Map.minViewWithKey goals
-      -- Select the corresponding environment
-      local <- toList $ locals Map.!? n
-      let env = Map.mapKeys Var (global <> local) <> Map.mapKeys Ctr datatypes
-      -- Pick an entry from the environment
-      (name, t) <- Map.toList env
-      -- Renumber the type variables in ty
-      let t' = (+ maxFree) <$> t
-      -- Generate all ways to instantiate sketch
-      (sketch, typ) <- expand name t'
-      -- Check that the type unifies with the goal
-      th <- toList $ unify typ goal
-      -- Compute new maximum Free variable
-      let maxFree' = fromMaybe 0 . maximumMaybe . free $ typ
-      let sk = evalFresh (number sketch) maxHole
-      let hf = fst <$> sk
-      let new = Map.fromList . holes $ sk
-      -- Copy the context to new holes
-      let locals' = local <$ new
-      return GenSt
-        { expr = subst (Map.singleton n hf) expr
-        , goals = subst th <$> (goals' <> new)
-        , datatypes = case name of Ctr x -> Map.delete x datatypes; _ -> datatypes
-        -- Delete the used expression from the environment.
-        , global = case name of Var x -> Map.delete x global; _ -> global
-        -- Remove the filled hole's context
-        , locals = Map.delete n locals <> locals'
-        , maxHole = maxHole + fromIntegral (length new)
-        , maxFree = maxFree + maxFree'
+step :: Sketch -> GenT [] Sketch
+step Sketch
+  { expr
+  , env
+  , ctx
+  }
+  = do
+    ((i, (goal, local)), ctx') <- mfold $ Map.minViewWithKey ctx
+    let options = Map.mapKeys Var (vars env <> local) <> Map.mapKeys Ctr (ctrs env)
+    (name, t) <- mfold . Map.assocs $ options
+    u <- renumber t
+    (sketch, typ) <- mfold $ expand name u
+    th <- unify typ goal
+    sk <- number sketch
+    let hf = fst <$> sk
+    let new = Map.fromList . holes $ sk
+    return Sketch
+      { expr = subst (Map.singleton i hf) expr
+      , env = env
+        { ctrs = (case name of Ctr x -> Map.delete x; _ -> id) $ ctrs env
+        , vars = (case name of Var x -> Map.delete x; _ -> id) $ vars env
         }
+      , ctx = (subst th *** fmap (subst th)) <$> (ctx' <> fmap (,local) new)
+      }

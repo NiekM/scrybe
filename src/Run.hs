@@ -8,6 +8,7 @@ import Language.Prelude
 import Language.Syntax
 import Algorithms.Naive as Naive
 import Prettyprinter
+import Data.Tree
 
 mapSketch :: Dec
 mapSketch = Dec
@@ -22,18 +23,21 @@ mapSketch2 = Dec
   }
 
 runSyn :: Module -> Dec -> RIO Application ()
-runSyn env body = do
+runSyn env dec = do
   logInfo "Sketch:"
   logInfo ""
-  logInfo . display . indent 2 $ pretty body
+  logInfo . display . indent 2 $ pretty dec
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  let syn = synthesize @Naive.GenSt env body
-  let xss = takeWhile (not . null) . zip [0 :: Int ..] $ syn
-  forM_ xss \(i, xs) -> do
-    logInfo $ "Step: " <> fromString (show i)
-    forM_ xs (logInfo . display . indent 2 . pretty . result)
+  case runGenT 0 0 (fromSketch env dec) of
+    Nothing -> error "OH NO!"
+    Just (x, (h, f)) -> do
+      let syn = levels $ evalGenT (1 + maximumDef 0 (expr x)) f (genTree step x)
+      let xss = takeWhile (not . null) . zip [0 :: Int ..] $ syn
+      forM_ xss \(i, xs) -> do
+        logInfo $ "Step: " <> fromString (show i)
+        forM_ xs (logInfo . display . indent 2 . pretty . expr)
 
 run :: RIO Application ()
 run = do
