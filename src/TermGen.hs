@@ -7,6 +7,8 @@ import Language
 import Data.Tree
 import Data.Coerce
 
+-- TODO: sketch should probably not carry the environment, it should probably
+-- be included in a state (or reader) transformer in GenT
 data Sketch = Sketch
   { expr :: Term Hole
   , env :: Module

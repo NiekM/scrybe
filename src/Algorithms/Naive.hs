@@ -41,12 +41,8 @@ expand e t = (e, t) : case t of
 
 fromSketch :: Module -> Dec -> GenT Maybe Sketch
 fromSketch env dec  = do
-  (_, _, ctx) <- check env dec
-  return Sketch
-    { expr = def dec
-    , env
-    , ctx
-    }
+  (expr, _, _, ctx) <- check env dec
+  return Sketch { expr, env, ctx }
 
 step :: Sketch -> GenT [] Sketch
 step Sketch
@@ -55,18 +51,26 @@ step Sketch
   , ctx
   }
   = do
+    -- Select the first hole
     ((i, (goal, local)), ctx') <- mfold $ Map.minViewWithKey ctx
-    let options = Map.mapKeys Var (vars env <> local) <> Map.mapKeys Ctr (ctrs env)
+    let options = Map.mapKeys Var (vars env <> local)
+               <> Map.mapKeys Ctr (ctrs env)
+    -- Pick an expression from the environment
     (name, t) <- mfold . Map.assocs $ options
+    -- Renumber its type to avoid conflicts
     u <- renumber t
-    (sketch, typ) <- mfold $ expand name u
+    -- Compute all ways to add holes to the expression
+    (ex, typ) <- mfold $ expand name u
+    -- Try to unify with the goal type
     th <- unify typ goal
-    sk <- number sketch
+    -- Replace typed holes with numbers
+    sk <- number ex
     let hf = fst <$> sk
     let new = Map.fromList . holes $ sk
     return Sketch
       { expr = subst (Map.singleton i hf) expr
       , env = env
+        -- Remove used expressions from the environment
         { ctrs = (case name of Ctr x -> Map.delete x; _ -> id) $ ctrs env
         , vars = (case name of Var x -> Map.delete x; _ -> id) $ vars env
         }

@@ -67,11 +67,13 @@ infer Module { ctrs, vars } = go Map.empty where
       return (subst th t `Arr` u, th, ctx)
     Case xs -> undefined
 
-check :: (MonadFresh Free m, MonadFail m) => Module -> Dec ->
-  m (Type Free, Unify Free, Map Hole HoleCtx)
+-- TODO: maybe this should return a sketch along with a type and unification
+check :: (MonadFresh Free m, MonadFresh Hole m, MonadFail m) =>
+  Module -> Dec -> m (Term Hole, Type Free, Unify Free, Map Hole HoleCtx)
 check m (Dec t e) = do
-  (u, th1, ctx1) <- infer m e
+  e' <- fmap fst <$> number e
+  (u, th1, ctx1) <- infer m e'
   th2 <- unify t u
   let th3 = compose th2 th1
   let ctx2 = (subst th3 *** fmap (subst th3)) <$> ctx1
-  return (subst th3 u, th3, ctx2)
+  return (e', subst th3 u, th3, ctx2)

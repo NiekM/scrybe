@@ -83,9 +83,12 @@ type Type = Expr 'Type
 
 type HoleCtx = (Type Free, Map Var (Type Free))
 
+newtype Unit = Unit ()
+  deriving newtype (Eq, Ord, Show, Read)
+
 data Dec = Dec
   { sig :: Type Free
-  , def :: Term Hole
+  , def :: Term Unit
   } deriving (Eq, Ord, Show)
 
 data Module = Module
@@ -139,6 +142,9 @@ prettyParens :: Pretty a => (a -> Bool) -> a -> Doc ann
 prettyParens p t
   | p t = parens (pretty t)
   | otherwise = pretty t
+
+instance Pretty Unit where
+  pretty _ = space
 
 instance Pretty Dec where
   pretty Dec { sig, def } = pretty def <+> "::" <+> pretty sig

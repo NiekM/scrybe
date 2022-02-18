@@ -13,13 +13,13 @@ import Data.Tree
 mapSketch :: Dec
 mapSketch = Dec
   { sig = parseUnsafe parser "(a -> b) -> List a -> List b"
-  , def = parseUnsafe parser "\\f. {0}"
+  , def = parseUnsafe parser "\\f. { }"
   }
 
 mapSketch2 :: Dec
 mapSketch2 = Dec
   { sig = parseUnsafe parser "(a -> b) -> List a -> List b"
-  , def = parseUnsafe parser "\\f. foldr {0} {1}"
+  , def = parseUnsafe parser "\\f. foldr { } { }"
   }
 
 runSyn :: Module -> Dec -> RIO Application ()
@@ -33,7 +33,7 @@ runSyn env dec = do
   case runGenT 0 0 (fromSketch env dec) of
     Nothing -> error "OH NO!"
     Just (x, (h, f)) -> do
-      let syn = levels $ evalGenT (1 + maximumDef 0 (expr x)) f (genTree step x)
+      let syn = levels $ evalGenT h f (genTree step x)
       let xss = takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)

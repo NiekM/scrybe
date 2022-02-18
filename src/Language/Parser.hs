@@ -50,6 +50,9 @@ parseUnsafe p = either (error . show) id . parse p ""
 instance Parse Void where
   parser = mzero
 
+instance Parse Unit where
+  parser = Unit <$> sc
+
 instance Parse Var where
   parser = MkVar <$> var
 
