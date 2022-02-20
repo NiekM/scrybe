@@ -30,7 +30,7 @@ runSyn env dec = do
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  case runGenT (fromSketch env dec) env (0, 0) of
+  case runGenT (fromSketch dec) env (0, 0) of
     Nothing -> error "OH NO!"
     Just (x, (h, f)) -> do
       let syn = levels $ evalGenT (genTree step x) env (h, f)

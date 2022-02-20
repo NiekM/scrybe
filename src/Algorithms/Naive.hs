@@ -3,6 +3,7 @@ module Algorithms.Naive where
 import Import hiding (local)
 import Language
 import qualified RIO.Map as Map
+import qualified RIO.Set as Set
 import TermGen
 
 {-
@@ -39,15 +40,28 @@ expand e t = (e, t) : case t of
   Arr t1 t2 -> expand (App e (Hole t1)) t2
   _ -> []
 
-fromSketch :: Module -> Dec -> GenT Maybe Sketch
-fromSketch env dec  = do
-  (expr, _, _, ctx) <- check env dec
-  return Sketch { expr, env, ctx }
+fromSketch :: Dec -> GenT Maybe Sketch
+fromSketch dec = do
+  (expr, _, _, ctx) <- check dec
+  return Sketch { expr, ctx }
+
+getCtrs :: Term Hole -> [Ctr]
+getCtrs = \case
+  Ctr c -> [c]
+  App f x -> getCtrs f ++ getCtrs x
+  Lam _ x -> getCtrs x
+  _ -> []
+
+getVars :: Term Hole -> [Var]
+getVars = \case
+  Var v -> [v]
+  App f x -> getVars f ++ getVars x
+  Lam _ x -> getVars x
+  _ -> []
 
 step :: Sketch -> GenT [] Sketch
 step Sketch
   { expr
-  , env
   , ctx
   }
   = do
@@ -57,8 +71,11 @@ step Sketch
     ((i, (goal, local)), ctx') <- mfold $ Map.minViewWithKey ctx
     -- TODO: have a better representation of the environment so no duplicate
     -- unification is attempted
-    let options = Map.mapKeys Var (vars env <> local)
-               <> Map.mapKeys Ctr (ctrs env)
+    env <- ask
+    let usedVars = Set.fromList . getVars $ expr
+    let usedCtrs = Set.fromList . getCtrs $ expr
+    let options = Map.mapKeys Var (Map.withoutKeys (vars env) usedVars <> local)
+               <> Map.mapKeys Ctr (Map.withoutKeys (ctrs env) usedCtrs)
     -- Pick an expression from the environment
     (name, t) <- mfold . Map.assocs $ options
     -- Renumber its type to avoid conflicts
@@ -73,10 +90,5 @@ step Sketch
     let new = Map.fromList . holes $ sk
     return Sketch
       { expr = subst (Map.singleton i hf) expr
-      , env = env
-        -- Remove used expressions from the environment
-        { ctrs = (case name of Ctr x -> Map.delete x; _ -> id) $ ctrs env
-        , vars = (case name of Var x -> Map.delete x; _ -> id) $ vars env
-        }
       , ctx = (subst th *** fmap (subst th)) <$> (ctx' <> fmap (,local) new)
       } -- TODO: have some nicer way to do substitution for holectxs

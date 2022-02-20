@@ -12,13 +12,12 @@ import Control.Monad.RWS
 -- be included in a state (or reader) transformer in GenT
 data Sketch = Sketch
   { expr :: Term Hole
-  , env :: Module
   , ctx :: Map Hole HoleCtx
   } deriving (Eq, Ord, Show)
 
 newtype GenT m a = GenT (RWST Module () (Hole, Free) m a)
   deriving newtype (Functor, Applicative, Monad, Alternative)
-  deriving newtype (MonadFail, MonadPlus)
+  deriving newtype (MonadFail, MonadPlus, MonadReader Module)
 
 instance Monad m => MonadFresh Hole (GenT m) where
   fresh = GenT . state $ fst &&& first next
