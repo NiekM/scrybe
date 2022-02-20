@@ -19,7 +19,7 @@ import RIO.List
 import qualified RIO.Map as Map
 import Prettyprinter
 import Data.Tree
-import Control.Monad.State
+import Control.Monad.RWS
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case
@@ -56,6 +56,8 @@ failMaybe = \case
   Nothing -> fail ""
   Just x -> return x
 
-search :: (a -> StateT s [] a) -> a -> StateT s Tree a
-search step init = StateT $ go . (init,) where
-  go (x, s) = Node (x, s) (go <$> runStateT (step x) s)
+search :: forall a r w s. Monoid w =>
+  (a -> RWST r w s [] a) -> a -> RWST r w s Tree a
+search step init = RWST \r s -> go r (init, s, mempty) where
+  go :: r -> (a, s, w) -> Tree (a, s, w)
+  go r (x, s, w) = Node (x, s, w) (go r <$> runRWST (step x) r s)

@@ -30,10 +30,10 @@ runSyn env dec = do
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  case runGenT 0 0 (fromSketch env dec) of
+  case runGenT (fromSketch env dec) env (0, 0) of
     Nothing -> error "OH NO!"
     Just (x, (h, f)) -> do
-      let syn = levels $ evalGenT h f (genTree step x)
+      let syn = levels $ evalGenT (genTree step x) env (h, f)
       let xss = takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)
@@ -41,6 +41,8 @@ runSyn env dec = do
 
 run :: RIO Application ()
 run = do
+  -- TODO: move these to the test-suite, checking if all generated expressions
+  -- type check or perhaps even compare them to exactly what we expect.
   runSyn prelude mapSketch
   runSyn prelude mapSketch2
   logInfo ""

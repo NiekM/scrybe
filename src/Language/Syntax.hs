@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, DataKinds, GADTs #-}
+{-# LANGUAGE DataKinds, GADTs #-}
 {-# LANGUAGE TypeFamilies, ConstraintKinds #-}
 module Language.Syntax where
 

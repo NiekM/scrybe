@@ -10,6 +10,8 @@ class Next a where
 instance Next Int where
   next = (+ 1)
 
+-- TODO: perhaps we don't need FreshT, only MonadFresh with the right
+-- instances?
 newtype FreshT s m a = FreshT (StateT s m a)
   deriving newtype (Functor, Applicative, Monad, Alternative)
   deriving newtype (MonadFail, MonadPlus, MonadState s, MonadTrans)

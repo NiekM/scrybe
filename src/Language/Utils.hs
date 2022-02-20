@@ -56,6 +56,7 @@ eta i ty = do
 
 -- TODO: use MonadFresh here and reintroduce eta-expansion synthesis
 -- Eta-expand all holes in an expression.
+-- TODO: eta-expand over sketches
 etaAll :: Term Hole -> State (Int, Map Hole HoleCtx) (Term Hole)
 etaAll = fmap join . traverse \i -> do
   (n, ctxs) <- get
