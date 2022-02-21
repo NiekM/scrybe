@@ -33,44 +33,44 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   return $ compose th1 th0
 
 infer :: (MonadFresh Free m, MonadFail m) => Module -> Term Hole ->
-  m (Type Free, Unify Free, Map Hole HoleCtx)
+  m (Type Free, Unify Free, Map Hole HoleInfo)
 infer Module { ctrs, vars } = go Map.empty where
-  go env = \case
+  go ctx = \case
     Hole i -> do
-      t <- Hole <$> fresh
-      return (t, Map.empty, Map.singleton i (t, env))
+      goal <- Hole <$> fresh
+      return (goal, Map.empty, Map.singleton i HoleInfo { goal, ctx })
     Ctr c -> do
       t <- failMaybe $ Map.lookup c ctrs
       u <- renumber t
       return (u, Map.empty, Map.empty)
-    Var a | Just t <- Map.lookup a env -> return (t, Map.empty, Map.empty)
+    Var a | Just t <- Map.lookup a ctx -> return (t, Map.empty, Map.empty)
     Var a -> do
       t <- failMaybe $ Map.lookup a vars
       u <- renumber t
       return (u, Map.empty, Map.empty)
     App f x -> do
-      (a, th1, ctx1) <- go env f
-      (b, th2, ctx2) <- go (subst th1 <$> env) x
+      (a, th1, ctx1) <- go ctx f
+      (b, th2, ctx2) <- go (subst th1 <$> ctx) x
       t <- Hole <$> fresh
       th3 <- unify (subst th2 a) (Arr b t)
       let th4 = th3 `compose` th2 `compose` th1
-      let ctx3 = (subst th4 *** fmap (subst th4)) <$> ctx1 <> ctx2
+      let ctx3 = substInfo th4 <$> ctx1 <> ctx2
       return (subst th4 t, th4, ctx3)
     Lam x e -> do
       t <- Hole <$> fresh
-      (u, th, ctx) <- go (Map.insert x t env) e
-      return (subst th t `Arr` u, th, ctx)
+      (u, th, ctx') <- go (Map.insert x t ctx) e
+      return (subst th t `Arr` u, th, ctx')
     Case xs -> undefined
 
 -- TODO: maybe this should return a sketch along with a type and unification
 check ::
   (MonadReader Module m, MonadFresh Free m, MonadFresh Hole m, MonadFail m) =>
-  Dec -> m (Term Hole, Type Free, Unify Free, Map Hole HoleCtx)
+  Dec -> m (Term Hole, Type Free, Unify Free, Map Hole HoleInfo)
 check (Dec t e) = do
   e' <- fmap fst <$> number e
   env <- ask
   (u, th1, ctx1) <- infer env e'
   th2 <- unify t u
   let th3 = compose th2 th1
-  let ctx2 = (subst th3 *** fmap (subst th3)) <$> ctx1
+  let ctx2 = substInfo th3 <$> ctx1
   return (e', subst th3 u, th3, ctx2)

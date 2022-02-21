@@ -63,17 +63,17 @@ getVars = \case
 
 step :: Term Hole -> GenT [] (Term Hole)
 step expr = do
-  ctx <- get
+  ctxs <- get
   -- Select the first hole
   -- TODO: have some way to better (interactively) choose which goal gets
   -- chosen during synthesis.
-  ((i, (goal, local)), ctx') <- mfold $ Map.minViewWithKey ctx
+  ((i, HoleInfo { goal, ctx }), ctxs') <- mfold $ Map.minViewWithKey ctxs
   -- TODO: have a better representation of the environment so no duplicate
   -- unification is attempted
   env <- ask
   let usedVars = Set.fromList . getVars $ expr
   let usedCtrs = Set.fromList . getCtrs $ expr
-  let options = Map.mapKeys Var (Map.withoutKeys (vars env) usedVars <> local)
+  let options = Map.mapKeys Var (Map.withoutKeys (vars env) usedVars <> ctx)
              <> Map.mapKeys Ctr (Map.withoutKeys (ctrs env) usedCtrs)
   -- Pick an expression from the environment
   (name, t) <- mfold . Map.assocs $ options
@@ -87,18 +87,18 @@ step expr = do
   sk <- number ex
   let hf = fst <$> sk
   let new = Map.fromList . holes $ sk
-  put $ (subst th *** fmap (subst th)) <$> (ctx' <> fmap (,local) new)
+  put $ substInfo th <$> (ctxs' <> fmap (`HoleInfo` ctx) new)
   return $ subst (Map.singleton i hf) expr
 
 stepEta :: Term Hole -> GenT [] (Term Hole)
 stepEta expr = do
-  ctx <- get
+  ctxs <- get
   -- Select the first hole
-  ((i, (goal, local)), _) <- mfold $ Map.minViewWithKey ctx
+  ((i, HoleInfo { goal, ctx }), _) <- mfold $ Map.minViewWithKey ctxs
   -- Remove selected hole
   modify $ Map.delete i
   env <- ask
-  let options = Map.mapKeys Var (vars env <> local)
+  let options = Map.mapKeys Var (vars env <> ctx)
              <> Map.mapKeys Ctr (ctrs env)
   -- Pick an expression from the environment
   (name, t) <- mfold . Map.assocs $ options
@@ -110,8 +110,8 @@ stepEta expr = do
   -- Generate new holes
   hs <- for args \arg -> do
     h <- fresh @Hole
-    modify $ Map.insert h (arg, local)
+    modify $ Map.insert h HoleInfo { goal = arg, ctx }
     return $ Hole h
   hf <- etaExpand (apps $ name :| hs)
-  modify $ fmap (subst th *** fmap (subst th))
+  modify . fmap $ substInfo th
   return $ subst (Map.singleton i hf) expr

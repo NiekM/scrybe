@@ -48,19 +48,19 @@ nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
 
 -- | Eta expand all holes in a sketch.
-etaExpand :: (MonadFresh Var m, MonadState (Map Hole HoleCtx) m) =>
+etaExpand :: (MonadFresh Var m, MonadState (Map Hole HoleInfo) m) =>
   Term Hole -> m (Term Hole)
 etaExpand = fmap join . traverse \i -> do
   ctxs <- get
   case Map.lookup i ctxs of
     Nothing -> return $ Hole i
-    Just (t, ctx) -> do
+    Just HoleInfo { goal, ctx } -> do
       -- Split the type in the arguments and the result type
-      let (ts, u) = splitArgs t
+      let (ts, u) = splitArgs goal
       -- Couple each argument with a fresh name
       ys <- number ts
       -- Update the hole context
-      put $ Map.insert i (u, ctx <> Map.fromList ys) ctxs
+      put $ Map.insert i (HoleInfo u (ctx <> Map.fromList ys)) ctxs
       -- Eta expand the hole
       return $ lams (fst <$> ys) (Hole i)
 

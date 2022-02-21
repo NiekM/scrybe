@@ -85,7 +85,16 @@ type Type = Expr 'Type
 -- TODO: Have Mono and Poly types, where Poly types are isomorphic to
 -- ([Free], Expr 'Type Free)
 
-type HoleCtx = (Type Free, Map Var (Type Free))
+data HoleInfo = HoleInfo
+  { goal :: Type Free
+  , ctx  :: Map Var (Type Free)
+  } deriving (Eq, Ord, Show)
+
+substInfo :: Map Free (Type Free) -> HoleInfo -> HoleInfo
+substInfo th HoleInfo { goal, ctx } = HoleInfo
+  { goal = subst th goal
+  , ctx = subst th <$> ctx
+  }
 
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read)

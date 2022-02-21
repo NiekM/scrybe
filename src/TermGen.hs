@@ -8,7 +8,7 @@ import Data.Coerce
 import Control.Monad.RWS
 
 data GenState = GenState
-  { ctxs :: Map Hole HoleCtx
+  { ctxs :: Map Hole HoleInfo
   , freshHole :: Hole
   , freshFree :: Free
   , freshVar :: Int
@@ -35,7 +35,7 @@ instance Monad m => MonadFresh Var (GenT m) where
   fresh = GenT . state $ \g@GenState { freshVar } ->
     (nVar freshVar, g { freshVar = 1 + freshVar })
 
-instance Monad m => MonadState (Map Hole HoleCtx) (GenT m) where
+instance Monad m => MonadState (Map Hole HoleInfo) (GenT m) where
   state f = GenT . state $ \g@GenState { ctxs } ->
     let (x, s) = f ctxs in (x, g { ctxs = s })
 
