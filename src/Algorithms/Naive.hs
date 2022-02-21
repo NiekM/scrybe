@@ -41,8 +41,8 @@ expand e t = (e, t) : case t of
   Arr t1 t2 -> expand (App e (Hole t1)) t2
   _ -> []
 
-fromSketch :: Dec -> GenT Maybe (Term Hole)
-fromSketch dec = do
+fromDec :: Dec -> GenT Maybe (Term Hole)
+fromDec dec = do
   (expr, _, _, ctx) <- check dec
   put ctx
   return expr
@@ -88,4 +88,30 @@ step expr = do
   let hf = fst <$> sk
   let new = Map.fromList . holes $ sk
   put $ (subst th *** fmap (subst th)) <$> (ctx' <> fmap (,local) new)
+  return $ subst (Map.singleton i hf) expr
+
+stepEta :: Term Hole -> GenT [] (Term Hole)
+stepEta expr = do
+  ctx <- get
+  -- Select the first hole
+  ((i, (goal, local)), _) <- mfold $ Map.minViewWithKey ctx
+  -- Remove selected hole
+  modify $ Map.delete i
+  env <- ask
+  let options = Map.mapKeys Var (vars env <> local)
+             <> Map.mapKeys Ctr (ctrs env)
+  -- Pick an expression from the environment
+  (name, t) <- mfold . Map.assocs $ options
+  -- Renumber its type to avoid conflicts
+  u <- renumber t
+  let (args, res) = splitArgs u
+  -- Try to unify with the goal type
+  th <- unify res goal
+  -- Generate new holes
+  hs <- for args \arg -> do
+    h <- fresh @Hole
+    modify $ Map.insert h (arg, local)
+    return $ Hole h
+  hf <- etaExpand (apps $ name :| hs)
+  modify $ fmap (subst th *** fmap (subst th))
   return $ subst (Map.singleton i hf) expr

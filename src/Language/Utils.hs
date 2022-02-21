@@ -47,7 +47,7 @@ extract = fmap fst &&& Map.fromList . holes
 nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
 
--- Eta expand all holes in a sketch
+-- | Eta expand all holes in a sketch.
 etaExpand :: (MonadFresh Var m, MonadState (Map Hole HoleCtx) m) =>
   Term Hole -> m (Term Hole)
 etaExpand = fmap join . traverse \i -> do

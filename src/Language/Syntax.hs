@@ -100,6 +100,12 @@ data Module = Module
   , vars :: Map Var (Type Free)
   } deriving (Eq, Ord, Show)
 
+instance Semigroup Module where
+  Module a b <> Module c d = Module (a <> c) (b <> d)
+
+instance Monoid Module where
+  mempty = Module mempty mempty
+
 -- Instances {{{
 
 deriving instance Eq a => Eq (Expr l a)
@@ -172,7 +178,8 @@ instance Pretty a => Pretty (Expr l a) where
 -- }}}
 
 -- QuickCheck {{{
--- TODO: make sure that these are good arbitrary instances
+-- TODO: replace these instances with more sensible ones, probably defined
+-- using a naive synthesizer
 
 sizedTyp :: Int -> Gen (Type Free)
 sizedTyp 0 = Var <$> arbitrary

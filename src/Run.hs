@@ -22,6 +22,18 @@ mapSketch2 = Dec
   , def = parseUnsafe parser "\\f. foldr { } { }"
   }
 
+composeSketch :: Dec
+composeSketch = Dec
+  { sig = parseUnsafe parser "(b -> c) -> (a -> b) -> a -> c"
+  , def = parseUnsafe parser "{ }"
+  }
+
+flipSketch :: Dec
+flipSketch = Dec
+  { sig = parseUnsafe parser "(a -> b -> c) -> b -> a -> c"
+  , def = parseUnsafe parser "{ }"
+  }
+
 runSyn :: Module -> Dec -> RIO Application ()
 runSyn env dec = do
   logInfo "Sketch:"
@@ -30,7 +42,7 @@ runSyn env dec = do
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  case runGenT (fromSketch dec) env emptyGenState of
+  case runGenT (fromDec dec) env emptyGenState of
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
       let syn = levels $ evalGenT (genTree step x) env g
@@ -45,7 +57,7 @@ eta env dec = do
   logInfo ""
   logInfo . display . indent 2 $ pretty dec
   logInfo ""
-  case runGenT (fromSketch dec >>= etaExpand) env emptyGenState of
+  case runGenT (fromDec dec >>= etaExpand) env emptyGenState of
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
       logInfo "Eta expanded:"
@@ -56,14 +68,19 @@ eta env dec = do
         logInfo . display . indent 2 $ pretty (Hole i) <+> "::" <+> pretty t
         forM_ (Map.assocs ctx) \(v, u) ->
           logInfo . display . indent 4 $ pretty v <+> "::" <+> pretty u
+      let syn = levels $ evalGenT (genTree stepEta x) env g
+      let xss = take 4 . zip [0 :: Int ..] $ syn
+      forM_ xss \(i, xs) -> do
+        logInfo $ "Step: " <> fromString (show i)
+        forM_ xs (logInfo . display . indent 2 . pretty)
 
 run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  runSyn prelude mapSketch
-  runSyn prelude mapSketch2
-  eta prelude mapSketch
-  eta prelude mapSketch2
+  runSyn mapPrelude mapSketch
+  runSyn mapPrelude mapSketch2
+  eta mempty composeSketch
+  eta mempty flipSketch
   logInfo ""
   logInfo "Finished!"
