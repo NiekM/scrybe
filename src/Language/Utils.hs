@@ -19,6 +19,9 @@ unArrs = \case
   Arr t u -> t `cons` unArrs u
   t -> pure t
 
+splitArgs :: Expr l a -> ([Expr l a], Expr l a)
+splitArgs = unsnoc . unArrs
+
 -- | Return all holes in an expression.
 holes :: Expr l a -> [a]
 holes = toList
@@ -38,34 +41,29 @@ renumber t = do
   xs <- traverse (\x -> (x,) . return <$> fresh) (nubOrd $ toList t)
   return $ subst (Map.fromList xs) t
 
--- -- | Replace all holes with numbers and return a mapping from numbers to the
--- -- initial hole values.
--- extract :: (Next k, Traversable t, Ord k) => k -> t a -> (t k, Map k a)
--- extract n t = fmap fst &&& Map.fromList . toList $
---   flip evalFresh n $ number t
+-- | Extract extra information in an expression into a map.
+extract :: Ord a => Expr l (a, b) -> (Expr l a, Map a b)
+extract = fmap fst &&& Map.fromList . holes
 
 nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
 
--- Eta-expand a hole.
-eta :: MonadFresh Int m => Hole -> Type Free -> m (Term Hole, HoleCtx)
-eta i ty = do
-  let (ts, u) = unsnoc (unArrs ty)
-  ys <- fmap (first nVar) <$> number ts
-  return (lams (fst <$> ys) (Hole i), (u, Map.fromList ys))
-
--- -- TODO: use MonadFresh here and reintroduce eta-expansion synthesis
--- -- Eta-expand all holes in an expression.
--- -- TODO: eta-expand over sketches
--- etaAll :: Term Hole -> State (Int, Map Hole HoleCtx) (Term Hole)
--- etaAll = fmap join . traverse \i -> do
---   (n, ctxs) <- get
---   case Map.lookup i ctxs of
---     Nothing -> return $ Hole i
---     Just (t, ctx) -> do
---       let ((e, (u, ctx')), n') = runFresh (eta i t) n
---       put (n', Map.insert i (u, ctx' <> ctx) ctxs)
---       return e
+-- Eta expand all holes in a sketch
+etaExpand :: (MonadFresh Var m, MonadState (Map Hole HoleCtx) m) =>
+  Sketch -> m Sketch
+etaExpand = fmap join . traverse \i -> do
+  ctxs <- get
+  case Map.lookup i ctxs of
+    Nothing -> return $ Hole i
+    Just (t, ctx) -> do
+      -- Split the type in the arguments and the result type
+      let (ts, u) = splitArgs t
+      -- Couple each argument with a fresh name
+      ys <- number ts
+      -- Update the hole context
+      put $ Map.insert i (u, ctx <> Map.fromList ys) ctxs
+      -- Eta expand the hole
+      return $ lams (fst <$> ys) (Hole i)
 
 -- | All subexpressions, including the expression itself.
 dissect :: Expr l a -> [Expr l a]

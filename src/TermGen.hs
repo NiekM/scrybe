@@ -30,9 +30,9 @@ instance Monad m => MonadFresh Free (GenT m) where
   fresh = GenT . state $ \g@GenState { freshFree } ->
     (freshFree, g { freshFree = next freshFree })
 
-instance Monad m => MonadFresh Int (GenT m) where
+instance Monad m => MonadFresh Var (GenT m) where
   fresh = GenT . state $ \g@GenState { freshInt } ->
-    (freshInt, g { freshInt = next freshInt })
+    (nVar freshInt, g { freshInt = next freshInt })
 
 instance Monad m => MonadState (Map Hole HoleCtx) (GenT m) where
   state f = GenT . state $ \g@GenState { ctxs } ->
