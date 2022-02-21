@@ -33,15 +33,12 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th1 th0
 
-freshHole :: MonadFresh s m => m (Expr l s)
-freshHole = Hole <$> fresh
-
 infer :: (MonadFresh Free m, MonadFail m) => Module -> Term Hole ->
   m (Type Free, Unify Free, Map Hole HoleCtx)
 infer Module { ctrs, vars } = go Map.empty where
   go env = \case
     Hole i -> do
-      t <- freshHole
+      t <- Hole <$> fresh
       return (t, Map.empty, Map.singleton i (t, env))
     Ctr c -> do
       t <- failMaybe $ Map.lookup c ctrs
@@ -61,7 +58,7 @@ infer Module { ctrs, vars } = go Map.empty where
       let ctx3 = (subst th4 *** fmap (subst th4)) <$> ctx1 <> ctx2
       return (subst th4 t, th4, ctx3)
     Lam x e -> do
-      t <- freshHole
+      t <- Hole <$> fresh
       (u, th, ctx) <- go (Map.insert x t env) e
       return (subst th t `Arr` u, th, ctx)
     Case xs -> undefined

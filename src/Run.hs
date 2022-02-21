@@ -30,14 +30,14 @@ runSyn env dec = do
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  case runGenT (fromSketch dec) env (0, 0) of
+  case runGenT (fromSketch dec) env emptyGenState of
     Nothing -> error "OH NO!"
-    Just (x, (h, f)) -> do
-      let syn = levels $ evalGenT (genTree step x) env (h, f)
+    Just (x, g) -> do
+      let syn = levels $ evalGenT (genTree step x) env g
       let xss = takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)
-        forM_ xs (logInfo . display . indent 2 . pretty . expr)
+        forM_ xs (logInfo . display . indent 2 . pretty)
 
 run :: RIO Application ()
 run = do

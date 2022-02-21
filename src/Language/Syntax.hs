@@ -86,6 +86,8 @@ type Type = Expr 'Type
 -- TODO: Have Mono and Poly types, where Poly types are isomorphic to
 -- ([Free], Expr 'Type Free)
 
+type Sketch = Term Hole
+
 type HoleCtx = (Type Free, Map Var (Type Free))
 
 newtype Unit = Unit ()

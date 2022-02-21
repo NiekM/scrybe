@@ -5,6 +5,7 @@ import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import TermGen
+import Control.Monad.State
 
 {-
 
@@ -43,7 +44,8 @@ expand e t = (e, t) : case t of
 fromSketch :: Dec -> GenT Maybe Sketch
 fromSketch dec = do
   (expr, _, _, ctx) <- check dec
-  return Sketch { expr, ctx }
+  put ctx
+  return expr
 
 getCtrs :: Term Hole -> [Ctr]
 getCtrs = \case
@@ -60,35 +62,30 @@ getVars = \case
   _ -> []
 
 step :: Sketch -> GenT [] Sketch
-step Sketch
-  { expr
-  , ctx
-  }
-  = do
-    -- Select the first hole
-    -- TODO: have some way to better (interactively) choose which goal gets
-    -- chosen during synthesis.
-    ((i, (goal, local)), ctx') <- mfold $ Map.minViewWithKey ctx
-    -- TODO: have a better representation of the environment so no duplicate
-    -- unification is attempted
-    env <- ask
-    let usedVars = Set.fromList . getVars $ expr
-    let usedCtrs = Set.fromList . getCtrs $ expr
-    let options = Map.mapKeys Var (Map.withoutKeys (vars env) usedVars <> local)
-               <> Map.mapKeys Ctr (Map.withoutKeys (ctrs env) usedCtrs)
-    -- Pick an expression from the environment
-    (name, t) <- mfold . Map.assocs $ options
-    -- Renumber its type to avoid conflicts
-    u <- renumber t
-    -- Compute all ways to add holes to the expression
-    (ex, typ) <- mfold $ expand name u
-    -- Try to unify with the goal type
-    th <- unify typ goal
-    -- Replace typed holes with numbers
-    sk <- number ex
-    let hf = fst <$> sk
-    let new = Map.fromList . holes $ sk
-    return Sketch
-      { expr = subst (Map.singleton i hf) expr
-      , ctx = (subst th *** fmap (subst th)) <$> (ctx' <> fmap (,local) new)
-      } -- TODO: have some nicer way to do substitution for holectxs
+step expr = do
+  ctx <- get
+  -- Select the first hole
+  -- TODO: have some way to better (interactively) choose which goal gets
+  -- chosen during synthesis.
+  ((i, (goal, local)), ctx') <- mfold $ Map.minViewWithKey ctx
+  -- TODO: have a better representation of the environment so no duplicate
+  -- unification is attempted
+  env <- ask
+  let usedVars = Set.fromList . getVars $ expr
+  let usedCtrs = Set.fromList . getCtrs $ expr
+  let options = Map.mapKeys Var (Map.withoutKeys (vars env) usedVars <> local)
+             <> Map.mapKeys Ctr (Map.withoutKeys (ctrs env) usedCtrs)
+  -- Pick an expression from the environment
+  (name, t) <- mfold . Map.assocs $ options
+  -- Renumber its type to avoid conflicts
+  u <- renumber t
+  -- Compute all ways to add holes to the expression
+  (ex, typ) <- mfold $ expand name u
+  -- Try to unify with the goal type
+  th <- unify typ goal
+  -- Replace typed holes with numbers
+  sk <- number ex
+  let hf = fst <$> sk
+  let new = Map.fromList . holes $ sk
+  put $ (subst th *** fmap (subst th)) <$> (ctx' <> fmap (,local) new)
+  return $ subst (Map.singleton i hf) expr

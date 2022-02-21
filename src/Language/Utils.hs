@@ -38,11 +38,11 @@ renumber t = do
   xs <- traverse (\x -> (x,) . return <$> fresh) (nubOrd $ toList t)
   return $ subst (Map.fromList xs) t
 
--- | Replace all holes with numbers and return a mapping from numbers to the
--- initial hole values.
-extract :: (Next k, Traversable t, Ord k) => k -> t a -> (t k, Map k a)
-extract n t = fmap fst &&& Map.fromList . toList $
-  flip evalFresh n $ number t
+-- -- | Replace all holes with numbers and return a mapping from numbers to the
+-- -- initial hole values.
+-- extract :: (Next k, Traversable t, Ord k) => k -> t a -> (t k, Map k a)
+-- extract n t = fmap fst &&& Map.fromList . toList $
+--   flip evalFresh n $ number t
 
 nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
@@ -54,18 +54,18 @@ eta i ty = do
   ys <- fmap (first nVar) <$> number ts
   return (lams (fst <$> ys) (Hole i), (u, Map.fromList ys))
 
--- TODO: use MonadFresh here and reintroduce eta-expansion synthesis
--- Eta-expand all holes in an expression.
--- TODO: eta-expand over sketches
-etaAll :: Term Hole -> State (Int, Map Hole HoleCtx) (Term Hole)
-etaAll = fmap join . traverse \i -> do
-  (n, ctxs) <- get
-  case Map.lookup i ctxs of
-    Nothing -> return $ Hole i
-    Just (t, ctx) -> do
-      let ((e, (u, ctx')), n') = runFresh (eta i t) n
-      put (n', Map.insert i (u, ctx' <> ctx) ctxs)
-      return e
+-- -- TODO: use MonadFresh here and reintroduce eta-expansion synthesis
+-- -- Eta-expand all holes in an expression.
+-- -- TODO: eta-expand over sketches
+-- etaAll :: Term Hole -> State (Int, Map Hole HoleCtx) (Term Hole)
+-- etaAll = fmap join . traverse \i -> do
+--   (n, ctxs) <- get
+--   case Map.lookup i ctxs of
+--     Nothing -> return $ Hole i
+--     Just (t, ctx) -> do
+--       let ((e, (u, ctx')), n') = runFresh (eta i t) n
+--       put (n', Map.insert i (u, ctx' <> ctx) ctxs)
+--       return e
 
 -- | All subexpressions, including the expression itself.
 dissect :: Expr l a -> [Expr l a]
