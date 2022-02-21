@@ -4,7 +4,7 @@ module Language.Syntax where
 
 import Import hiding (reverse)
 import Fresh
-import Test.QuickCheck
+import Test.QuickCheck (Arbitrary(..), Gen, choose, sized, oneof, elements)
 import Data.Foldable
 import RIO.List (intersperse)
 import RIO.NonEmpty (cons, reverse)
@@ -189,10 +189,10 @@ instance Arbitrary (Expr 'Type Free) where
     sizedTyp m
 
 instance Arbitrary Var where
-  arbitrary = fromString . return <$> chooseEnum ('a', 'z')
+  arbitrary = fromString . return <$> elements ['a'..'z']
 
 instance Arbitrary Ctr where
-  arbitrary = fromString . return <$> chooseEnum ('A', 'Z')
+  arbitrary = fromString . return <$> elements ['A'..'Z']
 
 instance Arbitrary Hole where
   arbitrary = fromIntegral <$> sized \n -> choose (0, n)
