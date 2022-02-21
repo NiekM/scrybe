@@ -2,7 +2,6 @@
 module TermGen where
 
 import Import hiding (local)
-import Fresh
 import Language
 import Data.Tree
 import Data.Coerce
@@ -12,27 +11,29 @@ data GenState = GenState
   { ctxs :: Map Hole HoleCtx
   , freshHole :: Hole
   , freshFree :: Free
-  , freshInt :: Int
+  , freshVar :: Int
   }
 
 emptyGenState :: GenState
 emptyGenState = GenState mempty 0 0 0
 
+-- TODO: The Module should probably be included in the GenState, since it might
+-- be updated, such as reducing occurences.
 newtype GenT m a = GenT (RWST Module () GenState m a)
   deriving newtype (Functor, Applicative, Monad, Alternative)
   deriving newtype (MonadFail, MonadPlus, MonadReader Module)
 
 instance Monad m => MonadFresh Hole (GenT m) where
   fresh = GenT . state $ \g@GenState { freshHole } ->
-    (freshHole, g { freshHole = next freshHole })
+    (freshHole, g { freshHole = 1 + freshHole })
 
 instance Monad m => MonadFresh Free (GenT m) where
   fresh = GenT . state $ \g@GenState { freshFree } ->
-    (freshFree, g { freshFree = next freshFree })
+    (freshFree, g { freshFree = 1 + freshFree })
 
 instance Monad m => MonadFresh Var (GenT m) where
-  fresh = GenT . state $ \g@GenState { freshInt } ->
-    (nVar freshInt, g { freshInt = next freshInt })
+  fresh = GenT . state $ \g@GenState { freshVar } ->
+    (nVar freshVar, g { freshVar = 1 + freshVar })
 
 instance Monad m => MonadState (Map Hole HoleCtx) (GenT m) where
   state f = GenT . state $ \g@GenState { ctxs } ->

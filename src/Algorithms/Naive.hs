@@ -41,7 +41,7 @@ expand e t = (e, t) : case t of
   Arr t1 t2 -> expand (App e (Hole t1)) t2
   _ -> []
 
-fromSketch :: Dec -> GenT Maybe Sketch
+fromSketch :: Dec -> GenT Maybe (Term Hole)
 fromSketch dec = do
   (expr, _, _, ctx) <- check dec
   put ctx
@@ -61,7 +61,7 @@ getVars = \case
   Lam _ x -> getVars x
   _ -> []
 
-step :: Sketch -> GenT [] Sketch
+step :: Term Hole -> GenT [] (Term Hole)
 step expr = do
   ctx <- get
   -- Select the first hole

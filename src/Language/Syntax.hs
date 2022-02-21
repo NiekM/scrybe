@@ -3,7 +3,6 @@
 module Language.Syntax where
 
 import Import hiding (reverse)
-import Fresh
 import Test.QuickCheck (Arbitrary(..), Gen, choose, sized, oneof, elements)
 import Data.Foldable
 import RIO.List (intersperse)
@@ -12,11 +11,11 @@ import Prettyprinter
 
 newtype Hole = MkHole Int
   deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (Num, Next, Pretty)
+  deriving newtype (Num, Pretty)
 
 newtype Free = MkFree Int
   deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (Num, Next, Pretty)
+  deriving newtype (Num, Pretty)
 
 newtype Var = MkVar Text
   deriving stock (Eq, Ord, Read, Show)
@@ -85,8 +84,6 @@ type Type = Expr 'Type
 
 -- TODO: Have Mono and Poly types, where Poly types are isomorphic to
 -- ([Free], Expr 'Type Free)
-
-type Sketch = Term Hole
 
 type HoleCtx = (Type Free, Map Var (Type Free))
 

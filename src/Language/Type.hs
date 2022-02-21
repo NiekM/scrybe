@@ -2,7 +2,6 @@
 module Language.Type where
 
 import Import
-import Fresh
 import Language.Syntax
 import Language.Utils
 import qualified RIO.Map as Map

@@ -27,7 +27,6 @@ library
   exposed-modules:
       Algorithms.Naive
       Algorithms.TypeIndexed
-      Fresh
       Import
       Language
       Language.Eval

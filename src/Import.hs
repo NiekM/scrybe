@@ -1,9 +1,11 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Import
   ( module RIO
   , module RIO.Text
   , Pretty(..)
+  , MonadFresh(..)
   , subst
   , compose
   , unsnoc
@@ -28,6 +30,9 @@ instance (Pretty a, Pretty b) => Pretty (Either a b) where
 
 instance Display (Doc ann) where
   textDisplay = fromString . show
+
+class Monad m => MonadFresh s m where
+  fresh :: m s
 
 subst :: (Monad m, Ord a) => Map a (m a) -> m a -> m a
 subst th e = e >>= \i -> fromMaybe (return i) (Map.lookup i th)

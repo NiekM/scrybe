@@ -2,7 +2,6 @@
 module Language.Utils where
 
 import Import hiding (reverse)
-import Fresh
 import Language.Syntax
 import Data.Foldable
 import qualified RIO.Map as Map
@@ -50,7 +49,7 @@ nVar = MkVar . ("a" <>) . fromString . show
 
 -- Eta expand all holes in a sketch
 etaExpand :: (MonadFresh Var m, MonadState (Map Hole HoleCtx) m) =>
-  Sketch -> m Sketch
+  Term Hole -> m (Term Hole)
 etaExpand = fmap join . traverse \i -> do
   ctxs <- get
   case Map.lookup i ctxs of
