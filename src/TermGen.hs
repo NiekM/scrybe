@@ -8,7 +8,7 @@ import Data.Coerce
 import Control.Monad.RWS
 
 data GenState = GenState
-  { _holeInfo :: Map Hole HoleCtx
+  { _holeCtxs :: Map Hole HoleCtx
   , _module   :: Module
   , freshHole :: Hole
   , freshFree :: Free
@@ -16,7 +16,7 @@ data GenState = GenState
   }
 
 instance HasHoleCtxs GenState where
-  holeInfo = lens _holeInfo \x y -> x { _holeInfo = y }
+  holeCtxs = lens _holeCtxs \x y -> x { _holeCtxs = y }
 
 instance HasModule GenState where
   env = lens _module \x y -> x { _module = y }

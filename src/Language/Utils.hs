@@ -51,7 +51,7 @@ nVar = MkVar . ("a" <>) . fromString . show
 etaExpand :: (MonadFresh Var m, MonadState s m, HasHoleCtxs s) =>
   Term Hole -> m (Term Hole)
 etaExpand = fmap join . traverse \i -> do
-  ctxs <- use holeInfo
+  ctxs <- use holeCtxs
   case Map.lookup i ctxs of
     Nothing -> return $ Hole i
     Just HoleCtx { goal, local } -> do
@@ -60,7 +60,7 @@ etaExpand = fmap join . traverse \i -> do
       -- Couple each argument with a fresh name
       ys <- number ts
       -- Update the hole context
-      modifying holeInfo $ Map.insert i (HoleCtx u (local <> Map.fromList ys))
+      modifying holeCtxs $ Map.insert i (HoleCtx u (local <> Map.fromList ys))
       -- Eta expand the hole
       return $ lams (fst <$> ys) (Hole i)
 

@@ -101,7 +101,7 @@ data HoleCtx = HoleCtx
   } deriving (Eq, Ord, Show)
 
 class HasHoleCtxs a where
-  holeInfo :: Lens' a (Map Hole HoleCtx)
+  holeCtxs :: Lens' a (Map Hole HoleCtx)
 
 substInfo :: Map Free (Type Free) -> HoleCtx -> HoleCtx
 substInfo th HoleCtx { goal, local } = HoleCtx
