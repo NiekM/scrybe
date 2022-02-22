@@ -19,6 +19,8 @@ emptyGenState = GenState mempty 0 0 0
 
 -- TODO: The Module should probably be included in the GenState, since it might
 -- be updated, such as reducing occurences.
+-- TODO: Add a readonly Options datatype that can be used to choose between
+-- different kinds of synthesis.
 newtype GenT m a = GenT (RWST Module () GenState m a)
   deriving newtype (Functor, Applicative, Monad, Alternative)
   deriving newtype (MonadFail, MonadPlus, MonadReader Module)

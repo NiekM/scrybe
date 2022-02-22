@@ -75,12 +75,15 @@ data Expr (l :: Level) a where
   -- TODO: make Case expressions more similar to Haskell case expressions and
   -- use real patterns
   Case :: HasCase l => [Branch (Expr l a)] -> Expr l a
+  -- TODO: pattern matching using unification
 
 pattern Arr :: () => (HasVar l, HasApp l) => Expr l a -> Expr l a -> Expr l a
 pattern Arr t u = App (App (Var (MkVar "->")) t) u
 
-type Term = Expr 'Term
 type Type = Expr 'Type
+type Term = Expr 'Term
+type Pattern = Expr 'Pattern
+type Value = Expr 'Value
 
 -- TODO: Have Mono and Poly types, where Poly types are isomorphic to
 -- ([Free], Expr 'Type Free)

@@ -5,14 +5,18 @@ import Import
 import Language.Syntax
 import Language.Utils
 import qualified RIO.Map as Map
+import qualified RIO.Set as Set
 
-type Unify a = Map a (Type a)
+type Unify l a = Map a (Expr l a)
 
 -- TODO: Add unit tests to test type unification, inference and checking
 
--- | Unify two types, by checking if their holes can be filled such that
+-- TODO: unify should also work on patterns!
+-- TODO: can types and patterns not have holes other than free variables?
+
+-- | Unify two expressions, by checking if their holes can be filled such that
 -- they are equivalent.
-unify :: (MonadFail m, Ord a) => Type a -> Type a -> m (Unify a)
+unify :: (MonadFail m, Ord a) => Expr l a -> Expr l a -> m (Unify l a)
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
@@ -22,18 +26,18 @@ unify t u = case (t, u) of
   (_, Hole a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
 
-occurs :: Ord a => a -> Type a -> Bool
-occurs a tau = a `notElem` free tau
+occurs :: Ord a => a -> Expr l a -> Bool
+occurs a tau = a `notElem` Set.fromList (holes tau)
 
 unifies :: (MonadFail m, Foldable t, Ord a) =>
-  t (Type a, Type a) -> m (Unify a)
+  t (Expr l a, Expr l a) -> m (Unify l a)
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th1 th0
 
 infer :: (MonadFresh Free m, MonadFail m) => Module -> Term Hole ->
-  m (Type Free, Unify Free, Map Hole HoleInfo)
+  m (Type Free, Unify 'Type Free, Map Hole HoleInfo)
 infer Module { ctrs, vars } = go Map.empty where
   go ctx = \case
     Hole i -> do
@@ -65,7 +69,7 @@ infer Module { ctrs, vars } = go Map.empty where
 -- TODO: maybe this should return a sketch along with a type and unification
 check ::
   (MonadReader Module m, MonadFresh Free m, MonadFresh Hole m, MonadFail m) =>
-  Dec -> m (Term Hole, Type Free, Unify Free, Map Hole HoleInfo)
+  Dec -> m (Term Hole, Type Free, Unify 'Type Free, Map Hole HoleInfo)
 check (Dec t e) = do
   e' <- fmap fst <$> number e
   env <- ask
