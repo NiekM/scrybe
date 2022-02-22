@@ -10,28 +10,20 @@ import Prettyprinter
 import Data.Tree
 
 mapSketch :: Dec
-mapSketch = Dec
-  { sig = parseUnsafe parser "(a -> b) -> List a -> List b"
-  , def = parseUnsafe parser "\\f. { }"
-  }
+mapSketch = parseUnsafe parser
+  "\\f. { } :: (a -> b) -> List a -> List b"
 
 mapSketch2 :: Dec
-mapSketch2 = Dec
-  { sig = parseUnsafe parser "(a -> b) -> List a -> List b"
-  , def = parseUnsafe parser "\\f. foldr { } { }"
-  }
+mapSketch2 = parseUnsafe parser
+  "\\f. foldr { } { } :: (a -> b) -> List a -> List b"
 
 composeSketch :: Dec
-composeSketch = Dec
-  { sig = parseUnsafe parser "(b -> c) -> (a -> b) -> a -> c"
-  , def = parseUnsafe parser "{ }"
-  }
+composeSketch = parseUnsafe parser
+  "{ } :: (b -> c) -> (a -> b) -> a -> c"
 
 flipSketch :: Dec
-flipSketch = Dec
-  { sig = parseUnsafe parser "(a -> b -> c) -> b -> a -> c"
-  , def = parseUnsafe parser "{ }"
-  }
+flipSketch = parseUnsafe parser
+  "{ } :: (a -> b -> c) -> b -> a -> c"
 
 runSyn :: Syn -> Module -> Dec -> RIO Application ()
 runSyn Syn { init, step } m dec = do

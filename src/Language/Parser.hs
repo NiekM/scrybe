@@ -87,3 +87,6 @@ instance Parse a => Parse (Term a) where
 
 instance Parse a => Parse (Type a) where
   parser = arrs <$> interleaved (parens parser <|> parseApps) (symbol "->")
+
+instance Parse Dec where
+  parser = flip Dec <$> parser <* symbol "::" <*> parser
