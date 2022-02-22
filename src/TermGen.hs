@@ -8,11 +8,14 @@ import Data.Coerce
 import Control.Monad.RWS
 
 data GenState = GenState
-  { ctxs :: Map Hole HoleInfo
+  { _holeInfo :: Map Hole HoleInfo
   , freshHole :: Hole
   , freshFree :: Free
   , freshVar :: Int
   }
+
+instance HasHoleInfo GenState where
+  holeInfo = lens _holeInfo \x y -> x { _holeInfo = y }
 
 emptyGenState :: GenState
 emptyGenState = GenState mempty 0 0 0
@@ -23,7 +26,8 @@ emptyGenState = GenState mempty 0 0 0
 -- different kinds of synthesis.
 newtype GenT m a = GenT (RWST Module () GenState m a)
   deriving newtype (Functor, Applicative, Monad, Alternative)
-  deriving newtype (MonadFail, MonadPlus, MonadReader Module)
+  deriving newtype (MonadReader Module, MonadState GenState)
+  deriving newtype (MonadFail, MonadPlus)
 
 instance Monad m => MonadFresh Hole (GenT m) where
   fresh = GenT . state $ \g@GenState { freshHole } ->
@@ -36,10 +40,6 @@ instance Monad m => MonadFresh Free (GenT m) where
 instance Monad m => MonadFresh Var (GenT m) where
   fresh = GenT . state $ \g@GenState { freshVar } ->
     (nVar freshVar, g { freshVar = 1 + freshVar })
-
-instance Monad m => MonadState (Map Hole HoleInfo) (GenT m) where
-  state f = GenT . state $ \g@GenState { ctxs } ->
-    let (x, s) = f ctxs in (x, g { ctxs = s })
 
 runGenT :: Monad m => GenT m a -> Module -> GenState -> m (a, GenState)
 runGenT (GenT m) env s = do

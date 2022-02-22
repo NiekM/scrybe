@@ -44,7 +44,7 @@ expand e t = (e, t) : case t of
 fromDec :: Dec -> GenT Maybe (Term Hole)
 fromDec dec = do
   (expr, _, _, ctx) <- check dec
-  put ctx
+  assign holeInfo ctx
   return expr
 
 getCtrs :: Term Hole -> [Ctr]
@@ -63,7 +63,7 @@ getVars = \case
 
 step :: Term Hole -> GenT [] (Term Hole)
 step expr = do
-  ctxs <- get
+  ctxs <- use holeInfo
   -- Select the first hole
   -- TODO: have some way to better (interactively) choose which goal gets
   -- chosen during synthesis.
@@ -87,16 +87,16 @@ step expr = do
   sk <- number ex
   let hf = fst <$> sk
   let new = Map.fromList . holes $ sk
-  put $ substInfo th <$> (ctxs' <> fmap (`HoleInfo` ctx) new)
+  assign holeInfo $ substInfo th <$> (ctxs' <> fmap (`HoleInfo` ctx) new)
   return $ subst (Map.singleton i hf) expr
 
 stepEta :: Term Hole -> GenT [] (Term Hole)
 stepEta expr = do
-  ctxs <- get
+  ctxs <- use holeInfo
   -- Select the first hole
   ((i, HoleInfo { goal, ctx }), _) <- mfold $ Map.minViewWithKey ctxs
   -- Remove selected hole
-  modify $ Map.delete i
+  modifying holeInfo $ Map.delete i
   env <- ask
   let options = Map.mapKeys Var (vars env <> ctx)
              <> Map.mapKeys Ctr (ctrs env)
@@ -110,8 +110,8 @@ stepEta expr = do
   -- Generate new holes
   hs <- for args \arg -> do
     h <- fresh @Hole
-    modify $ Map.insert h HoleInfo { goal = arg, ctx }
+    modifying holeInfo $ Map.insert h HoleInfo { goal = arg, ctx }
     return $ Hole h
   hf <- etaExpand (apps $ name :| hs)
-  modify . fmap $ substInfo th
+  modifying holeInfo $ fmap (substInfo th)
   return $ subst (Map.singleton i hf) expr

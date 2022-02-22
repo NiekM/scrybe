@@ -63,7 +63,7 @@ eta env dec = do
       logInfo "Eta expanded:"
       logInfo ""
       logInfo . display . indent 2 . pretty $ x
-      forM_ (Map.assocs . ctxs $ g) \(i, HoleInfo t ctx) -> do
+      forM_ (Map.assocs . view holeInfo $ g) \(i, HoleInfo t ctx) -> do
         logInfo ""
         logInfo . display . indent 2 $ pretty (Hole i) <+> "::" <+> pretty t
         forM_ (Map.assocs ctx) \(v, u) ->

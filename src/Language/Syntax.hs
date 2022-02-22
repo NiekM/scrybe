@@ -93,6 +93,9 @@ data HoleInfo = HoleInfo
   , ctx  :: Map Var (Type Free)
   } deriving (Eq, Ord, Show)
 
+class HasHoleInfo a where
+  holeInfo :: Lens' a (Map Hole HoleInfo)
+
 substInfo :: Map Free (Type Free) -> HoleInfo -> HoleInfo
 substInfo th HoleInfo { goal, ctx } = HoleInfo
   { goal = subst th goal
