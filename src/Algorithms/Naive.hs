@@ -1,6 +1,6 @@
 module Algorithms.Naive where
 
-import Import hiding (local)
+import Import
 import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
@@ -54,12 +54,14 @@ getVars = \case
   Lam _ x -> getVars x
   _ -> []
 
-holeFillings :: Ord a => MonadPlus m => Map Var (Type Free) -> Env ->
+holeFillings :: Ord a => MonadPlus m => Map Var (Type Free) -> Module ->
   m (Term a, Type Free)
 holeFillings local Module { ctrs, vars } = mfold . Map.assocs $
   Map.mapKeys Var (vars <> local) <> Map.mapKeys Ctr ctrs
 
 data Syn = Syn
+  -- TODO: does init make sense? Maybe we should just have a module as input
+  -- and compute the GenState
   { init :: Dec -> GenT Maybe (Term Hole)
   , step :: Term Hole -> GenT [] (Term Hole)
   }
@@ -81,11 +83,11 @@ naive = Syn
     -- Select the first hole
     -- TODO: have some way to better (interactively) choose which goal gets
     -- chosen during synthesis.
-    ((i, HoleInfo { goal, ctx }), ctxs') <- mfold $ Map.minViewWithKey ctxs
+    ((i, HoleCtx { goal, local }), ctxs') <- mfold $ Map.minViewWithKey ctxs
     -- TODO: have a better representation of the environment so no duplicate
     -- unification is attempted
     -- Pick an expression from the environment
-    (name, t) <- use env >>= holeFillings ctx
+    (name, t) <- use env >>= holeFillings local
     -- Renumber its type to avoid conflicts
     u <- renumber t
     -- Compute all ways to add holes to the expression
@@ -96,7 +98,7 @@ naive = Syn
     sk <- number ex
     let hf = fst <$> sk
     let new = Map.fromList . holes $ sk
-    assign holeInfo $ substInfo th <$> (ctxs' <> fmap (`HoleInfo` ctx) new)
+    assign holeInfo $ substInfo th <$> (ctxs' <> fmap (`HoleCtx` local) new)
     modifying env $ case name of
       Ctr x -> \m -> m { ctrs = Map.delete x (ctrs m) }
       Var x -> \m -> m { vars = Map.delete x (vars m) }
@@ -115,11 +117,11 @@ eta = Syn
   , step = \expr -> do
     ctxs <- use holeInfo
     -- Select the first hole
-    ((i, HoleInfo { goal, ctx }), _) <- mfold $ Map.minViewWithKey ctxs
+    ((i, HoleCtx { goal, local }), _) <- mfold $ Map.minViewWithKey ctxs
     -- Remove selected hole
     modifying holeInfo $ Map.delete i
     -- Pick an expression from the environment
-    (name, t) <- use env >>= holeFillings ctx
+    (name, t) <- use env >>= holeFillings local
     -- Renumber its type to avoid conflicts
     u <- renumber t
     let (args, res) = splitArgs u
@@ -127,8 +129,8 @@ eta = Syn
     th <- unify res goal
     -- Generate new holes
     hs <- for args \arg -> do
-      h <- fresh @Hole
-      modifying holeInfo $ Map.insert h HoleInfo { goal = arg, ctx }
+      h <- fresh
+      modifying holeInfo $ Map.insert h HoleCtx { goal = arg, local }
       return $ Hole h
     hf <- etaExpand (apps $ name :| hs)
     -- hf <- etaExpand _

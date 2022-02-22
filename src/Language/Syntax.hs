@@ -95,18 +95,18 @@ data Dec = Dec
   , def :: Term Unit
   } deriving (Eq, Ord, Show)
 
-data HoleInfo = HoleInfo
+data HoleCtx = HoleCtx
   { goal :: Type Free
-  , ctx  :: Map Var (Type Free)
+  , local :: Map Var (Type Free)
   } deriving (Eq, Ord, Show)
 
-class HasHoleInfo a where
-  holeInfo :: Lens' a (Map Hole HoleInfo)
+class HasHoleCtxs a where
+  holeInfo :: Lens' a (Map Hole HoleCtx)
 
-substInfo :: Map Free (Type Free) -> HoleInfo -> HoleInfo
-substInfo th HoleInfo { goal, ctx } = HoleInfo
+substInfo :: Map Free (Type Free) -> HoleCtx -> HoleCtx
+substInfo th HoleCtx { goal, local } = HoleCtx
   { goal = subst th goal
-  , ctx = subst th <$> ctx
+  , local = subst th <$> local
   }
 
 data Module = Module
@@ -120,10 +120,11 @@ instance Semigroup Module where
 instance Monoid Module where
   mempty = Module mempty mempty
 
-type Env = Module
+-- TODO: Have a type indexed environment
+-- type Env = Module
 
-class HasEnv a where
-  env :: Lens' a Env
+class HasModule a where
+  env :: Lens' a Module
 
 -- Instances {{{
 

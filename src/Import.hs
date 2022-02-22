@@ -18,7 +18,7 @@ module Import
   , search
   ) where
 
-import RIO
+import RIO hiding (local)
 import RIO.Text (unpack)
 import RIO.List
 import qualified RIO.Map as Map

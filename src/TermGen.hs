@@ -1,27 +1,27 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 module TermGen where
 
-import Import hiding (local)
+import Import
 import Language
 import Data.Tree
 import Data.Coerce
 import Control.Monad.RWS
 
 data GenState = GenState
-  { _holeInfo :: Map Hole HoleInfo
-  , _env      :: Env
+  { _holeInfo :: Map Hole HoleCtx
+  , _module   :: Module
   , freshHole :: Hole
   , freshFree :: Free
   , freshVar  :: Int
   }
 
-instance HasHoleInfo GenState where
+instance HasHoleCtxs GenState where
   holeInfo = lens _holeInfo \x y -> x { _holeInfo = y }
 
-instance HasEnv GenState where
-  env = lens _env \x y -> x { _env = y }
+instance HasModule GenState where
+  env = lens _module \x y -> x { _module = y }
 
-mkGenState :: Env -> GenState
+mkGenState :: Module -> GenState
 mkGenState e = GenState mempty e 0 0 0
 
 -- TODO: The Module should probably be included in the GenState, since it might
