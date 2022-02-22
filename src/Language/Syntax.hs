@@ -87,6 +87,13 @@ type Value = Expr 'Value
 
 -- TODO: Have Mono and Poly types, where Poly types are isomorphic to
 -- ([Free], Expr 'Type Free)
+newtype Unit = Unit ()
+  deriving newtype (Eq, Ord, Show, Read)
+
+data Dec = Dec
+  { sig :: Type Free
+  , def :: Term Unit
+  } deriving (Eq, Ord, Show)
 
 data HoleInfo = HoleInfo
   { goal :: Type Free
@@ -102,14 +109,6 @@ substInfo th HoleInfo { goal, ctx } = HoleInfo
   , ctx = subst th <$> ctx
   }
 
-newtype Unit = Unit ()
-  deriving newtype (Eq, Ord, Show, Read)
-
-data Dec = Dec
-  { sig :: Type Free
-  , def :: Term Unit
-  } deriving (Eq, Ord, Show)
-
 data Module = Module
   { ctrs :: Map Ctr (Type Free)
   , vars :: Map Var (Type Free)
@@ -120,6 +119,11 @@ instance Semigroup Module where
 
 instance Monoid Module where
   mempty = Module mempty mempty
+
+type Env = Module
+
+class HasEnv a where
+  env :: Lens' a Env
 
 -- Instances {{{
 

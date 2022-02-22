@@ -67,13 +67,11 @@ infer Module { ctrs, vars } = go Map.empty where
     Case xs -> undefined
 
 -- TODO: maybe this should return a sketch along with a type and unification
-check ::
-  (MonadReader Module m, MonadFresh Free m, MonadFresh Hole m, MonadFail m) =>
+check :: (MonadFresh Free m, MonadFresh Hole m, MonadFail m) => Module ->
   Dec -> m (Term Hole, Type Free, Unify 'Type Free, Map Hole HoleInfo)
-check (Dec t e) = do
+check m (Dec t e) = do
   e' <- fmap fst <$> number e
-  env <- ask
-  (u, th1, ctx1) <- infer env e'
+  (u, th1, ctx1) <- infer m e'
   th2 <- unify t u
   let th3 = compose th2 th1
   let ctx2 = substInfo th3 <$> ctx1

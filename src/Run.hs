@@ -35,29 +35,29 @@ flipSketch = Dec
   }
 
 runSyn :: Module -> Dec -> RIO Application ()
-runSyn env dec = do
+runSyn m dec = do
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ dec
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  case runGenT (fromDec dec) env emptyGenState of
+  case runGenT (fromDec dec) (mkGenState m) of
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
-      let syn = levels $ evalGenT (genTree step x) env g
+      let syn = levels $ evalGenT (genTree step x) g
       let xss = takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)
         forM_ xs (logInfo . display . indent 2 . pretty)
 
 eta :: Module -> Dec -> RIO Application ()
-eta env dec = do
+eta m dec = do
   logInfo "Input:"
   logInfo ""
   logInfo . display . indent 2 $ pretty dec
   logInfo ""
-  case runGenT (fromDec dec >>= etaExpand) env emptyGenState of
+  case runGenT (fromDec dec >>= etaExpand) (mkGenState m) of
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
       logInfo "Eta expanded:"
@@ -68,7 +68,7 @@ eta env dec = do
         logInfo . display . indent 2 $ pretty (Hole i) <+> "::" <+> pretty t
         forM_ (Map.assocs ctx) \(v, u) ->
           logInfo . display . indent 4 $ pretty v <+> "::" <+> pretty u
-      let syn = levels $ evalGenT (genTree stepEta x) env g
+      let syn = levels $ evalGenT (genTree stepEta x) g
       let xss = take 4 . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)

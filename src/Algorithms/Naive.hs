@@ -43,7 +43,8 @@ expand e t = (e, t) : case t of
 
 fromDec :: Dec -> GenT Maybe (Term Hole)
 fromDec dec = do
-  (expr, _, _, ctx) <- check dec
+  m <- use env
+  (expr, _, _, ctx) <- check m dec
   assign holeInfo ctx
   return expr
 
@@ -70,11 +71,11 @@ step expr = do
   ((i, HoleInfo { goal, ctx }), ctxs') <- mfold $ Map.minViewWithKey ctxs
   -- TODO: have a better representation of the environment so no duplicate
   -- unification is attempted
-  env <- ask
+  m <- use env
   let usedVars = Set.fromList . getVars $ expr
   let usedCtrs = Set.fromList . getCtrs $ expr
-  let options = Map.mapKeys Var (Map.withoutKeys (vars env) usedVars <> ctx)
-             <> Map.mapKeys Ctr (Map.withoutKeys (ctrs env) usedCtrs)
+  let options = Map.mapKeys Var (Map.withoutKeys (vars m) usedVars <> ctx)
+             <> Map.mapKeys Ctr (Map.withoutKeys (ctrs m) usedCtrs)
   -- Pick an expression from the environment
   (name, t) <- mfold . Map.assocs $ options
   -- Renumber its type to avoid conflicts
@@ -97,9 +98,9 @@ stepEta expr = do
   ((i, HoleInfo { goal, ctx }), _) <- mfold $ Map.minViewWithKey ctxs
   -- Remove selected hole
   modifying holeInfo $ Map.delete i
-  env <- ask
-  let options = Map.mapKeys Var (vars env <> ctx)
-             <> Map.mapKeys Ctr (ctrs env)
+  m <- use env
+  let options = Map.mapKeys Var (vars m <> ctx)
+             <> Map.mapKeys Ctr (ctrs m)
   -- Pick an expression from the environment
   (name, t) <- mfold . Map.assocs $ options
   -- Renumber its type to avoid conflicts
