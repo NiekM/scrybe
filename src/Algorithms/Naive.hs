@@ -5,7 +5,6 @@ import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import TermGen
-import Control.Monad.State
 
 {-
 
@@ -41,13 +40,6 @@ expand e t = (e, t) : case t of
   Arr t1 t2 -> expand (App e (Hole t1)) t2
   _ -> []
 
-fromDec :: Dec -> GenT Maybe (Term Hole)
-fromDec dec = do
-  m <- use env
-  (expr, _, _, ctx) <- check m dec
-  assign holeInfo ctx
-  return expr
-
 getCtrs :: Term Hole -> [Ctr]
 getCtrs = \case
   Ctr c -> [c]
@@ -62,57 +54,84 @@ getVars = \case
   Lam _ x -> getVars x
   _ -> []
 
-step :: Term Hole -> GenT [] (Term Hole)
-step expr = do
-  ctxs <- use holeInfo
-  -- Select the first hole
-  -- TODO: have some way to better (interactively) choose which goal gets
-  -- chosen during synthesis.
-  ((i, HoleInfo { goal, ctx }), ctxs') <- mfold $ Map.minViewWithKey ctxs
-  -- TODO: have a better representation of the environment so no duplicate
-  -- unification is attempted
-  m <- use env
-  let usedVars = Set.fromList . getVars $ expr
-  let usedCtrs = Set.fromList . getCtrs $ expr
-  let options = Map.mapKeys Var (Map.withoutKeys (vars m) usedVars <> ctx)
-             <> Map.mapKeys Ctr (Map.withoutKeys (ctrs m) usedCtrs)
-  -- Pick an expression from the environment
-  (name, t) <- mfold . Map.assocs $ options
-  -- Renumber its type to avoid conflicts
-  u <- renumber t
-  -- Compute all ways to add holes to the expression
-  (ex, typ) <- mfold $ expand name u
-  -- Try to unify with the goal type
-  th <- unify typ goal
-  -- Replace typed holes with numbers
-  sk <- number ex
-  let hf = fst <$> sk
-  let new = Map.fromList . holes $ sk
-  assign holeInfo $ substInfo th <$> (ctxs' <> fmap (`HoleInfo` ctx) new)
-  return $ subst (Map.singleton i hf) expr
+holeFillings :: Ord a => MonadPlus m => Map Var (Type Free) -> Env ->
+  m (Term a, Type Free)
+holeFillings local Module { ctrs, vars } = mfold . Map.assocs $
+  Map.mapKeys Var (vars <> local) <> Map.mapKeys Ctr ctrs
 
-stepEta :: Term Hole -> GenT [] (Term Hole)
-stepEta expr = do
-  ctxs <- use holeInfo
-  -- Select the first hole
-  ((i, HoleInfo { goal, ctx }), _) <- mfold $ Map.minViewWithKey ctxs
-  -- Remove selected hole
-  modifying holeInfo $ Map.delete i
-  m <- use env
-  let options = Map.mapKeys Var (vars m <> ctx)
-             <> Map.mapKeys Ctr (ctrs m)
-  -- Pick an expression from the environment
-  (name, t) <- mfold . Map.assocs $ options
-  -- Renumber its type to avoid conflicts
-  u <- renumber t
-  let (args, res) = splitArgs u
-  -- Try to unify with the goal type
-  th <- unify res goal
-  -- Generate new holes
-  hs <- for args \arg -> do
-    h <- fresh @Hole
-    modifying holeInfo $ Map.insert h HoleInfo { goal = arg, ctx }
-    return $ Hole h
-  hf <- etaExpand (apps $ name :| hs)
-  modifying holeInfo $ fmap (substInfo th)
-  return $ subst (Map.singleton i hf) expr
+data Syn = Syn
+  { init :: Dec -> GenT Maybe (Term Hole)
+  , step :: Term Hole -> GenT [] (Term Hole)
+  }
+
+naive :: Syn
+naive = Syn
+  { init = \dec -> do
+    m <- use env
+    (expr, _, _, ctx) <- check m dec
+    assign holeInfo ctx
+    modifying env \Module { ctrs, vars } -> Module
+      { ctrs = Map.withoutKeys ctrs . Set.fromList . getCtrs $ expr
+      , vars = Map.withoutKeys vars . Set.fromList . getVars $ expr
+      }
+    return expr
+
+  , step = \ expr -> do
+    ctxs <- use holeInfo
+    -- Select the first hole
+    -- TODO: have some way to better (interactively) choose which goal gets
+    -- chosen during synthesis.
+    ((i, HoleInfo { goal, ctx }), ctxs') <- mfold $ Map.minViewWithKey ctxs
+    -- TODO: have a better representation of the environment so no duplicate
+    -- unification is attempted
+    -- Pick an expression from the environment
+    (name, t) <- use env >>= holeFillings ctx
+    -- Renumber its type to avoid conflicts
+    u <- renumber t
+    -- Compute all ways to add holes to the expression
+    (ex, typ) <- mfold $ expand name u
+    -- Try to unify with the goal type
+    th <- unify typ goal
+    -- Replace typed holes with numbers
+    sk <- number ex
+    let hf = fst <$> sk
+    let new = Map.fromList . holes $ sk
+    assign holeInfo $ substInfo th <$> (ctxs' <> fmap (`HoleInfo` ctx) new)
+    modifying env $ case name of
+      Ctr x -> \m -> m { ctrs = Map.delete x (ctrs m) }
+      Var x -> \m -> m { vars = Map.delete x (vars m) }
+      _ -> id
+    return $ subst (Map.singleton i hf) expr
+  }
+
+eta :: Syn
+eta = Syn
+  { init = \dec -> do
+    m <- use env
+    (expr, _, _, ctx) <- check m dec
+    assign holeInfo ctx
+    etaExpand expr
+
+  , step = \expr -> do
+    ctxs <- use holeInfo
+    -- Select the first hole
+    ((i, HoleInfo { goal, ctx }), _) <- mfold $ Map.minViewWithKey ctxs
+    -- Remove selected hole
+    modifying holeInfo $ Map.delete i
+    -- Pick an expression from the environment
+    (name, t) <- use env >>= holeFillings ctx
+    -- Renumber its type to avoid conflicts
+    u <- renumber t
+    let (args, res) = splitArgs u
+    -- Try to unify with the goal type
+    th <- unify res goal
+    -- Generate new holes
+    hs <- for args \arg -> do
+      h <- fresh @Hole
+      modifying holeInfo $ Map.insert h HoleInfo { goal = arg, ctx }
+      return $ Hole h
+    hf <- etaExpand (apps $ name :| hs)
+    -- hf <- etaExpand _
+    modifying holeInfo $ fmap (substInfo th)
+    return $ subst (Map.singleton i hf) expr
+  }
