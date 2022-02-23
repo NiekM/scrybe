@@ -8,6 +8,7 @@ import Data.Foldable
 import RIO.List (intersperse)
 import RIO.NonEmpty (cons, reverse)
 import Prettyprinter
+import qualified RIO.Map as Map
 
 newtype Hole = MkHole Int
   deriving stock (Eq, Ord, Read, Show)
@@ -120,11 +121,18 @@ instance Semigroup Module where
 instance Monoid Module where
   mempty = Module mempty mempty
 
--- TODO: Have a type indexed environment
--- type Env = Module
+-- TODO: should the environment differ per technique/option?
+type Env = Map (Term Void, Type Free) (Maybe Int)
 
-class HasModule a where
-  env :: Lens' a Module
+-- TODO: have some better way to generate the environment, instead of just
+-- giving every variable and constructor one occurrence.
+fromModule :: Module -> Env
+fromModule Module { ctrs, vars } =
+  Map.fromList . fmap (,Just 1) . Map.assocs $
+    Map.mapKeys Ctr ctrs <> Map.mapKeys Var vars
+
+class HasEnv a where
+  env :: Lens' a Env
 
 -- Instances {{{
 

@@ -55,13 +55,21 @@ selectFirst = do
   modifying holeCtxs $ Map.delete i
   return (i, ctx)
 
-holeFillings :: (Ord a, MonadPlus m, MonadFresh Free m, MonadState s m, HasModule s) =>
-  Map Var (Type Free) -> m (Term a, Type Free)
-holeFillings local = do
-  Module { ctrs, vars } <- use env
-  (x, t) <- mfold . Map.assocs $
-    Map.mapKeys Var (vars <> local) <> Map.mapKeys Ctr ctrs
-  (x,) <$> renumber t
+tryReduce :: Maybe Int -> Maybe (Maybe Int)
+tryReduce = \case
+  Nothing -> Just Nothing
+  Just n | n > 1 -> Just . Just $ n - 1
+  _ -> Nothing
+
+-- TODO: note that there are no restrictions on local variables, as it would be
+-- pretty tricky take into account which holes share this expression.
+holeFillings :: (Ord a, MonadPlus m, MonadFresh Free m,
+  MonadState s m, HasEnv s) => Map Var (Type Free) -> m (Term a, Type Free)
+holeFillings local = mfold (Map.assocs $ Map.mapKeys Var local) <|> do
+  (x, t) <- mfold . Map.keys =<< use env
+  modifying env $ Map.update tryReduce (x, t)
+  u <- renumber t
+  return (absurd <$> x, u)
 
 -- TODO: this should probably take declaration
 addHoles :: Monad m => Map Var (Type Free) -> Term Hole -> Type Free ->
@@ -95,13 +103,12 @@ data Syn = Syn
 naive :: Syn
 naive = Syn
   { init = \dec -> do
-    m <- use env
-    (expr, _, _, ctx) <- check m dec
+    (expr, _, _, ctx) <- check dec
     assign holeCtxs ctx
-    modifying env \Module { ctrs, vars } -> Module
-      { ctrs = Map.withoutKeys ctrs . Set.fromList . getCtrs $ expr
-      , vars = Map.withoutKeys vars . Set.fromList . getVars $ expr
-      }
+    -- TODO: only remove one occurrence from the environment for every
+    -- occurrence in the expression.
+    modifying env $ Map.filterWithKey \(x, _) _ ->
+      x `notElem` (fmap Ctr (getCtrs expr) ++ fmap Var (getVars expr))
     return expr
 
   , step = \ expr -> do
@@ -116,11 +123,6 @@ naive = Syn
     th <- unify ty goal
     -- Update the hole contexts.
     modifying holeCtxs $ fmap (substInfo th)
-    -- Remove used expressions.
-    modifying env $ case e of
-      Ctr x -> \m -> m { ctrs = Map.delete x (ctrs m) }
-      Var x -> \m -> m { vars = Map.delete x (vars m) }
-      _ -> id
     -- Fill the selected hole.
     return $ subst (Map.singleton i hf) expr
   }
@@ -132,8 +134,7 @@ naive = Syn
 eta :: Syn
 eta = Syn
   { init = \dec -> do
-    m <- use env
-    (expr, _, _, ctx) <- check m dec
+    (expr, _, _, ctx) <- check dec
     assign holeCtxs ctx
     etaExpand expr
 

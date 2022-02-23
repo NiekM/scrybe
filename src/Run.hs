@@ -33,10 +33,10 @@ runSyn Syn { init, step } m dec = do
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  case runGenT (init dec) (mkGenState m) of
+  case runGenT (init dec) m (mkGenState (fromModule m)) of
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
-      let syn = levels $ evalGenT (genTree step x) g
+      let syn = levels $ evalGenT (genTree step x) m g
       let xss = takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)
