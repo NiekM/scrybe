@@ -5,7 +5,6 @@ import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import TermGen
-import Control.Monad.State
 
 {-
 
@@ -48,32 +47,31 @@ getVars = \case
   Lam _ x -> getVars x
   _ -> []
 
-selectFirst :: (MonadPlus m, MonadState s m, HasHoleCtxs s) =>
-  m (Hole, HoleCtx)
+selectFirst :: (MonadPlus m, WithHoleCtxs s m) => m (Hole, HoleCtx)
 selectFirst = do
   ((i, ctx), _) <- use holeCtxs >>= mfold . Map.minViewWithKey
   modifying holeCtxs $ Map.delete i
   return (i, ctx)
 
-tryReduce :: Maybe Int -> Maybe (Maybe Int)
-tryReduce = \case
-  Nothing -> Just Nothing
-  Just n | n > 1 -> Just . Just $ n - 1
+tryReduce :: (Maybe Int, a) -> Maybe (Maybe Int, a)
+tryReduce (i, x) = case i of
+  Nothing -> Just (Nothing, x)
+  Just n | n > 1 -> Just (Just $ n - 1, x)
   _ -> Nothing
 
 -- TODO: note that there are no restrictions on local variables, as it would be
 -- pretty tricky take into account which holes share this expression.
-holeFillings :: (Ord a, MonadPlus m, MonadFresh Free m,
-  MonadState s m, HasEnv s) => Map Var (Type Free) -> m (Term a, Type Free)
+holeFillings :: (Ord a, MonadPlus m, FreshFree m, WithEnv s m) =>
+  Map Var (Type Free) -> m (Term a, Type Free)
 holeFillings local = mfold (Map.assocs $ Map.mapKeys Var local) <|> do
-  (x, t) <- mfold . Map.keys =<< use env
-  modifying env $ Map.update tryReduce (x, t)
+  (x, (_, t)) <- mfold . Map.assocs =<< use env
+  modifying env $ Map.update tryReduce x
   u <- renumber t
   return (absurd <$> x, u)
 
 -- TODO: this should probably take declaration
-addHoles :: Monad m => Map Var (Type Free) -> Term Hole -> Type Free ->
-  GenT m (Term Hole, Type Free)
+addHoles :: (FreshHole m, FreshVar m, WithHoleCtxs s m) =>
+  Map Var (Type Free) -> Term Hole -> Type Free -> m (Term Hole, Type Free)
 addHoles local e t = do
   let (us, u) = splitArgs t
   hs <- for us \goal -> do
@@ -82,8 +80,8 @@ addHoles local e t = do
     return $ Hole h
   (,u) <$> etaExpand (apps $ e :| hs)
 
-expand :: MonadPlus m => Map Var (Type Free) -> Term Hole -> Type Free ->
-  GenT m (Term Hole, Type Free)
+expand :: (MonadPlus m, FreshHole m, FreshVar m, WithHoleCtxs s m) =>
+  Map Var (Type Free) -> Term Hole -> Type Free -> m (Term Hole, Type Free)
 expand local e t = return (e, t) <|> case t of
   Arr t1 t2 -> do
     h <- fresh
@@ -107,10 +105,9 @@ naive = Syn
     assign holeCtxs ctx
     -- TODO: only remove one occurrence from the environment for every
     -- occurrence in the expression.
-    modifying env $ Map.filterWithKey \(x, _) _ ->
+    modifying env $ Map.filterWithKey \x _ ->
       x `notElem` (fmap Ctr (getCtrs expr) ++ fmap Var (getVars expr))
     return expr
-
   , step = \ expr -> do
     -- Select the first hole.
     (i, HoleCtx { goal, local }) <- selectFirst
@@ -122,7 +119,7 @@ naive = Syn
     -- Try to unify with the goal type
     th <- unify ty goal
     -- Update the hole contexts.
-    modifying holeCtxs $ fmap (substInfo th)
+    modifying holeCtxs $ fmap (substCtx th)
     -- Fill the selected hole.
     return $ subst (Map.singleton i hf) expr
   }
@@ -148,7 +145,7 @@ eta = Syn
     -- Try to unify with the goal type.
     th <- unify ty goal
     -- Update the hole contexts.
-    modifying holeCtxs $ fmap (substInfo th)
+    modifying holeCtxs $ fmap (substCtx th)
     -- Fill the selected hole.
     return $ subst (Map.singleton i hf) expr
   }

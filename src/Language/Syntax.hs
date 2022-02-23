@@ -104,8 +104,8 @@ data HoleCtx = HoleCtx
 class HasHoleCtxs a where
   holeCtxs :: Lens' a (Map Hole HoleCtx)
 
-substInfo :: Map Free (Type Free) -> HoleCtx -> HoleCtx
-substInfo th HoleCtx { goal, local } = HoleCtx
+substCtx :: Map Free (Type Free) -> HoleCtx -> HoleCtx
+substCtx th HoleCtx { goal, local } = HoleCtx
   { goal = subst th goal
   , local = subst th <$> local
   }
@@ -122,17 +122,23 @@ instance Monoid Module where
   mempty = Module mempty mempty
 
 -- TODO: should the environment differ per technique/option?
-type Env = Map (Term Void, Type Free) (Maybe Int)
+-- type Env = Map (Term Void, Type Free) (Maybe Int)
+type Env = Map (Term Void) (Maybe Int, Type Free)
 
 -- TODO: have some better way to generate the environment, instead of just
 -- giving every variable and constructor one occurrence.
 fromModule :: Module -> Env
 fromModule Module { ctrs, vars } =
-  Map.fromList . fmap (,Just 1) . Map.assocs $
-    Map.mapKeys Ctr ctrs <> Map.mapKeys Var vars
+  fmap (Just 1,) $ Map.mapKeys Ctr ctrs <> Map.mapKeys Var vars
 
 class HasEnv a where
   env :: Lens' a Env
+
+type FreshHole m = MonadFresh Hole m
+type FreshFree m = MonadFresh Free m
+type FreshVar  m = MonadFresh Var  m
+type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
+type WithEnv s m = (MonadState s m, HasEnv s)
 
 -- Instances {{{
 

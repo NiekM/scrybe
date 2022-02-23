@@ -59,7 +59,7 @@ infer expr = do
           t <- Hole <$> fresh
           th3 <- unify (subst th2 a) (Arr b t)
           let th4 = th3 `compose` th2 `compose` th1
-          let ctx3 = substInfo th4 <$> ctx1 <> ctx2
+          let ctx3 = substCtx th4 <$> ctx1 <> ctx2
           return (subst th4 t, th4, ctx3)
         Lam x e -> do
           t <- Hole <$> fresh
@@ -77,5 +77,5 @@ check (Dec t e) = do
   (u, th1, ctx1) <- infer e'
   th2 <- unify t u
   let th3 = compose th2 th1
-  let ctx2 = substInfo th3 <$> ctx1
+  let ctx2 = substCtx th3 <$> ctx1
   return (e', subst th3 u, th3, ctx2)

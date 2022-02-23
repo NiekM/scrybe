@@ -4,6 +4,7 @@
 module Import
   ( module RIO
   , module RIO.Text
+  , module Control.Monad.RWS
   , Pretty(..)
   , MonadFresh(..)
   , use
@@ -24,7 +25,7 @@ import RIO.List
 import qualified RIO.Map as Map
 import Prettyprinter
 import Data.Tree
-import Control.Monad.RWS
+import Control.Monad.RWS hiding (local)
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case

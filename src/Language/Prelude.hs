@@ -29,7 +29,13 @@ mapPrelude = Module
     ]
   , vars = Map.fromList
     $ parseUnsafe ((,) <$> parser <* symbol "::" <*> parser) <$>
-    [ "compose :: ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
-    , "foldr :: ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
+    [ "foldr :: ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
+    , "compose :: ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
     ]
+  }
+
+mapPrelude' :: Module
+mapPrelude' = Module
+  { ctrs = ctrs mapPrelude
+  , vars = Map.delete "compose" $ vars mapPrelude
   }

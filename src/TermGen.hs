@@ -5,7 +5,6 @@ import Import
 import Language
 import Data.Tree
 import Data.Coerce
-import Control.Monad.RWS
 
 data GenState = GenState
   { _holeCtxs :: Map Hole HoleCtx

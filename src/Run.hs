@@ -8,22 +8,22 @@ import Language.Prelude
 import Algorithms.Naive as Naive
 import Prettyprinter
 import Data.Tree
+import qualified RIO.Map as Map
+
+p :: Parse a => Text -> a
+p = parseUnsafe parser
 
 mapSketch :: Dec
-mapSketch = parseUnsafe parser
-  "\\f. { } :: (a -> b) -> List a -> List b"
+mapSketch = p "\\f. { } :: (a -> b) -> List a -> List b"
 
 mapSketch2 :: Dec
-mapSketch2 = parseUnsafe parser
-  "\\f. foldr { } { } :: (a -> b) -> List a -> List b"
+mapSketch2 = p "\\f. foldr { } { } :: (a -> b) -> List a -> List b"
 
 composeSketch :: Dec
-composeSketch = parseUnsafe parser
-  "{ } :: (b -> c) -> (a -> b) -> a -> c"
+composeSketch = p "{ } :: (b -> c) -> (a -> b) -> a -> c"
 
 flipSketch :: Dec
-flipSketch = parseUnsafe parser
-  "{ } :: (a -> b -> c) -> b -> a -> c"
+flipSketch = p "{ } :: (a -> b -> c) -> b -> a -> c"
 
 runSyn :: Syn -> Module -> Dec -> RIO Application ()
 runSyn Syn { init, step } m dec = do
@@ -50,5 +50,6 @@ run = do
   runSyn naive mapPrelude mapSketch2
   runSyn eta mempty composeSketch
   runSyn eta mempty flipSketch
+  runSyn eta mapPrelude' mapSketch
   logInfo ""
   logInfo "Finished!"

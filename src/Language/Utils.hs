@@ -6,7 +6,6 @@ import Language.Syntax
 import Data.Foldable
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
-import Control.Monad.State
 import RIO.NonEmpty (cons)
 
 -- TODO: replace with more general infix function
