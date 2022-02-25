@@ -8,7 +8,8 @@ import Data.Coerce
 
 data GenState = GenState
   { _holeCtxs :: Map Hole HoleCtx
-  , _env      :: Env
+  , _env      :: Environment
+  , _options  :: Options
   , freshHole :: Hole
   , freshFree :: Free
   , freshVar  :: Int
@@ -17,11 +18,14 @@ data GenState = GenState
 instance HasHoleCtxs GenState where
   holeCtxs = lens _holeCtxs \x y -> x { _holeCtxs = y }
 
-instance HasEnv GenState where
-  env = lens _env \x y -> x { _env = y }
+instance HasEnvironment GenState where
+  environment = lens _env \x y -> x { _env = y }
 
-mkGenState :: Env -> GenState
-mkGenState e = GenState mempty e 0 0 0
+instance HasOptions GenState where
+  options = lens _options \x y -> x { _options = y }
+
+mkGenState :: Environment -> Options -> GenState
+mkGenState e o = GenState mempty e o 0 0 0
 
 -- TODO: The Module should probably be included in the GenState, since it might
 -- be updated, such as reducing occurences.

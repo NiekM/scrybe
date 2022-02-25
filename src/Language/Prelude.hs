@@ -33,9 +33,3 @@ mapPrelude = Module
     , "compose :: ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
     ]
   }
-
-mapPrelude' :: Module
-mapPrelude' = Module
-  { ctrs = ctrs mapPrelude
-  , vars = Map.delete "compose" $ vars mapPrelude
-  }

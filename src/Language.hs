@@ -1,5 +1,6 @@
 module Language
-  ( module Language.Eval
+  ( module Language.Concepts
+  , module Language.Eval
   , module Language.Parser
   , module Language.Syntax
   , module Language.Type
@@ -7,6 +8,7 @@ module Language
   )
   where
 
+import Language.Concepts
 import Language.Eval
 import Language.Parser
 import Language.Syntax

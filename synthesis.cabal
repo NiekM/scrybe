@@ -29,6 +29,7 @@ library
       Algorithms.TypeIndexed
       Import
       Language
+      Language.Concepts
       Language.Eval
       Language.Parser
       Language.Prelude

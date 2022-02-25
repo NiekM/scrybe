@@ -80,15 +80,6 @@ addHoles local e t = do
     return $ Hole h
   (,u) <$> etaExpand (apps $ e :| hs)
 
-expand :: (MonadPlus m, FreshHole m, FreshVar m, WithHoleCtxs s m) =>
-  Map Var (Type Free) -> Term Hole -> Type Free -> m (Term Hole, Type Free)
-expand local e t = return (e, t) <|> case t of
-  Arr t1 t2 -> do
-    h <- fresh
-    modifying holeCtxs $ Map.insert h HoleCtx { goal = t1, local }
-    expand local (App e (Hole h)) t2
-  _ -> mzero
-
 data Syn = Syn
   -- TODO: does init make sense? Maybe we should just have a module as input
   -- and compute the GenState
@@ -98,56 +89,70 @@ data Syn = Syn
 
 -- Naive {{{
 
-naive :: Syn
-naive = Syn
-  { init = \dec -> do
-    (expr, _, _, ctx) <- check dec
-    assign holeCtxs ctx
-    -- TODO: only remove one occurrence from the environment for every
-    -- occurrence in the expression.
-    modifying env $ Map.filterWithKey \x _ ->
-      x `notElem` (fmap Ctr (getCtrs expr) ++ fmap Var (getVars expr))
-    return expr
-  , step = \ expr -> do
-    -- Select the first hole.
-    (i, HoleCtx { goal, local }) <- selectFirst
-    -- Pick an expression from the environment.
-    -- TODO: remove used vars form environment while selecting them
-    (e, t) <- holeFillings local
-    -- Compute all ways to add holes to the expression.
-    (hf, ty) <- expand local e t
-    -- Try to unify with the goal type
-    th <- unify ty goal
-    -- Update the hole contexts.
-    modifying holeCtxs $ fmap (substCtx th)
-    -- Fill the selected hole.
-    return $ subst (Map.singleton i hf) expr
-  }
+-- naive :: Syn
+-- naive = Syn
+--   { init = \dec -> do
+--     (expr, _, _, ctx) <- check dec
+--     assign holeCtxs ctx
+--     -- TODO: only remove one occurrence from the environment for every
+--     -- occurrence in the expression.
+--     modifying env $ Map.filterWithKey \x _ ->
+--       x `notElem` (fmap Ctr (getCtrs expr) ++ fmap Var (getVars expr))
+--     return expr
+--   , step = \ expr -> do
+--     -- Select the first hole.
+--     (i, HoleCtx { goal, local }) <- selectFirst
+--     -- Pick an expression from the environment.
+--     -- TODO: remove used vars form environment while selecting them
+--     (e, t) <- holeFillings local
+--     -- Compute all ways to add holes to the expression.
+--     (hf, ty) <- expand local e t
+--     -- Try to unify with the goal type
+--     th <- unify ty goal
+--     -- Update the hole contexts.
+--     modifying holeCtxs $ fmap (substCtx th)
+--     -- Fill the selected hole.
+--     return $ subst (Map.singleton i hf) expr
+--   }
 
 -- }}}
 
--- Eta-long {{{
-
-eta :: Syn
-eta = Syn
+-- TODO: actually do some initialising
+synth :: Syn
+synth = Syn
   { init = \dec -> do
     (expr, _, _, ctx) <- check dec
     assign holeCtxs ctx
     etaExpand expr
-
   , step = \expr -> do
-    -- Select the first hole.
-    (i, HoleCtx { goal, local }) <- selectFirst
-    -- Pick an expression from the environment.
-    (e, t) <- holeFillings local
-    -- Add new holes to stay in eta-long form.
-    (hf, ty) <- addHoles local e t
-    -- Try to unify with the goal type.
-    th <- unify ty goal
-    -- Update the hole contexts.
-    modifying holeCtxs $ fmap (substCtx th)
-    -- Fill the selected hole.
+    (i, ctx) <- selectFirst
+    -- hf <- pick ctx
+    hf <- fillHole ctx
     return $ subst (Map.singleton i hf) expr
   }
+
+-- Eta-long {{{
+
+-- eta :: Syn
+-- eta = Syn
+--   { init = \dec -> do
+--     (expr, _, _, ctx) <- check dec
+--     assign holeCtxs ctx
+--     etaExpand expr
+
+--   , step = \expr -> do
+--     -- Select the first hole.
+--     (i, HoleCtx { goal, local }) <- selectFirst
+--     -- Pick an expression from the environment.
+--     (e, t) <- holeFillings local
+--     -- Add new holes to stay in eta-long form.
+--     (hf, ty) <- addHoles local e t
+--     -- Try to unify with the goal type.
+--     th <- unify ty goal
+--     -- Update the hole contexts.
+--     modifying holeCtxs $ fmap (substCtx th)
+--     -- Fill the selected hole.
+--     return $ subst (Map.singleton i hf) expr
+--   }
 
 -- }}}
