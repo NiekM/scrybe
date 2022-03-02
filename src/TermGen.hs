@@ -7,12 +7,13 @@ import Data.Tree
 import Data.Coerce
 
 data GenState = GenState
-  { _holeCtxs :: Map Hole HoleCtx
-  , _env      :: Environment
-  , _options  :: Options
-  , freshHole :: Hole
-  , freshFree :: Free
-  , freshVar  :: Int
+  { _holeCtxs  :: Map Hole HoleCtx
+  , _env       :: Environment
+  , _technique :: Technique
+  , _concepts  :: MultiSet Concept
+  , freshHole  :: Hole
+  , freshFree  :: Free
+  , freshVar   :: Int
   }
 
 instance HasHoleCtxs GenState where
@@ -21,16 +22,15 @@ instance HasHoleCtxs GenState where
 instance HasEnvironment GenState where
   environment = lens _env \x y -> x { _env = y }
 
-instance HasOptions GenState where
-  options = lens _options \x y -> x { _options = y }
+instance HasTechnique GenState where
+  technique = lens _technique \x y -> x { _technique = y }
 
-mkGenState :: Environment -> Options -> GenState
-mkGenState e o = GenState mempty e o 0 0 0
+instance HasConcepts GenState where
+  concepts = lens _concepts \x y -> x { _concepts = y }
 
--- TODO: The Module should probably be included in the GenState, since it might
--- be updated, such as reducing occurences.
--- TODO: Add a readonly Options datatype that can be used to choose between
--- different kinds of synthesis.
+mkGenState :: Environment -> Technique -> MultiSet Concept -> GenState
+mkGenState e t c = GenState mempty e t c 0 0 0
+
 newtype GenT m a = GenT (RWST Module () GenState m a)
   deriving newtype (Functor, Applicative, Monad, Alternative)
   deriving newtype (MonadFail, MonadPlus)

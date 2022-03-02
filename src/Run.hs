@@ -45,24 +45,22 @@ mapConcepts2 = Map.fromList
   , (Function "cons", Just 1)
   ]
 
-mapOptions :: Options
-mapOptions = Options EtaLong mapConcepts
-
 composeSketch :: Dec
 composeSketch = p "{ } :: (b -> c) -> (a -> b) -> a -> c"
 
 flipSketch :: Dec
 flipSketch = p "{ } :: (a -> b -> c) -> b -> a -> c"
 
-runSyn :: Syn -> Module -> Environment -> Options -> Dec -> RIO Application ()
-runSyn Syn { init, step } m env opt dec = do
+runSyn :: Syn -> Module -> Environment -> Technique -> MultiSet Concept
+  -> Dec -> RIO Application ()
+runSyn Syn { init, step } m env t c dec = do
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ dec
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  case runGenT (init dec) m (mkGenState env opt) of
+  case runGenT (init dec) m (mkGenState env t c) of
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
       let syn = levels $ runGenT (genTree step x) m g
@@ -81,13 +79,10 @@ run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  runSyn synth mapPrelude mempty (Options EtaLong mempty) composeSketch
-  runSyn synth mapPrelude mempty (Options EtaLong mempty) flipSketch
-  runSyn synth mapPrelude
-    (restrict (Map.keysSet mapConcepts) mapEnv)
-    (Options EtaLong mapConcepts) mapSketch
-  runSyn synth mapPrelude
-    (restrict (Map.keysSet mapConcepts2) mapEnv)
-    (Options EtaLong mapConcepts2) mapSketch2
-  -- runSyn synth mapPrelude undefined mapOptions mapSketch
+  runSyn synth mapPrelude mempty EtaLong mempty composeSketch
+  runSyn synth mapPrelude mempty EtaLong mempty flipSketch
+  runSyn synth mapPrelude (restrict (Map.keysSet mapConcepts) mapEnv)
+    EtaLong mapConcepts mapSketch
+  runSyn synth mapPrelude (restrict (Map.keysSet mapConcepts2) mapEnv)
+    EtaLong mapConcepts2 mapSketch2
   logInfo "Finished!"
