@@ -45,6 +45,14 @@ mapConcepts2 = Map.fromList
   , (Function "cons", Just 1)
   ]
 
+mapConcepts3 :: MultiSet Concept
+mapConcepts3 = Map.fromList
+  [ (Function "nil", Just 1)
+  , (Function "cons", Just 1)
+  , (Function "foldr", Just 1)
+  , (Function "compose", Just 1)
+  ]
+
 composeSketch :: Dec
 composeSketch = p "{ } :: (b -> c) -> (a -> b) -> a -> c"
 
@@ -85,4 +93,6 @@ run = do
     EtaLong mapConcepts mapSketch
   runSyn synth mapPrelude (restrict (Map.keysSet mapConcepts2) mapEnv)
     EtaLong mapConcepts2 mapSketch2
+  runSyn synth mapPrelude (restrict (Map.keysSet mapConcepts3) mapEnv)
+    PointFree mapConcepts3 mapSketch
   logInfo "Finished!"

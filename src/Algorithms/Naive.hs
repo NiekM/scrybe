@@ -57,3 +57,70 @@ synth = Syn
     hf <- pick ctx
     return $ subst (Map.singleton i hf) expr
   }
+
+type SynMonad s m =
+  ( WithEnvironment s m, WithConcepts s m
+  , WithTechnique s m, WithHoleCtxs s m
+  , FreshVar m, FreshHole m, FreshFree m
+  , MonadFail m
+  )
+
+processSketch :: (MonadState s m, HasTechnique s, HasHoleCtxs s, FreshVar m)
+  => Term Hole -> m (Term Hole)
+processSketch e = use technique >>= \case
+  EtaLong -> etaExpand e
+  _ -> return e
+
+type HoleFilling = (Term (Type Free), Type Free)
+
+-- NOTE: this function does not take into account any newly introduced
+-- variables in the sketch, this should be done separately with a call to
+-- etaExpand
+tryHoleFilling :: SynMonad s m => HoleCtx -> HoleFilling -> m (Term Hole)
+tryHoleFilling HoleCtx { goal, local } (e, t) = do
+  th <- unify t goal
+  x <- forM e \u -> do
+    h <- fresh
+    modifying holeCtxs $ Map.insert h HoleCtx { goal = u, local }
+    return h
+  modifying holeCtxs . fmap $ substCtx th
+  return x
+
+pick :: (SynMonad s m, MonadPlus m) => HoleCtx -> m (Term Hole)
+pick ctx = do
+  -- Compute hole fillings from local variables.
+  let locals = use technique >>= \case
+        EtaLong -> mfold . fmap ((,Set.empty) . fullyApply . first Var)
+          . Map.assocs $ local ctx
+        PointFree -> mfold . concatMap (fmap (,Set.empty) . expand . first Var)
+          . Map.assocs $ local ctx
+  -- Compute hole fillings from global variables.
+  let globals = use environment >>= \m -> use technique >>= \case
+        EtaLong -> do
+          (name, t, c) <- mfold m
+          u <- renumber t
+          return (fullyApply (Var name, u), c)
+        PointFree -> do
+          (name, t, c) <- mfold m
+          u <- renumber t
+          mfold . fmap (,c) $ expand (Var name, u)
+  -- Choose hole fillings from either local or global variables.
+  (hf, cs) <- locals <|> globals
+  -- Check if the hole fillings fit.
+  e <- tryHoleFilling ctx hf
+  -- Remove the used concepts.
+  modifying concepts (`sub` fromSet cs)
+  -- Remove functions from the environment that use removed concepts
+  cs' <- use concepts
+  modifying environment . restrict $ Map.keysSet cs'
+  processSketch e
+
+fullyApply :: HoleFilling -> HoleFilling
+fullyApply (e, t) = first (apps . (e :|) . fmap Hole) (splitArgs t)
+
+-- TODO: expand does not return 'all' ways to add holes to an
+-- expression, since its return type might unify with a function type.
+expand :: HoleFilling -> [HoleFilling]
+expand (e, t) = (e, t) : case t of
+  Arr t1 t2 -> expand (App e (Hole t1), t2)
+  _ -> []
