@@ -89,23 +89,17 @@ tryHoleFilling HoleCtx { goal, local } (e, t) = do
 pick :: (SynMonad s m, MonadPlus m) => HoleCtx -> m (Term Hole)
 pick ctx = do
   -- Compute hole fillings from local variables.
-  let locals = use technique >>= \case
-        EtaLong -> mfold . fmap ((,Set.empty) . fullyApply . first Var)
-          . Map.assocs $ local ctx
-        PointFree -> mfold . concatMap (fmap (,Set.empty) . expand . first Var)
-          . Map.assocs $ local ctx
+  let locals = do
+      (x, t) <- mfold . Map.assocs . local $ ctx
+      fmap (,Set.empty) . holeFillings $ (Var x, t)
   -- Compute hole fillings from global variables.
-  let globals = use environment >>= \m -> use technique >>= \case
-        EtaLong -> do
-          (name, t, c) <- mfold m
-          u <- renumber t
-          return (fullyApply (Var name, u), c)
-        PointFree -> do
-          (name, t, c) <- mfold m
-          u <- renumber t
-          mfold . fmap (,c) $ expand (Var name, u)
+  let globals = do
+      (x, t, c) <- mfold =<< use environment
+      fmap (,c) . holeFillings $ (Var x, t)
+  -- Compute hole fillings from language constructs (lambdas, patterns, etc.)
+  let constructs = mzero -- TODO
   -- Choose hole fillings from either local or global variables.
-  (hf, cs) <- locals <|> globals
+  (hf, cs) <- locals <|> globals <|> constructs
   -- Check if the hole fillings fit.
   e <- tryHoleFilling ctx hf
   -- Remove the used concepts.
@@ -115,12 +109,17 @@ pick ctx = do
   modifying environment . restrict $ Map.keysSet cs'
   processSketch e
 
+holeFillings :: (MonadPlus m, WithTechnique s m) => HoleFilling -> m HoleFilling
+holeFillings hf = use technique >>= \case
+  EtaLong   -> return . fullyApply $ hf
+  PointFree -> expand hf
+
 fullyApply :: HoleFilling -> HoleFilling
 fullyApply (e, t) = first (apps . (e :|) . fmap Hole) (splitArgs t)
 
 -- TODO: expand does not return 'all' ways to add holes to an
 -- expression, since its return type might unify with a function type.
-expand :: HoleFilling -> [HoleFilling]
-expand (e, t) = (e, t) : case t of
+expand :: MonadPlus m => HoleFilling -> m HoleFilling
+expand (e, t) = return (e, t) <|> case t of
   Arr t1 t2 -> expand (App e (Hole t1), t2)
-  _ -> []
+  _ -> mzero
