@@ -75,9 +75,9 @@ runSyn Syn { init, step } m env t c dec = do
       let xss = take 12 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)
-        forM_ xs \(e, s) -> do
+        forM_ xs \(e, _s) -> do
           logInfo . display . indent 2 . pretty $ e
-          -- forM_ (Map.assocs $ s ^. holeCtxs) \(i, HoleCtx {goal,local}) -> do
+          -- forM_ (Map.assocs $ _s ^. holeCtxs) \(i, HoleCtx {goal,local}) -> do
           --   logInfo . display . indent 4 .
           --     ((pretty i <+> "::" <+> pretty goal <+> colon) <+>) . align $
           --     vsep (pretty <$> Map.assocs local)

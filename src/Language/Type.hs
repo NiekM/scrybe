@@ -65,7 +65,7 @@ infer expr = do
           t <- Hole <$> fresh
           (u, th, local') <- go (Map.insert x t local) e
           return (subst th t `Arr` u, th, local')
-        Case xs -> undefined
+        Case _xs -> undefined
   go Map.empty expr
 
 -- TODO: maybe this should return a sketch along with a type and unification

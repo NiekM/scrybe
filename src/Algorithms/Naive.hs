@@ -86,6 +86,13 @@ tryHoleFilling HoleCtx { goal, local } (e, t) = do
   modifying holeCtxs . fmap $ substCtx th
   return x
 
+-- TODO: how to make sure that in EtaLong, all local variables are used at
+-- least once, unless we know specifically that variables are allowed to be
+-- ignored.
+
+-- TODO: rather than strictly disallowing some holefillings, we should use
+-- weights to discourage them.
+
 pick :: (SynMonad s m, MonadPlus m) => HoleCtx -> m (Term Hole)
 pick ctx = do
   -- Compute hole fillings from local variables.
@@ -97,6 +104,8 @@ pick ctx = do
       (x, t, c) <- mfold =<< use environment
       fmap (,c) . holeFillings $ (Var x, t)
   -- Compute hole fillings from language constructs (lambdas, patterns, etc.)
+  -- TODO: I guess this is mzero for PointFree, and just pattern matching for
+  -- eta-long.
   let constructs = mzero -- TODO
   -- Choose hole fillings from either local or global variables.
   (hf, cs) <- locals <|> globals <|> constructs
@@ -109,7 +118,8 @@ pick ctx = do
   modifying environment . restrict $ Map.keysSet cs'
   processSketch e
 
-holeFillings :: (MonadPlus m, WithTechnique s m) => HoleFilling -> m HoleFilling
+holeFillings :: (MonadPlus m, WithTechnique s m) =>
+  HoleFilling -> m HoleFilling
 holeFillings hf = use technique >>= \case
   EtaLong   -> return . fullyApply $ hf
   PointFree -> expand hf

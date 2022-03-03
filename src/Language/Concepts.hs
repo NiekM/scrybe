@@ -3,8 +3,6 @@ module Language.Concepts where
 
 import Import
 import Language.Syntax
-import Language.Type
-import Language.Utils
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 

@@ -8,7 +8,6 @@ import Data.Foldable
 import RIO.List (intersperse)
 import RIO.NonEmpty (cons, reverse)
 import Prettyprinter
-import qualified RIO.Map as Map
 
 newtype Hole = MkHole Int
   deriving stock (Eq, Ord, Read, Show)
