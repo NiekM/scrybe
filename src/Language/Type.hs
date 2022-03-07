@@ -36,7 +36,9 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th1 th0
 
-infer :: (MonadFresh Free m, MonadFail m, MonadReader Module m) =>
+-- TODO: move holeCtxs to Monad
+infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader Module m
+         , WithVariables s m) =>
   Term Hole -> m (Type Free, Unify 'Type Free, Map Hole HoleCtx)
 infer expr = do
   Module { ctrs, vars } <- ask
@@ -48,29 +50,36 @@ infer expr = do
           t <- failMaybe $ Map.lookup c ctrs
           u <- renumber t
           return (u, Map.empty, Map.empty)
-        Var a | Just t <- Map.lookup a local -> return (t, Map.empty, Map.empty)
+        Var a | Just x <- Map.lookup a local -> use variables >>= \vs ->
+          case Map.lookup x vs of
+            Nothing -> fail $ "Missing variable id " <> show x
+            Just t -> return (t, Map.empty, Map.empty)
         Var a -> do
-          t <- failMaybe $ Map.lookup a vars
-          u <- renumber t
-          return (u, Map.empty, Map.empty)
+            t <- failMaybe $ Map.lookup a vars
+            u <- renumber t
+            return (u, Map.empty, Map.empty)
         App f x -> do
           (a, th1, ctx1) <- go local f
-          (b, th2, ctx2) <- go (subst th1 <$> local) x
+          (b, th2, ctx2) <- go local x
           t <- Hole <$> fresh
           th3 <- unify (subst th2 a) (Arr b t)
           let th4 = th3 `compose` th2 `compose` th1
           let ctx3 = substCtx th4 <$> ctx1 <> ctx2
+          modifying variables $ fmap (subst th4)
           return (subst th4 t, th4, ctx3)
         Lam x e -> do
           t <- Hole <$> fresh
-          (u, th, local') <- go (Map.insert x t local) e
-          return (subst th t `Arr` u, th, local')
+          i <- fresh
+          (u, th, local') <- go (Map.insert x i local) e
+          let t' = subst th t
+          modifying variables $ Map.insert i t'
+          return (Arr t' u, th, local')
         Case _xs -> undefined
   go Map.empty expr
 
 -- TODO: maybe this should return a sketch along with a type and unification
-check :: (MonadFresh Free m, MonadFresh Hole m, MonadFail m,
-  MonadReader Module m) =>
+check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
+  MonadReader Module m, WithVariables s m) =>
   Dec -> m (Term Hole, Type Free, Unify 'Type Free, Map Hole HoleCtx)
 check (Dec t e) = do
   e' <- fmap fst <$> number e
@@ -78,4 +87,5 @@ check (Dec t e) = do
   th2 <- unify t u
   let th3 = compose th2 th1
   let ctx2 = substCtx th3 <$> ctx1
+  modifying variables . fmap $ subst th3
   return (e', subst th3 u, th3, ctx2)

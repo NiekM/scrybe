@@ -8,12 +8,13 @@ import Data.Coerce
 
 data GenState = GenState
   { _holeCtxs  :: Map Hole HoleCtx
-  , _env       :: Environment
+  , _env       :: Environment -- rename -> _globals
+  , _locals    :: Map VarId Variable
   , _technique :: Technique
   , _concepts  :: MultiSet Concept
   , freshHole  :: Hole
   , freshFree  :: Free
-  , freshVar   :: Int
+  , freshVarId :: VarId
   }
 
 instance HasHoleCtxs GenState where
@@ -22,6 +23,9 @@ instance HasHoleCtxs GenState where
 instance HasEnvironment GenState where
   environment = lens _env \x y -> x { _env = y }
 
+instance HasVariables GenState where
+  variables = lens _locals \x y -> x { _locals = y }
+
 instance HasTechnique GenState where
   technique = lens _technique \x y -> x { _technique = y }
 
@@ -29,7 +33,7 @@ instance HasConcepts GenState where
   concepts = lens _concepts \x y -> x { _concepts = y }
 
 mkGenState :: Environment -> Technique -> MultiSet Concept -> GenState
-mkGenState e t c = GenState mempty e t c 0 0 0
+mkGenState e t c = GenState mempty e mempty t c 0 0 0
 
 newtype GenT m a = GenT (RWST Module () GenState m a)
   deriving newtype (Functor, Applicative, Monad, Alternative)
@@ -44,9 +48,9 @@ instance Monad m => MonadFresh Free (GenT m) where
   fresh = GenT . state $ \g@GenState { freshFree } ->
     (freshFree, g { freshFree = 1 + freshFree })
 
-instance Monad m => MonadFresh Var (GenT m) where
-  fresh = GenT . state $ \g@GenState { freshVar } ->
-    (nVar freshVar, g { freshVar = 1 + freshVar })
+instance Monad m => MonadFresh VarId (GenT m) where
+  fresh = GenT . state $ \g@GenState { freshVarId } ->
+    (freshVarId, g { freshVarId = 1 + freshVarId })
 
 runGenT :: Monad m => GenT m a -> Module -> GenState -> m (a, GenState)
 runGenT (GenT m) pre s = do

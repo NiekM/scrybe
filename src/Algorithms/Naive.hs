@@ -51,7 +51,7 @@ synth = Syn
   { init = \dec -> do
     (expr, _, _, ctx) <- check dec
     assign holeCtxs ctx
-    processSketch expr
+    processFilling expr
   , step = \expr -> do
     (i, ctx) <- selectFirst
     hf <- pick ctx
@@ -61,13 +61,14 @@ synth = Syn
 type SynMonad s m =
   ( WithEnvironment s m, WithConcepts s m
   , WithTechnique s m, WithHoleCtxs s m
-  , FreshVar m, FreshHole m, FreshFree m
+  , WithVariables s m
+  , FreshVarId m, FreshHole m, FreshFree m
   , MonadFail m
   )
 
-processSketch :: (MonadState s m, HasTechnique s, HasHoleCtxs s, FreshVar m)
+processFilling :: (MonadState s m, HasTechnique s, HasHoleCtxs s, FreshVarId m)
   => Term Hole -> m (Term Hole)
-processSketch e = use technique >>= \case
+processFilling e = use technique >>= \case
   EtaLong -> etaExpand e
   _ -> return e
 
@@ -84,6 +85,7 @@ tryHoleFilling HoleCtx { goal, local } (e, t) = do
     modifying holeCtxs $ Map.insert h HoleCtx { goal = u, local }
     return h
   modifying holeCtxs . fmap $ substCtx th
+  modifying variables . fmap $ subst th
   return x
 
 -- TODO: how to make sure that in EtaLong, all local variables are used at
@@ -95,18 +97,6 @@ tryHoleFilling HoleCtx { goal, local } (e, t) = do
 
 pick :: (SynMonad s m, MonadPlus m) => HoleCtx -> m (Term Hole)
 pick ctx = do
-  -- Compute hole fillings from local variables.
-  let locals = do
-      (x, t) <- mfold . Map.assocs . local $ ctx
-      fmap (,Set.empty) . holeFillings $ (Var x, t)
-  -- Compute hole fillings from global variables.
-  let globals = do
-      (x, t, c) <- mfold =<< use environment
-      fmap (,c) . holeFillings $ (Var x, t)
-  -- Compute hole fillings from language constructs (lambdas, patterns, etc.)
-  -- TODO: I guess this is mzero for PointFree, and just pattern matching for
-  -- eta-long.
-  let constructs = mzero -- TODO
   -- Choose hole fillings from either local or global variables.
   (hf, cs) <- locals <|> globals <|> constructs
   -- Check if the hole fillings fit.
@@ -116,7 +106,23 @@ pick ctx = do
   -- Remove functions from the environment that use removed concepts
   cs' <- use concepts
   modifying environment . restrict $ Map.keysSet cs'
-  processSketch e
+  processFilling e
+  where
+    -- Compute hole fillings from local variables.
+    locals = do
+      (x, i) <- mfold . Map.assocs . local $ ctx
+      t <- use variables >>= mfold . Map.lookup i
+      fmap (,Set.empty) . holeFillings $ (Var x, t)
+
+    -- Compute hole fillings from global variables.
+    globals = do
+      (x, t, c) <- mfold =<< use environment
+      fmap (,c) . holeFillings $ (Var x, t)
+
+    -- Compute hole fillings from language constructs (lambdas, patterns, etc.)
+    -- TODO: I guess this is mzero for PointFree, and just pattern matching for
+    -- eta-long.
+    constructs = mzero -- TODO
 
 holeFillings :: (MonadPlus m, WithTechnique s m) =>
   HoleFilling -> m HoleFilling

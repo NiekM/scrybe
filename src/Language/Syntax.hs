@@ -17,6 +17,10 @@ newtype Free = MkFree Int
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (Num, Pretty)
 
+newtype VarId = MkVarId Int
+  deriving stock (Eq, Ord, Read, Show)
+  deriving newtype (Num, Pretty)
+
 newtype Var = MkVar Text
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (IsString, Pretty)
@@ -24,6 +28,9 @@ newtype Var = MkVar Text
 newtype Ctr = MkCtr Text
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (IsString, Pretty)
+
+varId :: VarId -> Var
+varId (MkVarId n) = MkVar . fromString . ('a':) . show $ n
 
 -- Levels {{{
 
@@ -61,10 +68,6 @@ type HasApp l = HasApp' l ~ 'True
 
 -- }}}
 
-data Branch a = Branch { pat :: Ctr, arm :: a }
-  deriving (Eq, Ord, Show, Read)
-  deriving (Functor, Foldable, Traversable)
-
 data Expr (l :: Level) a where
   Hole :: a -> Expr l a
   Ctr  :: Ctr -> Expr l a
@@ -85,6 +88,10 @@ type Term = Expr 'Term
 type Pattern = Expr 'Pattern
 type Value = Expr 'Value
 
+data Branch a = Branch { pat :: Ctr, arm :: a }
+  deriving (Eq, Ord, Show, Read)
+  deriving (Functor, Foldable, Traversable)
+
 -- TODO: Have Mono and Poly types, where Poly types are isomorphic to
 -- ([Free], Expr 'Type Free)
 
@@ -98,18 +105,26 @@ data Dec = Dec
 
 data HoleCtx = HoleCtx
   { goal :: Type Free
-  , local :: Map Var (Type Free)
+  , local :: Map Var VarId --(Type Free)
   } deriving (Eq, Ord, Show)
 
 class HasHoleCtxs a where
   holeCtxs :: Lens' a (Map Hole HoleCtx)
 
+-- TODO: replace this with a function that substitutes all goals and variables
+-- within the gen monad.
 substCtx :: Map Free (Type Free) -> HoleCtx -> HoleCtx
-substCtx th HoleCtx { goal, local } = HoleCtx
-  { goal = subst th goal
-  , local = subst th <$> local
+substCtx th ctx = ctx
+  { goal = subst th $ goal ctx
   }
 
+-- TODO: what else do we need to track for local variables?
+type Variable = Type Free
+
+class HasVariables a where
+  variables :: Lens' a (Map VarId Variable)
+
+-- TODO: these types should not be free but rather Poly
 data Module = Module
   { ctrs :: Map Ctr (Type Free)
   , vars :: Map Var (Type Free)
@@ -123,8 +138,9 @@ instance Monoid Module where
 
 type FreshHole m = MonadFresh Hole m
 type FreshFree m = MonadFresh Free m
-type FreshVar  m = MonadFresh Var  m
+type FreshVarId m = MonadFresh VarId m
 type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
+type WithVariables s m = (MonadState s m, HasVariables s)
 
 -- Instances {{{
 
