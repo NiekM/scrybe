@@ -119,7 +119,11 @@ substCtx th ctx = ctx
   }
 
 -- TODO: what else do we need to track for local variables?
-type Variable = Type Free
+-- Variable name type number of holes it appears in, number of occurrences
+data Variable = Variable Var (Type Free) Int Int
+
+substVar :: Map Free (Type Free) -> Variable -> Variable
+substVar th (Variable v t i n) = Variable v (subst th t) i n
 
 class HasVariables a where
   variables :: Lens' a (Map VarId Variable)

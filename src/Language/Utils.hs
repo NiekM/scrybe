@@ -47,7 +47,7 @@ nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
 
 -- | Eta expand all holes in a sketch.
-etaExpand :: (FreshVarId m, MonadState s m, HasHoleCtxs s) =>
+etaExpand :: (FreshVarId m, WithHoleCtxs s m, WithVariables s m) =>
   Term Hole -> m (Term Hole)
 etaExpand = fmap join . traverse \i -> do
   ctxs <- use holeCtxs
@@ -58,13 +58,14 @@ etaExpand = fmap join . traverse \i -> do
       let (ts, u) = splitArgs goal
       -- Couple each argument with a fresh name
       xs <- number ts
-      let ys = first varId <$> xs
+      let locals' = Map.fromList ((varId &&& id) . fst <$> xs)
       -- Update the hole context
       modifying holeCtxs $
-        Map.insert i (HoleCtx u (local <> Map.fromList ((varId &&& id) . fst <$> xs)))
-        -- Map.insert i (HoleCtx u (local <> Map.fromList ys))
+        Map.insert i (HoleCtx u (local <> locals'))
+      modifying variables . Map.union . Map.fromList $
+        (\(x, t) -> (x, Variable (varId x) t 1 0)) <$> xs
       -- Eta expand the hole
-      return $ lams (fst <$> ys) (Hole i)
+      return $ lams (varId . fst <$> xs) (Hole i)
 
 -- | All subexpressions, including the expression itself.
 dissect :: Expr l a -> [Expr l a]

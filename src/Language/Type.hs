@@ -43,9 +43,13 @@ infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader Module m
 infer expr = do
   Module { ctrs, vars } <- ask
   let go local = \case
-        Hole i -> do
+        Hole h -> do
           goal <- Hole <$> fresh
-          return (goal, Map.empty, Map.singleton i HoleCtx { goal, local })
+          -- Note variable availability
+          modifying variables $ Map.mapWithKey \x -> \case
+            Variable name t i n | x `elem` local -> Variable name t (i + 1) n
+            v -> v
+          return (goal, Map.empty, Map.singleton h HoleCtx { goal, local })
         Ctr c -> do
           t <- failMaybe $ Map.lookup c ctrs
           u <- renumber t
@@ -53,7 +57,10 @@ infer expr = do
         Var a | Just x <- Map.lookup a local -> use variables >>= \vs ->
           case Map.lookup x vs of
             Nothing -> fail $ "Missing variable id " <> show x
-            Just t -> return (t, Map.empty, Map.empty)
+            Just (Variable name t i n) -> do
+              -- Note the variable occurrence
+              modifying variables . Map.insert x $ Variable name t i (n + 1)
+              return (t, Map.empty, Map.empty)
         Var a -> do
             t <- failMaybe $ Map.lookup a vars
             u <- renumber t
@@ -65,14 +72,14 @@ infer expr = do
           th3 <- unify (subst th2 a) (Arr b t)
           let th4 = th3 `compose` th2 `compose` th1
           let ctx3 = substCtx th4 <$> ctx1 <> ctx2
-          modifying variables $ fmap (subst th4)
+          modifying variables $ fmap (substVar th4)
           return (subst th4 t, th4, ctx3)
         Lam x e -> do
           t <- Hole <$> fresh
           i <- fresh
           (u, th, local') <- go (Map.insert x i local) e
           let t' = subst th t
-          modifying variables $ Map.insert i t'
+          modifying variables $ Map.insert i (Variable x t' 1 0)
           return (Arr t' u, th, local')
         Case _xs -> undefined
   go Map.empty expr
@@ -87,5 +94,5 @@ check (Dec t e) = do
   th2 <- unify t u
   let th3 = compose th2 th1
   let ctx2 = substCtx th3 <$> ctx1
-  modifying variables . fmap $ subst th3
+  modifying variables . fmap $ substVar th3
   return (e', subst th3 u, th3, ctx2)

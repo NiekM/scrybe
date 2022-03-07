@@ -66,7 +66,7 @@ type SynMonad s m =
   , MonadFail m
   )
 
-processFilling :: (MonadState s m, HasTechnique s, HasHoleCtxs s, FreshVarId m)
+processFilling :: (WithTechnique s m, WithHoleCtxs s m, WithVariables s m, FreshVarId m)
   => Term Hole -> m (Term Hole)
 processFilling e = use technique >>= \case
   EtaLong -> etaExpand e
@@ -85,8 +85,15 @@ tryHoleFilling HoleCtx { goal, local } (e, t) = do
     modifying holeCtxs $ Map.insert h HoleCtx { goal = u, local }
     return h
   modifying holeCtxs . fmap $ substCtx th
-  modifying variables . fmap $ subst th
-  return x
+  -- Update types and variable availability
+  modifying variables $ Map.mapWithKey \k -> \case
+    Variable name u i n | k `elem` local ->
+      Variable name (subst th u) (i - 1 + length (holes e)) n
+    v -> v
+  use variables >>= \vs -> if Map.null $ Map.filter
+    (\case Variable _ _ 0 0 -> True; _ -> False) vs
+    then return x
+    else fail "Unused local variables"
 
 -- TODO: how to make sure that in EtaLong, all local variables are used at
 -- least once, unless we know specifically that variables are allowed to be
@@ -111,7 +118,9 @@ pick ctx = do
     -- Compute hole fillings from local variables.
     locals = do
       (x, i) <- mfold . Map.assocs . local $ ctx
-      t <- use variables >>= mfold . Map.lookup i
+      Variable name t n m <- use variables >>= mfold . Map.lookup i
+      -- Note variable occurrence
+      modifying variables . Map.insert i $ Variable name t n (m + 1)
       fmap (,Set.empty) . holeFillings $ (Var x, t)
 
     -- Compute hole fillings from global variables.
