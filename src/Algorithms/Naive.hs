@@ -34,9 +34,6 @@ and recursive calls, since `foldr` uses both internally.
 
 -}
 
-selectFirst :: (MonadPlus m, WithHoleCtxs s m) => m Hole
-selectFirst = use holeCtxs >>= fmap fst . mfold . Set.minView . Map.keysSet
-
 data Syn = Syn
   -- TODO: does init make sense? Maybe we should just have a module as input
   -- and compute the GenState
@@ -49,7 +46,7 @@ synth = Syn
   { init = \dec -> do
     (expr, _, _, ctx) <- check dec
     assign holeCtxs ctx
-    processFilling expr
+    postProcess expr
   , step = \expr -> do
     i <- selectFirst
     hf <- pick i
@@ -62,15 +59,50 @@ type SynMonad s m =
   , WithVariables s m
   , FreshVarId m, FreshHole m, FreshFree m
   , MonadFail m
+  , MonadPlus m
   )
 
-processFilling :: (WithTechnique s m, WithHoleCtxs s m, WithVariables s m, FreshVarId m)
+type HoleFilling = (Term (Type Free), Type Free)
+
+-- | Select the first hole to fill.
+selectFirst :: (MonadPlus m, WithHoleCtxs s m) => m Hole
+selectFirst = use holeCtxs >>= fmap fst . mfold . Set.minView . Map.keysSet
+
+-- | Try to select a valid hole filling for a hole.
+pick :: SynMonad s m => Hole -> m (Term Hole)
+pick h = do
+  -- Choose hole fillings from either local or global variables.
+  (hf, cs) <- locals h <|> globals <|> constructs
+  -- Check if the hole fillings fit.
+  e <- fillHole h hf
+  -- Remove the used concepts.
+  modifying concepts (`sub` fromSet cs)
+  -- Remove functions from the environment that use removed concepts
+  cs' <- use concepts
+  modifying environment . restrict $ Map.keysSet cs'
+  return e
+
+-- | Try and fill a hole using a hole filling.
+fillHole :: SynMonad s m => Hole -> HoleFilling -> m (Term Hole)
+fillHole h (e, t) = do
+  HoleCtx { goal, local } <- getCtx h
+  -- Check if the hole filling fits.
+  th <- unify t goal
+  -- Introduce holes in the sketch.
+  x <- forM e \u -> introduceHole HoleCtx { goal = u, local }
+  -- Apply type substitutions to all relevant types.
+  applySubst th
+  -- Close the current hole.
+  closeHole h
+  -- Do postprocessing of the hole filling.
+  postProcess x
+
+-- | Process an expression.
+postProcess :: (WithTechnique s m, WithHoleCtxs s m, WithVariables s m, FreshVarId m)
   => Term Hole -> m (Term Hole)
-processFilling e = use technique >>= \case
+postProcess e = use technique >>= \case
   EtaLong -> etaExpand e
   _ -> return e
-
-type HoleFilling = (Term (Type Free), Type Free)
 
 -- | Retrieve the context of a hole.
 getCtx :: (MonadFail m, WithHoleCtxs s m) => Hole -> m HoleCtx
@@ -110,64 +142,43 @@ applySubst th = do
   modifying holeCtxs $ fmap \ctx -> ctx { goal = subst th $ goal ctx }
   modifying variables $ fmap \(Variable x t i n) -> Variable x (subst th t) i n
 
--- | Try and fill a hole using a hole filling.
-fillHole :: SynMonad s m => Hole -> HoleFilling -> m (Term Hole)
-fillHole h (e, t) = do
-  HoleCtx { goal, local } <- getCtx h
-  -- Check if the hole filling fits.
-  th <- unify t goal
-  -- Introduce holes in the sketch.
-  x <- forM e \u -> introduceHole HoleCtx { goal = u, local }
-  -- Apply type substitutions to all relevant types.
-  applySubst th
-  -- Close the current hole.
-  closeHole h
-  -- Do postprocessing of the hole filling.
-  processFilling x
-
 -- TODO: rather than strictly disallowing some holefillings, we should use
 -- weights to discourage them.
 
--- | Try to select a valid hole filling for a hole.
-pick :: (SynMonad s m, MonadPlus m) => Hole -> m (Term Hole)
-pick h = do
-  -- Choose hole fillings from either local or global variables.
-  (hf, cs) <- locals <|> globals <|> constructs
-  -- Check if the hole fillings fit.
-  e <- fillHole h hf
-  -- Remove the used concepts.
-  modifying concepts (`sub` fromSet cs)
-  -- Remove functions from the environment that use removed concepts
-  cs' <- use concepts
-  modifying environment . restrict $ Map.keysSet cs'
-  return e
-  where
-    -- Compute hole fillings from local variables.
-    locals = do
-      HoleCtx { local } <- getCtx h
-      i <- mfold local
-      xs <- use variables
-      Variable x t n m <- mfold $ Map.lookup i xs
-      -- Note variable occurrence
-      modifying variables . Map.insert i $ Variable x t n (m + 1)
-      (,Set.empty) <$> holeFillings (Var x, t)
+-- | Compute hole fillings from global variables.
+globals :: (MonadPlus m, FreshFree m, WithTechnique s m, WithEnvironment s m) =>
+  m (HoleFilling, Set Concept)
+globals = do
+  (x, t, c) <- mfold =<< use environment
+  u <- renumber t
+  (,c) <$> holeFillings x u
 
-    -- Compute hole fillings from global variables.
-    globals = do
-      (x, t, c) <- mfold =<< use environment
-      u <- renumber t
-      (,c) <$> holeFillings (Var x, u)
+-- | Compute hole fillings from local variables.
+locals :: (MonadFail m, MonadPlus m,
+  WithVariables s m, WithTechnique s m, WithHoleCtxs s m) =>
+  Hole -> m (HoleFilling, Set Concept)
+locals h = do
+  HoleCtx { local } <- getCtx h
+  i <- mfold local
+  xs <- use variables
+  Variable x t n m <- mfold $ Map.lookup i xs
+  -- Note variable occurrence
+  modifying variables . Map.insert i $ Variable x t n (m + 1)
+  (,Set.empty) <$> holeFillings x t
 
-    -- Compute hole fillings from language constructs (lambdas, patterns, etc.)
-    -- TODO: I guess this is mzero for PointFree, and just pattern matching for
-    -- eta-long.
-    constructs = mzero -- TODO
+-- | Compute hole fillings from available language constructs.
+-- TODO: I guess this is mzero for PointFree, and just pattern matching for
+-- eta-long. Explicit lambda's could be used by a less restrictive synthesis
+-- technique.
+constructs :: MonadPlus m => m (HoleFilling, Set Concept)
+constructs = mzero -- TODO
 
+-- | Compute the possible hole fillings from a function.
 holeFillings :: (MonadPlus m, WithTechnique s m) =>
-  HoleFilling -> m HoleFilling
-holeFillings hf = use technique >>= \case
-  EtaLong   -> return . fullyApply $ hf
-  PointFree -> expand hf
+  Var -> Type Free -> m HoleFilling
+holeFillings x t = use technique >>= \case
+  EtaLong   -> return $ fullyApply (Var x, t)
+  PointFree -> expand (Var x, t)
 
 fullyApply :: HoleFilling -> HoleFilling
 fullyApply (e, t) = first (apps . (e :|) . fmap Hole) (splitArgs t)
