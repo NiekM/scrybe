@@ -60,10 +60,13 @@ etaExpand = fmap join . traverse \i -> do
       xs <- number ts
       let locals' = Map.fromList ((varId &&& id) . fst <$> xs)
       -- Update the hole context
-      modifying holeCtxs $
-        Map.insert i (HoleCtx u (local <> locals'))
-      modifying variables . Map.union . Map.fromList $
-        (\(x, t) -> (x, Variable (varId x) t 1 0)) <$> xs
+      modifying holeCtxs $ Map.insert i $ HoleCtx u (local <> locals')
+      let vars = Map.fromList $ (\(x, t) -> (x, Variable (varId x) t 1 0)) <$> xs
+      -- traceShowM vars
+      modifying variables (vars <>)
+      -- use variables >>= traceShowM
+      -- modifying variables . Map.union . Map.fromList $
+      --   (\(x, t) -> (x, Variable (varId x) t 1 0)) <$> xs
       -- Eta expand the hole
       return $ lams (varId . fst <$> xs) (Hole i)
 

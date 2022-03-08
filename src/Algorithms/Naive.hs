@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiWayIf #-}
 module Algorithms.Naive where
 
 import Import
@@ -33,11 +34,8 @@ and recursive calls, since `foldr` uses both internally.
 
 -}
 
-selectFirst :: (MonadPlus m, WithHoleCtxs s m) => m (Hole, HoleCtx)
-selectFirst = do
-  ((i, ctx), _) <- use holeCtxs >>= mfold . Map.minViewWithKey
-  modifying holeCtxs $ Map.delete i
-  return (i, ctx)
+selectFirst :: (MonadPlus m, WithHoleCtxs s m) => m Hole
+selectFirst = use holeCtxs >>= fmap fst . mfold . Set.minView . Map.keysSet
 
 data Syn = Syn
   -- TODO: does init make sense? Maybe we should just have a module as input
@@ -53,8 +51,8 @@ synth = Syn
     assign holeCtxs ctx
     processFilling expr
   , step = \expr -> do
-    (i, ctx) <- selectFirst
-    hf <- pick ctx
+    i <- selectFirst
+    hf <- pick i
     return $ subst (Map.singleton i hf) expr
   }
 
@@ -74,59 +72,91 @@ processFilling e = use technique >>= \case
 
 type HoleFilling = (Term (Type Free), Type Free)
 
--- NOTE: this function does not take into account any newly introduced
--- variables in the sketch, this should be done separately with a call to
--- etaExpand
-tryHoleFilling :: SynMonad s m => HoleCtx -> HoleFilling -> m (Term Hole)
-tryHoleFilling HoleCtx { goal, local } (e, t) = do
-  th <- unify t goal
-  x <- forM e \u -> do
-    h <- fresh
-    modifying holeCtxs $ Map.insert h HoleCtx { goal = u, local }
-    return h
-  modifying holeCtxs . fmap $ substCtx th
-  -- Update types and variable availability
-  modifying variables $ Map.mapWithKey \k -> \case
-    Variable name u i n | k `elem` local ->
-      Variable name (subst th u) (i - 1 + length (holes e)) n
-    v -> v
-  use variables >>= \vs -> if Map.null $ Map.filter
-    (\case Variable _ _ 0 0 -> True; _ -> False) vs
-    then return x
-    else fail "Unused local variables"
+-- | Retrieve the context of a hole.
+getCtx :: (MonadFail m, WithHoleCtxs s m) => Hole -> m HoleCtx
+getCtx h = use holeCtxs >>=
+  maybe (fail "Missing holeCtx") return . Map.lookup h
 
--- TODO: how to make sure that in EtaLong, all local variables are used at
--- least once, unless we know specifically that variables are allowed to be
--- ignored.
+-- | Introduce a new hole.
+introduceHole :: (FreshHole m, WithHoleCtxs s m, WithVariables s m) =>
+  HoleCtx -> m Hole
+introduceHole ctx = do
+  h <- fresh
+  modifying holeCtxs $ Map.insert h ctx
+  forM_ (local ctx) $ modifying variables . Map.adjust
+    \(Variable x t n m) -> Variable x t (n + 1) m
+  return h
+
+-- | Handles everything regarding the closing of holes.
+closeHole :: SynMonad s m => Hole -> m ()
+closeHole h = do
+  HoleCtx { local } <- getCtx h
+  modifying holeCtxs $ Map.delete h
+  xs <- use variables
+  forM_ local \i -> case Map.lookup i xs of
+    Nothing -> fail $ "Missing variable id " <> show i
+    Just (Variable x t n m) ->
+      if | n <= 1, m == 0 -> fail $ "Unused variable " <> show x
+         -- TODO: why does this break? make sure the number of occurences is
+         -- kept track of correctly.
+         --  | n <= 1 -> modifying variables $ Map.delete i
+         | otherwise ->
+           modifying variables $ Map.insert i (Variable x t (n - 1) m)
+
+-- | Performs type substitutions in holes and local variables.
+applySubst :: (WithHoleCtxs s m, WithVariables s m) =>
+  Map Free (Type Free) -> m ()
+applySubst th = do
+  modifying holeCtxs $ fmap \ctx -> ctx { goal = subst th $ goal ctx }
+  modifying variables $ fmap \(Variable x t i n) -> Variable x (subst th t) i n
+
+-- | Try and fill a hole using a hole filling.
+fillHole :: SynMonad s m => Hole -> HoleFilling -> m (Term Hole)
+fillHole h (e, t) = do
+  HoleCtx { goal, local } <- getCtx h
+  -- Check if the hole filling fits.
+  th <- unify t goal
+  -- Introduce holes in the sketch.
+  x <- forM e \u -> introduceHole HoleCtx { goal = u, local }
+  -- Apply type substitutions to all relevant types.
+  applySubst th
+  -- Close the current hole.
+  closeHole h
+  -- Do postprocessing of the hole filling.
+  processFilling x
 
 -- TODO: rather than strictly disallowing some holefillings, we should use
 -- weights to discourage them.
 
-pick :: (SynMonad s m, MonadPlus m) => HoleCtx -> m (Term Hole)
-pick ctx = do
+-- | Try to select a valid hole filling for a hole.
+pick :: (SynMonad s m, MonadPlus m) => Hole -> m (Term Hole)
+pick h = do
   -- Choose hole fillings from either local or global variables.
   (hf, cs) <- locals <|> globals <|> constructs
   -- Check if the hole fillings fit.
-  e <- tryHoleFilling ctx hf
+  e <- fillHole h hf
   -- Remove the used concepts.
   modifying concepts (`sub` fromSet cs)
   -- Remove functions from the environment that use removed concepts
   cs' <- use concepts
   modifying environment . restrict $ Map.keysSet cs'
-  processFilling e
+  return e
   where
     -- Compute hole fillings from local variables.
     locals = do
-      (x, i) <- mfold . Map.assocs . local $ ctx
-      Variable name t n m <- use variables >>= mfold . Map.lookup i
+      HoleCtx { local } <- getCtx h
+      i <- mfold local
+      xs <- use variables
+      Variable x t n m <- mfold $ Map.lookup i xs
       -- Note variable occurrence
-      modifying variables . Map.insert i $ Variable name t n (m + 1)
-      fmap (,Set.empty) . holeFillings $ (Var x, t)
+      modifying variables . Map.insert i $ Variable x t n (m + 1)
+      (,Set.empty) <$> holeFillings (Var x, t)
 
     -- Compute hole fillings from global variables.
     globals = do
       (x, t, c) <- mfold =<< use environment
-      fmap (,c) . holeFillings $ (Var x, t)
+      u <- renumber t
+      (,c) <$> holeFillings (Var x, u)
 
     -- Compute hole fillings from language constructs (lambdas, patterns, etc.)
     -- TODO: I guess this is mzero for PointFree, and just pattern matching for
