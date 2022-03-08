@@ -52,7 +52,7 @@ infer expr = do
           return (goal, Map.empty, Map.singleton h HoleCtx { goal, local })
         Ctr c -> do
           t <- failMaybe $ Map.lookup c ctrs
-          u <- renumber t
+          u <- instantiateFresh t
           return (u, Map.empty, Map.empty)
         Var a | Just x <- Map.lookup a local -> use variables >>= \vs ->
           case Map.lookup x vs of
@@ -63,7 +63,7 @@ infer expr = do
               return (t, Map.empty, Map.empty)
         Var a -> do
             t <- failMaybe $ Map.lookup a vars
-            u <- renumber t
+            u <- instantiateFresh t
             return (u, Map.empty, Map.empty)
         App f x -> do
           (a, th1, ctx1) <- go local f

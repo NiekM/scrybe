@@ -88,5 +88,10 @@ instance Parse a => Parse (Term a) where
 instance Parse a => Parse (Type a) where
   parser = arrs <$> interleaved (parens parser <|> parseApps) (symbol "->")
 
+instance Parse Poly where
+  parser = Poly <$ symbol "forall"
+    <*> many parser
+    <* symbol "." <*> parser
+
 instance Parse Dec where
   parser = flip Dec <$> parser <* symbol "::" <*> parser

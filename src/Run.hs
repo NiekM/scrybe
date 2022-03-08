@@ -22,13 +22,13 @@ mapSketch2 = p "\\f. foldr { } { } :: (a -> b) -> List a -> List b"
 
 mapEnv :: Environment
 mapEnv =
-  [ ("true", p "Bool", Set.singleton $ Function "true")
-  , ("false", p "Bool", Set.singleton $ Function "false")
-  , ("nil", p "List {0}", Set.singleton $ Function "nil")
-  , ("cons", p "{0} -> List {0} -> List {0}", Set.singleton $ Function "cons")
-  , ("foldr", p "({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
+  [ ("true", p "forall . Bool", Set.singleton $ Function "true")
+  , ("false", p "forall . Bool", Set.singleton $ Function "false")
+  , ("nil", p "forall 0. List {0}", Set.singleton $ Function "nil")
+  , ("cons", p "forall 0. {0} -> List {0} -> List {0}", Set.singleton $ Function "cons")
+  , ("foldr", p "forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
     , Set.singleton $ Function "foldr")
-  , ("compose", p "({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
+  , ("compose", p "forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
     , Set.singleton $ Function "compose")
   ]
 

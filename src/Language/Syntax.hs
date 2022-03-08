@@ -88,6 +88,9 @@ type Term = Expr 'Term
 type Pattern = Expr 'Pattern
 type Value = Expr 'Value
 
+data Poly = Poly [Free] (Type Free)
+  deriving (Eq, Ord, Show)
+
 data Branch a = Branch { pat :: Ctr, arm :: a }
   deriving (Eq, Ord, Show, Read)
   deriving (Functor, Foldable, Traversable)
@@ -105,7 +108,7 @@ data Dec = Dec
 
 data HoleCtx = HoleCtx
   { goal :: Type Free
-  , local :: Map Var VarId --(Type Free)
+  , local :: Map Var VarId
   } deriving (Eq, Ord, Show)
 
 class HasHoleCtxs a where
@@ -129,10 +132,9 @@ substVar th (Variable v t i n) = Variable v (subst th t) i n
 class HasVariables a where
   variables :: Lens' a (Map VarId Variable)
 
--- TODO: these types should not be free but rather Poly
 data Module = Module
-  { ctrs :: Map Ctr (Type Free)
-  , vars :: Map Var (Type Free)
+  { ctrs :: Map Ctr Poly
+  , vars :: Map Var Poly
   } deriving (Eq, Ord, Show)
 
 instance Semigroup Module where
@@ -199,6 +201,9 @@ instance Pretty Unit where
 
 instance Pretty Dec where
   pretty Dec { sig, def } = pretty def <+> "::" <+> pretty sig
+
+instance Pretty Poly where
+  pretty (Poly xs t) = "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
 instance Pretty a => Pretty (Branch a) where
   pretty (Branch c e) = pretty c <+> "=>" <+> pretty e

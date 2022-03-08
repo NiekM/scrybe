@@ -22,14 +22,14 @@ mapPrelude :: Module
 mapPrelude = Module
   { ctrs = Map.fromList
     $ parseUnsafe ((,) <$> parser <* symbol "::" <*> parser) <$>
-    [ "True :: Bool"
-    , "False :: Bool"
-    , "Nil :: List {0}"
-    , "Cons :: {0} -> List {0} -> List {0}"
+    [ "True :: forall . Bool"
+    , "False :: forall . Bool"
+    , "Nil :: forall 0. List {0}"
+    , "Cons :: forall 0. {0} -> List {0} -> List {0}"
     ]
   , vars = Map.fromList
     $ parseUnsafe ((,) <$> parser <* symbol "::" <*> parser) <$>
-    [ "foldr :: ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
-    , "compose :: ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
+    [ "foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
+    , "compose :: forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
     ]
   }

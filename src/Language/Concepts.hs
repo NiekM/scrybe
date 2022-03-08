@@ -58,7 +58,7 @@ data Concept
   -- single arity and higher arity functions.
   deriving (Eq, Ord, Show, Read)
 
-type Environment = [(Var, Type Free, Set Concept)]
+type Environment = [(Var, Poly, Set Concept)]
 
 restrict :: Set Concept -> Environment -> Environment
 restrict cs = filter \(_, _, c) -> c `Set.isSubsetOf` cs

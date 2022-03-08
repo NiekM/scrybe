@@ -46,6 +46,11 @@ extract = fmap fst &&& Map.fromList . holes
 nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
 
+instantiateFresh :: FreshFree m => Poly -> m (Type Free)
+instantiateFresh (Poly xs t) = do
+  th <- Map.fromList <$> forM xs \x -> (x,) . Hole <$> fresh
+  return $ subst th t
+
 -- | Eta expand all holes in a sketch.
 etaExpand :: (FreshVarId m, WithHoleCtxs s m, WithVariables s m) =>
   Term Hole -> m (Term Hole)

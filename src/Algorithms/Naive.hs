@@ -146,7 +146,7 @@ globals :: (MonadPlus m, FreshFree m, WithTechnique s m, WithEnvironment s m) =>
   m (HoleFilling, Set Concept)
 globals = do
   (x, t, c) <- mfold =<< use environment
-  u <- renumber t
+  u <- instantiateFresh t
   (,c) <$> holeFillings x u
 
 -- | Compute hole fillings from local variables.
