@@ -59,9 +59,9 @@ composeSketch = p "{ } :: (b -> c) -> (a -> b) -> a -> c"
 flipSketch :: Dec
 flipSketch = p "{ } :: (a -> b -> c) -> b -> a -> c"
 
-runSyn :: Syn -> Module -> Environment -> Technique -> MultiSet Concept
+runSyn :: Module -> Environment -> Technique -> MultiSet Concept
   -> Dec -> RIO Application ()
-runSyn Syn { init, step } m env t c dec = do
+runSyn m env t c dec = do
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ dec
@@ -90,12 +90,12 @@ run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  runSyn synth mapPrelude mempty EtaLong mempty composeSketch
-  runSyn synth mapPrelude mempty EtaLong mempty flipSketch
-  runSyn synth mapPrelude (restrict (Map.keysSet mapConcepts) mapEnv)
+  runSyn mapPrelude mempty EtaLong mempty composeSketch
+  runSyn mapPrelude mempty EtaLong mempty flipSketch
+  runSyn mapPrelude (restrict (Map.keysSet mapConcepts) mapEnv)
     EtaLong mapConcepts mapSketch
-  runSyn synth mapPrelude (restrict (Map.keysSet mapConcepts2) mapEnv)
+  runSyn mapPrelude (restrict (Map.keysSet mapConcepts2) mapEnv)
     EtaLong mapConcepts2 mapSketch2
-  runSyn synth mapPrelude (restrict (Map.keysSet mapConcepts3) mapEnv)
+  runSyn mapPrelude (restrict (Map.keysSet mapConcepts3) mapEnv)
     PointFree mapConcepts3 mapSketch
   logInfo "Finished!"

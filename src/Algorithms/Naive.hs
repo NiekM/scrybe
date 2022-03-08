@@ -34,24 +34,19 @@ and recursive calls, since `foldr` uses both internally.
 
 -}
 
-data Syn = Syn
-  -- TODO: does init make sense? Maybe we should just have a module as input
-  -- and compute the GenState
-  { init :: Dec -> GenT Maybe (Term Hole)
-  , step :: Term Hole -> GenT [] (Term Hole)
-  }
+-- TODO: does init make sense? Maybe we should just have a module as input
+-- and compute the GenState
+init :: Dec -> GenT Maybe (Term Hole)
+init dec = do
+  (expr, _, _, ctx) <- check dec
+  assign holeCtxs ctx
+  postProcess expr
 
-synth :: Syn
-synth = Syn
-  { init = \dec -> do
-    (expr, _, _, ctx) <- check dec
-    assign holeCtxs ctx
-    postProcess expr
-  , step = \expr -> do
-    i <- selectFirst
-    hf <- pick i
-    return $ subst (Map.singleton i hf) expr
-  }
+step :: Term Hole -> GenT [] (Term Hole)
+step expr = do
+  i <- selectFirst
+  hf <- pick i
+  return $ subst (Map.singleton i hf) expr
 
 type SynMonad s m =
   ( WithEnvironment s m, WithConcepts s m
@@ -98,7 +93,8 @@ fillHole h (e, t) = do
   postProcess x
 
 -- | Process an expression.
-postProcess :: (WithTechnique s m, WithHoleCtxs s m, WithVariables s m, FreshVarId m)
+postProcess :: (WithTechnique s m, WithHoleCtxs s m,
+  WithVariables s m, FreshVarId m)
   => Term Hole -> m (Term Hole)
 postProcess e = use technique >>= \case
   EtaLong -> etaExpand e
