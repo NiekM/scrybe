@@ -14,23 +14,11 @@ import qualified RIO.Set as Set
 p :: Parse a => Text -> a
 p = parseUnsafe parser
 
-mapSketch :: Dec
+mapSketch :: Sketch
 mapSketch = p "\\f. { } :: (a -> b) -> List a -> List b"
 
-mapSketch2 :: Dec
+mapSketch2 :: Sketch
 mapSketch2 = p "\\f. foldr { } { } :: (a -> b) -> List a -> List b"
-
-mapEnv :: Environment
-mapEnv =
-  [ ("true", p "forall . Bool", Set.singleton $ Function "true")
-  , ("false", p "forall . Bool", Set.singleton $ Function "false")
-  , ("nil", p "forall 0. List {0}", Set.singleton $ Function "nil")
-  , ("cons", p "forall 0. {0} -> List {0} -> List {0}", Set.singleton $ Function "cons")
-  , ("foldr", p "forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
-    , Set.singleton $ Function "foldr")
-  , ("compose", p "forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
-    , Set.singleton $ Function "compose")
-  ]
 
 mapConcepts :: MultiSet Concept
 mapConcepts = Map.fromList
@@ -53,15 +41,17 @@ mapConcepts3 = Map.fromList
   , (Function "compose", Just 1)
   ]
 
-composeSketch :: Dec
+composeSketch :: Sketch
 composeSketch = p "{ } :: (b -> c) -> (a -> b) -> a -> c"
 
-flipSketch :: Dec
+flipSketch :: Sketch
 flipSketch = p "{ } :: (a -> b -> c) -> b -> a -> c"
 
-runSyn :: Module -> Environment -> Technique -> MultiSet Concept
-  -> Dec -> RIO Application ()
-runSyn m env t c dec = do
+runSyn :: Module -> Technique -> MultiSet Concept
+  -> Sketch -> RIO Application ()
+runSyn m t c dec = do
+  let env = restrict (Map.keysSet c) $ Map.assocs (vars m) <&>
+        \(x, u) -> (x, u, Set.singleton $ Function x)
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ dec
@@ -86,16 +76,16 @@ runSyn m env t c dec = do
           --           <$> Map.assocs local)
   logInfo ""
 
+pre :: Module
+pre = Module mempty prelude
+
 run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  runSyn mapPrelude mempty EtaLong mempty composeSketch
-  runSyn mapPrelude mempty EtaLong mempty flipSketch
-  runSyn mapPrelude (restrict (Map.keysSet mapConcepts) mapEnv)
-    EtaLong mapConcepts mapSketch
-  runSyn mapPrelude (restrict (Map.keysSet mapConcepts2) mapEnv)
-    EtaLong mapConcepts2 mapSketch2
-  runSyn mapPrelude (restrict (Map.keysSet mapConcepts3) mapEnv)
-    PointFree mapConcepts3 mapSketch
+  runSyn pre EtaLong mempty composeSketch
+  runSyn pre EtaLong mempty flipSketch
+  runSyn pre EtaLong mapConcepts mapSketch
+  runSyn pre EtaLong mapConcepts2 mapSketch2
+  runSyn pre PointFree mapConcepts3 mapSketch
   logInfo "Finished!"

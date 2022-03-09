@@ -93,5 +93,5 @@ instance Parse Poly where
     <*> many parser
     <* symbol "." <*> parser
 
-instance Parse Dec where
-  parser = flip Dec <$> parser <* symbol "::" <*> parser
+instance Parse Sketch where
+  parser = Sketch <$> parser <* symbol "::" <*> parser

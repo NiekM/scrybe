@@ -17,19 +17,42 @@ import qualified RIO.Map as Map
 -- to extract from model solutions and use to prune the synthesis.
 
 -- TODO: load preludes/modules and such from files.
--- TODO: use poly types
-mapPrelude :: Module
-mapPrelude = Module
-  { ctrs = Map.fromList
-    $ parseUnsafe ((,) <$> parser <* symbol "::" <*> parser) <$>
-    [ "True :: forall . Bool"
-    , "False :: forall . Bool"
-    , "Nil :: forall 0. List {0}"
-    , "Cons :: forall 0. {0} -> List {0} -> List {0}"
-    ]
-  , vars = Map.fromList
-    $ parseUnsafe ((,) <$> parser <* symbol "::" <*> parser) <$>
-    [ "foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
-    , "compose :: forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
-    ]
-  }
+-- TODO: add pragma's or other restrictions
+prelude :: Map Var Poly
+prelude = Map.fromList
+  $ parseUnsafe ((,) <$> parser <* symbol "::" <*> parser) <$>
+  [ "flip :: forall 0 1 2. ({0} -> {1} -> {2}) -> {1} -> {0} -> {2}"
+  , "compose :: forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
+  , "const :: forall 0 1. {0} -> {1} -> {0}"
+  , "id :: forall 0. {0} -> {0}"
+
+  , "true :: forall . Bool"
+  , "false :: forall . Bool"
+
+  , "not :: forall . Bool -> Bool"
+
+  , "zero :: forall . Nat"
+  , "succ :: forall . Nat -> Nat"
+
+  , "even :: forall . Nat -> Bool"
+  , "odd :: forall . Nat -> Bool"
+
+  , "plus :: forall . Nat -> Nat -> Nat"
+  , "mult :: forall . Nat -> Nat -> Nat"
+
+  , "nil :: forall 0. List {0}"
+  , "cons :: forall 0. {0} -> List {0} -> List {0}"
+
+  , "foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
+  , "map :: forall 0 1. ({0} -> {1}) -> List {0} -> List {1}"
+  , "reverse :: forall 0. List {0} -> List {0}"
+  , "length :: forall 0. List {0} -> Nat"
+
+  , "pair :: forall 0 1. {0} -> {1} -> Tuple {0} {1}"
+
+  , "fst :: forall 0 1. Tuple {0} {1} -> {0}"
+  , "snd :: forall 0 1. Tuple {0} {1} -> {1}"
+  , "swap :: forall 0 1. Tuple {0} {1} -> Tuple {1} {0}"
+
+  , "zip :: forall 0 1. List {0} -> List {1} -> List (Pair {0} {1})"
+  ]

@@ -87,9 +87,9 @@ infer expr = do
 -- TODO: maybe this should return a sketch along with a type and unification
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
   MonadReader Module m, WithVariables s m) =>
-  Dec -> m (Term Hole, Type Free, Unify 'Type Free, Map Hole HoleCtx)
-check (Dec t e) = do
-  e' <- fmap fst <$> number e
+  Sketch -> m (Term Hole, Type Free, Unify 'Type Free, Map Hole HoleCtx)
+check (Sketch e t) = do
+  e' <- sequence $ fresh <$ e
   (u, th1, ctx1) <- infer e'
   th2 <- unify t u
   let th3 = compose th2 th1

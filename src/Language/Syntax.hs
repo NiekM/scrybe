@@ -91,6 +91,9 @@ type Value = Expr 'Value
 data Poly = Poly [Free] (Type Free)
   deriving (Eq, Ord, Show)
 
+data Def = Def Var Poly (Term Void)
+  deriving (Eq, Ord, Show)
+
 data Branch a = Branch { pat :: Ctr, arm :: a }
   deriving (Eq, Ord, Show, Read)
   deriving (Functor, Foldable, Traversable)
@@ -101,10 +104,8 @@ data Branch a = Branch { pat :: Ctr, arm :: a }
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read)
 
-data Dec = Dec
-  { sig :: Type Free
-  , def :: Term Unit
-  } deriving (Eq, Ord, Show)
+data Sketch = Sketch (Term Unit) (Type Free)
+  deriving (Eq, Ord, Show)
 
 data HoleCtx = HoleCtx
   { goal :: Type Free
@@ -199,11 +200,17 @@ prettyParens p t
 instance Pretty Unit where
   pretty _ = space
 
-instance Pretty Dec where
-  pretty Dec { sig, def } = pretty def <+> "::" <+> pretty sig
+instance Pretty Sketch where
+  pretty (Sketch def sig) = pretty def <+> "::" <+> pretty sig
 
 instance Pretty Poly where
   pretty (Poly xs t) = "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
+
+instance Pretty Def where
+  pretty (Def x t e) = align $ vsep
+    [ pretty x <+> "::" <+> pretty t
+    , pretty x <+> "=" <+> pretty e
+    ]
 
 instance Pretty a => Pretty (Branch a) where
   pretty (Branch c e) = pretty c <+> "=>" <+> pretty e

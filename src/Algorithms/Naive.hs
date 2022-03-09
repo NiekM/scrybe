@@ -36,9 +36,9 @@ and recursive calls, since `foldr` uses both internally.
 
 -- TODO: does init make sense? Maybe we should just have a module as input
 -- and compute the GenState
-init :: Dec -> GenT Maybe (Term Hole)
-init dec = do
-  (expr, _, _, ctx) <- check dec
+init :: Sketch -> GenT Maybe (Term Hole)
+init sketch = do
+  (expr, _, _, ctx) <- check sketch
   assign holeCtxs ctx
   postProcess expr
 
