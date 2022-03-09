@@ -48,11 +48,11 @@ prelude = Map.fromList
   , "reverse :: forall 0. List {0} -> List {0}"
   , "length :: forall 0. List {0} -> Nat"
 
-  , "pair :: forall 0 1. {0} -> {1} -> Tuple {0} {1}"
+  , "pair :: forall 0 1. {0} -> {1} -> Pair {0} {1}"
 
-  , "fst :: forall 0 1. Tuple {0} {1} -> {0}"
-  , "snd :: forall 0 1. Tuple {0} {1} -> {1}"
-  , "swap :: forall 0 1. Tuple {0} {1} -> Tuple {1} {0}"
+  , "fst :: forall 0 1. Pair {0} {1} -> {0}"
+  , "snd :: forall 0 1. Pair {0} {1} -> {1}"
+  , "swap :: forall 0 1. Pair {0} {1} -> Pair {1} {0}"
 
   , "zip :: forall 0 1. List {0} -> List {1} -> List (Pair {0} {1})"
   ]
