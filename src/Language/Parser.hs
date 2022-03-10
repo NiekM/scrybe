@@ -71,16 +71,23 @@ instance Parse a => Parse (Branch a) where
 class ParseAtom l where
   parseAtom :: Parse a => Parser (Expr l a)
 
+instance ParseAtom 'Pattern where
+  parseAtom = Hole <$> braces parser <|> Ctr <$> parser
+
 instance ParseAtom 'Term where
-  parseAtom = Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser
-    <|> Lam <$ symbol "\\" <*> parser <* symbol "." <*> parser
-    <|> Case . toList <$> brackets (interleaved parser (symbol ";"))
+  parseAtom = Lam <$ symbol "\\" <*> parser <* symbol "." <*> parser
+    <|> Case <$ symbol "[" <*> parser <* symbol "]" <*>
+      (toList <$> interleaved parser (symbol ";"))
+    <|> Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser
 
 instance ParseAtom 'Type where
   parseAtom = Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser
 
 parseApps :: (Parse a, HasApp l, ParseAtom l) => Parser (Expr l a)
 parseApps = apps <$> interleaved (parens parseApps <|> parseAtom) (pure ())
+
+instance Parse a => Parse (Pattern a) where
+  parser = parseApps
 
 instance Parse a => Parse (Term a) where
   parser = parseApps

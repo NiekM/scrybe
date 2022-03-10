@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds, GADTs #-}
+{-# LANGUAGE DataKinds, GADTs, RankNTypes #-}
 {-# LANGUAGE TypeFamilies, ConstraintKinds #-}
 module Language.Syntax where
 
@@ -42,8 +42,9 @@ data Level = Type | Term | Pattern | Value
   deriving (Eq, Ord, Show, Read)
 
 type family HasVar' (l :: Level) where
-  HasVar' 'Value = 'False
-  HasVar' _      = 'True
+  HasVar' 'Value   = 'False
+  HasVar' 'Pattern = 'False
+  HasVar' _        = 'True
 
 type HasVar l = HasVar' l ~ 'True
 
@@ -60,9 +61,10 @@ type family HasCase' (l :: Level) where
 type HasCase l = HasCase' l ~ 'True
 
 type family HasApp' (l :: Level) where
-  HasApp' 'Term = 'True
-  HasApp' 'Type = 'True
-  HasApp' _     = 'False
+  HasApp' 'Term    = 'True
+  HasApp' 'Type    = 'True
+  HasApp' 'Pattern = 'True
+  HasApp' _        = 'False
 
 type HasApp l = HasApp' l ~ 'True
 
@@ -77,7 +79,8 @@ data Expr (l :: Level) a where
   Lam  :: HasLam  l => Var -> Expr l a -> Expr l a
   -- TODO: make Case expressions more similar to Haskell case expressions and
   -- use real patterns
-  Case :: HasCase l => [Branch (Expr l a)] -> Expr l a
+  Case :: HasCase l => Expr l a -> [Branch (Expr l a)] -> Expr l a
+    --[Branch (Expr l a)] -> Expr l a
   -- TODO: pattern matching using unification
 
 pattern Arr :: () => (HasVar l, HasApp l) => Expr l a -> Expr l a -> Expr l a
@@ -86,7 +89,7 @@ pattern Arr t u = App (App (Var (MkVar "->")) t) u
 type Type = Expr 'Type
 type Term = Expr 'Term
 type Pattern = Expr 'Pattern
-type Value = Expr 'Value
+type Value = Expr 'Value Void
 
 data Poly = Poly [Free] (Type Free)
   deriving (Eq, Ord, Show)
@@ -94,8 +97,8 @@ data Poly = Poly [Free] (Type Free)
 data Def = Def Var Poly (Term Void)
   deriving (Eq, Ord, Show)
 
-data Branch a = Branch { pat :: Ctr, arm :: a }
-  deriving (Eq, Ord, Show, Read)
+data Branch a = Branch { pat :: Pattern Var, arm :: a }
+  deriving (Eq, Ord, Show)
   deriving (Functor, Foldable, Traversable)
 
 -- TODO: Have Mono and Poly types, where Poly types are isomorphic to
@@ -177,7 +180,7 @@ instance Applicative (Expr l) where
   Ctr c <*> _ = Ctr c
   App f x <*> y = App (f <*> y) (x <*> y)
   Lam b x <*> y = Lam b (x <*> y)
-  Case xs <*> y = Case (fmap (fmap (<*> y)) xs)
+  Case x xs <*> y = Case (x <*> y) (fmap (<*> y) <$> xs)
 
 instance Monad (Expr l) where
   Hole h >>= k = k h
@@ -185,7 +188,7 @@ instance Monad (Expr l) where
   Ctr c >>= _ = Ctr c
   App f x >>= k = App (f >>= k) (x >>= k)
   Lam b x >>= k = Lam b (x >>= k)
-  Case xs >>= k = Case (fmap (fmap (>>= k)) xs)
+  Case x xs >>= k = Case (x >>= k) (fmap (>>= k) <$> xs)
 
 -- }}}
 
@@ -237,7 +240,8 @@ instance Pretty a => Pretty (Expr l a) where
       , prettyParens (\y -> isLam y || isApp y) x
       ]
     Lam b e -> "\\" <> pretty b <> "." <+> pretty e
-    Case xs -> brackets . mconcat $ intersperse ";" (pretty <$> xs)
+    Case x xs -> "[" <+> pretty x <+> "]" <+>
+      mconcat (intersperse "; " $ pretty <$> xs)
 
 -- }}}
 
@@ -245,62 +249,62 @@ instance Pretty a => Pretty (Expr l a) where
 -- TODO: replace these instances with more sensible ones, probably defined
 -- using a naive synthesizer
 
-sizedTyp :: Int -> Gen (Type Free)
-sizedTyp 0 = Var <$> arbitrary
-sizedTyp n = do
-  x <- choose (0, n - 1)
-  App <$> sizedTyp x <*> sizedTyp (n - x - 1)
+-- sizedTyp :: Int -> Gen (Type Free)
+-- sizedTyp 0 = Var <$> arbitrary
+-- sizedTyp n = do
+--   x <- choose (0, n - 1)
+--   App <$> sizedTyp x <*> sizedTyp (n - x - 1)
 
-instance Arbitrary (Expr 'Type Free) where
-  arbitrary = sized \n -> do
-    m <- choose (0, n)
-    sizedTyp m
+-- instance Arbitrary (Expr 'Type Free) where
+--   arbitrary = sized \n -> do
+--     m <- choose (0, n)
+--     sizedTyp m
 
-instance Arbitrary Var where
-  arbitrary = fromString . return <$> elements ['a'..'z']
+-- instance Arbitrary Var where
+--   arbitrary = fromString . return <$> elements ['a'..'z']
 
-instance Arbitrary Ctr where
-  arbitrary = fromString . return <$> elements ['A'..'Z']
+-- instance Arbitrary Ctr where
+--   arbitrary = fromString . return <$> elements ['A'..'Z']
 
-instance Arbitrary Hole where
-  arbitrary = fromIntegral <$> sized \n -> choose (0, n)
+-- instance Arbitrary Hole where
+--   arbitrary = fromIntegral <$> sized \n -> choose (0, n)
 
-perms :: Int -> Int -> [[Int]]
-perms _ 0 = [[]]
-perms n 1 = [[n]]
-perms n k = do
-  x <- [1..(n - k + 1)]
-  (x:) <$> perms (n - x) (k - 1)
+-- perms :: Int -> Int -> [[Int]]
+-- perms _ 0 = [[]]
+-- perms n 1 = [[n]]
+-- perms n k = do
+--   x <- [1..(n - k + 1)]
+--   (x:) <$> perms (n - x) (k - 1)
 
-sizedExp :: [Gen (Term a)] -> Int -> Gen (Term a)
-sizedExp as 0 = oneof as
-sizedExp as n = do
-  x <- choose (1, min n 5)
-  xs <- oneof . fmap pure $ perms n x
-  case map (subtract 1) xs of
-    [] -> error "unreachable"
-    ys@(z:zs) -> oneof
-      [ Case <$> mapM (\i -> Branch <$> arbitrary <*> sizedExp as i) ys
-      , apps <$> mapM (sizedExp as) ys
-      -- TODO: don't throw away size parameter
-      , lams <$> mapM (const arbitrary) zs
-        <*> sizedExp as z
-      ]
+-- sizedExp :: [Gen (Term a)] -> Int -> Gen (Term a)
+-- sizedExp as 0 = oneof as
+-- sizedExp as n = do
+--   x <- choose (1, min n 5)
+--   xs <- oneof . fmap pure $ perms n x
+--   case map (subtract 1) xs of
+--     [] -> error "unreachable"
+--     ys@(z:zs) -> oneof
+--       [ Case <$> _ <*> mapM (\i -> Branch <$> arbitrary <*> sizedExp as i) ys
+--       , apps <$> mapM (sizedExp as) ys
+--       -- TODO: don't throw away size parameter
+--       , lams <$> mapM (const arbitrary) zs
+--         <*> sizedExp as z
+--       ]
 
-arbExp :: Arbitrary a => Gen (Term a)
-arbExp = sized \n -> do
-  m <- choose (0, n)
-  sizedExp [Var <$> arbitrary, Ctr <$> arbitrary, Hole <$> arbitrary] m
+-- arbExp :: Arbitrary a => Gen (Term a)
+-- arbExp = sized \n -> do
+--   m <- choose (0, n)
+--   sizedExp [Var <$> arbitrary, Ctr <$> arbitrary, Hole <$> arbitrary] m
 
-instance Arbitrary (Term Hole) where
-  arbitrary = arbExp
+-- instance Arbitrary (Term Hole) where
+--   arbitrary = arbExp
 
-instance Arbitrary (Term (Type Free)) where
-  arbitrary = arbExp
+-- instance Arbitrary (Term (Type Free)) where
+--   arbitrary = arbExp
 
-instance Arbitrary (Term Void) where
-  arbitrary = sized \n -> do
-    m <- choose (0, n)
-    sizedExp [Var <$> arbitrary, Ctr <$> arbitrary] m
+-- instance Arbitrary (Term Void) where
+--   arbitrary = sized \n -> do
+--     m <- choose (0, n)
+--     sizedExp [Var <$> arbitrary, Ctr <$> arbitrary] m
 
 -- }}}

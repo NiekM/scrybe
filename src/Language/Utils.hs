@@ -69,9 +69,6 @@ etaExpand = fmap join . traverse \i -> do
       let vars = Map.fromList $ (\(x, t) -> (x, Variable (varId x) t 1 0)) <$> xs
       -- traceShowM vars
       modifying variables (vars <>)
-      -- use variables >>= traceShowM
-      -- modifying variables . Map.union . Map.fromList $
-      --   (\(x, t) -> (x, Variable (varId x) t 1 0)) <$> xs
       -- Eta expand the hole
       return $ lams (varId . fst <$> xs) (Hole i)
 
@@ -83,4 +80,4 @@ dissect e = e : case e of
   Ctr _ -> []
   App f x -> dissect f ++ dissect x
   Lam _ x -> dissect x
-  Case xs -> concatMap (dissect . arm) xs
+  Case x xs -> x : concatMap (dissect . arm) xs

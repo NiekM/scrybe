@@ -5,7 +5,6 @@ import Import
 import Language.Syntax
 import Language.Utils
 import qualified RIO.Map as Map
-import qualified RIO.Set as Set
 
 type Unify l a = Map a (Expr l a)
 
@@ -26,8 +25,8 @@ unify t u = case (t, u) of
   (_, Hole a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
 
-occurs :: Ord a => a -> Expr l a -> Bool
-occurs a tau = a `notElem` Set.fromList (holes tau)
+occurs :: Eq a => a -> Expr l a -> Bool
+occurs a tau = a `notElem` holes tau
 
 unifies :: (MonadFail m, Foldable t, Ord a) =>
   t (Expr l a, Expr l a) -> m (Unify l a)
@@ -35,30 +34,6 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th1 th0
-
--- Lens {{{
-
-unify' :: (MonadFail m, Ord a) => Expr l a -> Expr l a -> m (Unify l a)
-unify' t u = case (t, u) of
-  (App t1 t2, App u1 u2) -> unifies' [(t1, u1), (t2, u2)]
-  (Var  a, Var  b) | a == b -> return Map.empty
-  (Ctr  a, Ctr  b) | a == b -> return Map.empty
-  (Hole a, Hole b) | a == b -> return Map.empty
-  (Hole a, _) | occurs' a u -> return $ Map.singleton a u
-  (_, Hole a) | occurs' a t -> return $ Map.singleton a t
-  _ -> fail "Unification failed"
-
-occurs' :: Ord a => a -> Expr l a -> Bool
-occurs' a tau = a `notElem` Set.fromList (holes tau)
-
-unifies' :: (MonadFail m, Foldable t, Ord a) =>
-  t (Expr l a, Expr l a) -> m (Unify l a)
-unifies' = flip foldr (return Map.empty) \(t1, t2) th -> do
-  th0 <- th
-  th1 <- unify' (subst th0 t1) (subst th0 t2)
-  return $ compose th1 th0
-
--- }}}
 
 -- TODO: move holeCtxs to Monad
 infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader Module m
@@ -105,7 +80,7 @@ infer expr = do
           let t' = subst th t
           modifying variables $ Map.insert i (Variable x t' 1 0)
           return (Arr t' u, th, local')
-        Case _xs -> undefined
+        Case _x _xs -> undefined
   go Map.empty expr
 
 -- TODO: maybe this should return a sketch along with a type and unification

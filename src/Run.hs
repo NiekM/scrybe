@@ -59,7 +59,7 @@ foldrConcepts = Map.fromList
 runSyn :: Module -> Technique -> MultiSet Concept
   -> Sketch -> RIO Application ()
 runSyn m t c dec = do
-  let env = restrict (Map.keysSet c) $ Map.assocs (functions m) <&>
+  let env' = restrict (Map.keysSet c) $ Map.assocs (functions m) <&>
         \(x, u) -> (x, u, Set.singleton $ Function x)
   logInfo "Sketch:"
   logInfo ""
@@ -67,7 +67,7 @@ runSyn m t c dec = do
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
-  case runGenT (init dec) m (mkGenState env t c) of
+  case runGenT (init dec) m (mkGenState env' t c) of
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
       let syn = levels $ runGenT (genTree step x) m g
@@ -80,8 +80,8 @@ runSyn m t c dec = do
             logInfo . display . indent 4 .
               ((pretty h <+> "::" <+> pretty goal <+> colon) <+>) . align $
               vsep (fmap pretty . catMaybes $
-                (\(a, b) -> Map.lookup b (_s ^. variables) >>=
-                  return . (a,) . (\(Variable _ t _ _) -> t))
+                (\(a, b) -> Map.lookup b (_s ^. variables) <&>
+                  ((a,) . (\(Variable _ u _ _) -> u)))
                     <$> Map.assocs local)
   logInfo ""
 
