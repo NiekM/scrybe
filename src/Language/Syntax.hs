@@ -136,7 +136,7 @@ class HasVariables a where
 
 data Module = Module
   { ctrs :: Map Ctr Poly
-  , functions :: Map Var Poly
+  , functions :: Map Var (Term Void, Poly)
   } deriving (Eq, Ord, Show)
 
 instance Semigroup Module where
@@ -221,10 +221,7 @@ instance Pretty Poly where
   pretty (Poly xs t) = "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
 instance Pretty Def where
-  pretty (Def x t e) = align $ vsep
-    [ pretty x <+> "::" <+> pretty t
-    , pretty x <+> "=" <+> pretty e
-    ]
+  pretty (Def x t e) = pretty x <+> "::" <+> pretty t <+> "=" <+> pretty e
 
 instance Pretty a => Pretty (Branch a) where
   pretty (Branch c e) = pretty c <+> "=>" <+> pretty e

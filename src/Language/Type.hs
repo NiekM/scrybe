@@ -61,9 +61,9 @@ infer expr = do
               modifying variables . Map.insert x $ Variable name t i (n + 1)
               return (t, Map.empty, Map.empty)
         Var a -> do
-            t <- failMaybe $ Map.lookup a functions
-            u <- instantiateFresh t
-            return (u, Map.empty, Map.empty)
+          (_, t) <- failMaybe $ Map.lookup a functions
+          u <- instantiateFresh t
+          return (u, Map.empty, Map.empty)
         App f x -> do
           (a, th1, ctx1) <- go local f
           (b, th2, ctx2) <- go local x

@@ -100,5 +100,8 @@ instance Parse Poly where
     <*> many parser
     <* symbol "." <*> parser
 
+instance Parse Def where
+  parser = Def <$> parser <* symbol "::" <*> parser <* symbol "=" <*> parser
+
 instance Parse Sketch where
   parser = Sketch <$> parser <* symbol "::" <*> parser

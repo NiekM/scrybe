@@ -60,7 +60,7 @@ runSyn :: Module -> Technique -> MultiSet Concept
   -> Sketch -> RIO Application ()
 runSyn m t c dec = do
   let env' = restrict (Map.keysSet c) $ Map.assocs (functions m) <&>
-        \(x, u) -> (x, u, Set.singleton $ Function x)
+        \(x, (_, u)) -> (x, u, Set.singleton $ Function x)
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ dec
@@ -86,7 +86,7 @@ runSyn m t c dec = do
   logInfo ""
 
 pre :: Module
-pre = Module mempty prelude
+pre = Module mempty . Map.fromList $ prelude <&> \(Def x t e) -> (x, (e, t))
 
 run :: RIO Application ()
 run = do
