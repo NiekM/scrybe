@@ -36,12 +36,36 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th1 th0
 
+-- Lens {{{
+
+unify' :: (MonadFail m, Ord a) => Expr l a -> Expr l a -> m (Unify l a)
+unify' t u = case (t, u) of
+  (App t1 t2, App u1 u2) -> unifies' [(t1, u1), (t2, u2)]
+  (Var  a, Var  b) | a == b -> return Map.empty
+  (Ctr  a, Ctr  b) | a == b -> return Map.empty
+  (Hole a, Hole b) | a == b -> return Map.empty
+  (Hole a, _) | occurs' a u -> return $ Map.singleton a u
+  (_, Hole a) | occurs' a t -> return $ Map.singleton a t
+  _ -> fail "Unification failed"
+
+occurs' :: Ord a => a -> Expr l a -> Bool
+occurs' a tau = a `notElem` Set.fromList (holes tau)
+
+unifies' :: (MonadFail m, Foldable t, Ord a) =>
+  t (Expr l a, Expr l a) -> m (Unify l a)
+unifies' = flip foldr (return Map.empty) \(t1, t2) th -> do
+  th0 <- th
+  th1 <- unify' (subst th0 t1) (subst th0 t2)
+  return $ compose th1 th0
+
+-- }}}
+
 -- TODO: move holeCtxs to Monad
 infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader Module m
          , WithVariables s m) =>
   Term Hole -> m (Type Free, Unify 'Type Free, Map Hole HoleCtx)
 infer expr = do
-  Module { ctrs, vars } <- ask
+  Module { ctrs, functions } <- ask
   let go local = \case
         Hole h -> do
           goal <- Hole <$> fresh
@@ -62,7 +86,7 @@ infer expr = do
               modifying variables . Map.insert x $ Variable name t i (n + 1)
               return (t, Map.empty, Map.empty)
         Var a -> do
-            t <- failMaybe $ Map.lookup a vars
+            t <- failMaybe $ Map.lookup a functions
             u <- instantiateFresh t
             return (u, Map.empty, Map.empty)
         App f x -> do

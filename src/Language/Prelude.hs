@@ -25,14 +25,20 @@ prelude = Map.fromList
   , "compose :: forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})"
   , "const :: forall 0 1. {0} -> {1} -> {0}"
   , "id :: forall 0. {0} -> {0}"
+  , "fix :: forall 0. ({0} -> {0}) -> {0}"
+  , "rec :: forall 0 1. (({0} -> {1}) -> {0} -> {1}) -> {0} -> {1}"
 
   , "true :: forall . Bool"
   , "false :: forall . Bool"
+
+  , "elimBool :: forall 0. {0} -> {0} -> Bool -> {0}"
 
   , "not :: forall . Bool -> Bool"
 
   , "zero :: forall . Nat"
   , "succ :: forall . Nat -> Nat"
+
+  , "elimNat :: forall 0. {0} -> (Nat -> {0}) -> Nat -> {0}"
 
   , "even :: forall . Nat -> Bool"
   , "odd :: forall . Nat -> Bool"
@@ -43,6 +49,8 @@ prelude = Map.fromList
   , "nil :: forall 0. List {0}"
   , "cons :: forall 0. {0} -> List {0} -> List {0}"
 
+  , "elimList :: forall 0 1. {0} -> ({1} -> List {1} -> {0}) -> List {1} -> {0}"
+
   , "foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}"
   , "map :: forall 0 1. ({0} -> {1}) -> List {0} -> List {1}"
   , "reverse :: forall 0. List {0} -> List {0}"
@@ -50,9 +58,14 @@ prelude = Map.fromList
 
   , "pair :: forall 0 1. {0} -> {1} -> Pair {0} {1}"
 
+  , "elimPair :: forall 0 1 2. ({0} -> {2}) -> ({1} -> {2}) -> Pair {0} {1} -> {2}"
+
   , "fst :: forall 0 1. Pair {0} {1} -> {0}"
   , "snd :: forall 0 1. Pair {0} {1} -> {1}"
   , "swap :: forall 0 1. Pair {0} {1} -> Pair {1} {0}"
+
+  , "curry :: forall 0 1 2. (Pair {0} {1} -> {2}) -> {0} -> {1} -> {2}"
+  , "uncurry :: forall 0 1 2. {0} -> {1} -> {2} -> (Pair {0} {1} -> {2})"
 
   , "zip :: forall 0 1. List {0} -> List {1} -> List (Pair {0} {1})"
   ]

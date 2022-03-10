@@ -73,6 +73,7 @@ library
     , base >=4.11 && <10
     , containers
     , megaparsec
+    , microlens-platform
     , mtl
     , prettyprinter
     , rio >=0.1.12.0
@@ -115,6 +116,7 @@ executable synthesis-exe
     , base >=4.11 && <10
     , containers
     , megaparsec
+    , microlens-platform
     , mtl
     , optparse-simple
     , prettyprinter
@@ -162,6 +164,7 @@ test-suite synthesis-test
     , containers
     , hspec
     , megaparsec
+    , microlens-platform
     , mtl
     , prettyprinter
     , rio >=0.1.12.0

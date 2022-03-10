@@ -26,6 +26,7 @@ import qualified RIO.Map as Map
 import Prettyprinter
 import Data.Tree
 import Control.Monad.RWS hiding (local)
+import Lens.Micro.Platform
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case
@@ -37,15 +38,6 @@ instance Display (Doc ann) where
 
 class Monad m => MonadFresh s m where
   fresh :: m s
-
-use :: MonadState s m => Getting a s a -> m a
-use l = gets (view l)
-
-assign :: MonadState s m => ASetter s s a b -> b -> m ()
-assign l b = modify (set l b)
-
-modifying :: MonadState s m => ASetter s s a b -> (a -> b) -> m ()
-modifying l f = modify (over l f)
 
 subst :: (Monad m, Ord a) => Map a (m a) -> m a -> m a
 subst th e = e >>= \i -> fromMaybe (return i) (Map.lookup i th)

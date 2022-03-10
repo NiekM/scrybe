@@ -118,9 +118,7 @@ class HasHoleCtxs a where
 -- TODO: replace this with a function that substitutes all goals and variables
 -- within the gen monad.
 substCtx :: Map Free (Type Free) -> HoleCtx -> HoleCtx
-substCtx th ctx = ctx
-  { goal = subst th $ goal ctx
-  }
+substCtx th ctx = ctx { goal = subst th $ goal ctx }
 
 -- TODO: what else do we need to track for local variables?
 -- Variable name, type, number of holes it appears in, number of occurrences
@@ -135,7 +133,7 @@ class HasVariables a where
 
 data Module = Module
   { ctrs :: Map Ctr Poly
-  , vars :: Map Var Poly
+  , functions :: Map Var Poly
   } deriving (Eq, Ord, Show)
 
 instance Semigroup Module where
@@ -149,6 +147,19 @@ type FreshFree m = MonadFresh Free m
 type FreshVarId m = MonadFresh VarId m
 type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
 type WithVariables s m = (MonadState s m, HasVariables s)
+
+apps :: (Foldable f, HasApp l) => f (Expr l a) -> Expr l a
+apps = foldl1 App
+
+unApps :: Expr l a -> NonEmpty (Expr l a)
+unApps = reverse . go where
+  go = \case
+    App f x -> x `cons` go f
+    e -> pure e
+
+lams :: (Foldable f, HasLam l) =>
+  f Var -> Expr l a -> Expr l a
+lams = flip (foldr Lam)
 
 -- Instances {{{
 
@@ -260,19 +271,6 @@ perms n 1 = [[n]]
 perms n k = do
   x <- [1..(n - k + 1)]
   (x:) <$> perms (n - x) (k - 1)
-
-apps :: (Foldable f, HasApp l) => f (Expr l a) -> Expr l a
-apps = foldl1 App
-
-unApps :: Expr l a -> NonEmpty (Expr l a)
-unApps = reverse . go where
-  go = \case
-    App f x -> x `cons` go f
-    e -> pure e
-
-lams :: (Foldable f, HasLam l) =>
-  f Var -> Expr l a -> Expr l a
-lams = flip (foldr Lam)
 
 sizedExp :: [Gen (Term a)] -> Int -> Gen (Term a)
 sizedExp as 0 = oneof as

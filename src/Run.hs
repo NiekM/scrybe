@@ -47,10 +47,19 @@ composeSketch = p "{ } :: (b -> c) -> (a -> b) -> a -> c"
 flipSketch :: Sketch
 flipSketch = p "{ } :: (a -> b -> c) -> b -> a -> c"
 
+foldrSketch :: Sketch
+foldrSketch = p "{ } :: (a -> b -> b) -> b -> List a -> b"
+
+foldrConcepts :: MultiSet Concept
+foldrConcepts = Map.fromList
+  [ (Function "rec", Just 1)
+  , (Function "elimList", Just 1)
+  ]
+
 runSyn :: Module -> Technique -> MultiSet Concept
   -> Sketch -> RIO Application ()
 runSyn m t c dec = do
-  let env = restrict (Map.keysSet c) $ Map.assocs (vars m) <&>
+  let env = restrict (Map.keysSet c) $ Map.assocs (functions m) <&>
         \(x, u) -> (x, u, Set.singleton $ Function x)
   logInfo "Sketch:"
   logInfo ""
@@ -62,18 +71,18 @@ runSyn m t c dec = do
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
       let syn = levels $ runGenT (genTree step x) m g
-      let xss = take 12 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
+      let xss = take 11 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)
         forM_ xs \(e, _s) -> do
           logInfo . display . indent 2 . pretty $ e
-          -- forM_ (Map.assocs $ _s ^. holeCtxs) \(h, HoleCtx {goal,local}) -> do
-          --   logInfo . display . indent 4 .
-          --     ((pretty h <+> "::" <+> pretty goal <+> colon) <+>) . align $
-          --     vsep (fmap pretty . catMaybes $
-          --       (\(a, b) -> Map.lookup b (_s ^. variables) >>=
-          --         return . (a,) . (\(Variable _ t _ _) -> t))
-          --           <$> Map.assocs local)
+          forM_ (Map.assocs $ _s ^. holeCtxs) \(h, HoleCtx {goal,local}) -> do
+            logInfo . display . indent 4 .
+              ((pretty h <+> "::" <+> pretty goal <+> colon) <+>) . align $
+              vsep (fmap pretty . catMaybes $
+                (\(a, b) -> Map.lookup b (_s ^. variables) >>=
+                  return . (a,) . (\(Variable _ t _ _) -> t))
+                    <$> Map.assocs local)
   logInfo ""
 
 pre :: Module
@@ -86,6 +95,7 @@ run = do
   runSyn pre EtaLong mempty composeSketch
   runSyn pre EtaLong mempty flipSketch
   runSyn pre EtaLong mapConcepts mapSketch
-  runSyn pre EtaLong mapConcepts2 mapSketch2
-  runSyn pre PointFree mapConcepts3 mapSketch
+  -- runSyn pre EtaLong mapConcepts2 mapSketch2
+  -- runSyn pre PointFree mapConcepts3 mapSketch
+  -- runSyn pre EtaLong foldrConcepts foldrSketch
   logInfo "Finished!"

@@ -17,6 +17,7 @@ dependencies:
 - base >= 4.11 && < 10
 - containers
 - megaparsec
+- microlens-platform
 - mtl
 - prettyprinter
 - QuickCheck
