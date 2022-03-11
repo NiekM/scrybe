@@ -76,13 +76,13 @@ runSyn m t c dec = do
         logInfo $ "Step: " <> fromString (show i)
         forM_ xs \(e, _s) -> do
           logInfo . display . indent 2 . pretty $ e
-          forM_ (Map.assocs $ _s ^. holeCtxs) \(h, HoleCtx {goal,local}) -> do
-            logInfo . display . indent 4 .
-              ((pretty h <+> "::" <+> pretty goal <+> colon) <+>) . align $
-              vsep (fmap pretty . catMaybes $
-                (\(a, b) -> Map.lookup b (_s ^. variables) <&>
-                  ((a,) . (\(Variable _ u _ _) -> u)))
-                    <$> Map.assocs local)
+          -- forM_ (Map.assocs $ _s ^. holeCtxs) \(h, HoleCtx {goal,local}) -> do
+          --   logInfo . display . indent 4 .
+          --     ((pretty h <+> "::" <+> pretty goal <+> colon) <+>) . align $
+          --     vsep (fmap pretty . catMaybes $
+          --       (\(a, b) -> Map.lookup b (_s ^. variables) <&>
+          --         ((a,) . (\(Variable _ u _ _) -> u)))
+          --           <$> Map.assocs local)
   logInfo ""
 
 pre :: Module

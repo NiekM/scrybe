@@ -9,7 +9,7 @@ import qualified RIO.Set as Set
 import RIO.NonEmpty (cons)
 
 -- TODO: replace with more general infix function
-arrs :: (HasVar l, HasApp l) => NonEmpty (Expr l a) -> Expr l a
+arrs :: HasApp l => NonEmpty (Expr l a) -> Expr l a
 arrs = foldr1 Arr
 
 unArrs :: Expr l a -> NonEmpty (Expr l a)

@@ -86,8 +86,8 @@ data Expr (l :: Level) a where
   Case :: HasCase l => Expr l a -> [Branch (Expr l a)] -> Expr l a
   Let  :: HasLet  l => Var -> Expr l a -> Expr l a -> Expr l a
 
-pattern Arr :: () => (HasVar l, HasApp l) => Expr l a -> Expr l a -> Expr l a
-pattern Arr t u = App (App (Var (MkVar "->")) t) u
+pattern Arr :: () => HasApp l => Expr l a -> Expr l a -> Expr l a
+pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
 type Type = Expr 'Type
 type Term = Expr 'Term
