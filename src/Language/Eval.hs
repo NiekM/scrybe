@@ -36,7 +36,7 @@ eval = \case
         modifying env $ Map.insert a y
         eval z
       _ -> return $ App g y
-  Lam a x -> Lam a <$> eval x
+  Lam a x -> return $ Lam a x
   Case x xs -> do
     y <- eval x
     let ys = xs <&> \Branch { pat, arm } -> (,arm) <$> match pat y
@@ -45,6 +45,10 @@ eval = \case
       Just (m, e) -> do
         modifying env (m <>)
         eval e
+  Let a x e -> do
+    y <- eval x
+    modifying env $ Map.insert a y
+    eval e
 
 fromPattern :: Pattern Var -> Term Var
 fromPattern = \case

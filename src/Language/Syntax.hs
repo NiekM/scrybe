@@ -48,6 +48,14 @@ type family HasVar' (l :: Level) where
 
 type HasVar l = HasVar' l ~ 'True
 
+type family HasApp' (l :: Level) where
+  HasApp' 'Term    = 'True
+  HasApp' 'Type    = 'True
+  HasApp' 'Pattern = 'True
+  HasApp' _        = 'False
+
+type HasApp l = HasApp' l ~ 'True
+
 type family HasLam' (l :: Level) where
   HasLam' 'Term = 'True
   HasLam' _     = 'False
@@ -60,13 +68,11 @@ type family HasCase' (l :: Level) where
 
 type HasCase l = HasCase' l ~ 'True
 
-type family HasApp' (l :: Level) where
-  HasApp' 'Term    = 'True
-  HasApp' 'Type    = 'True
-  HasApp' 'Pattern = 'True
-  HasApp' _        = 'False
+type family HasLet' (l :: Level) where
+  HasLet' 'Term = 'True
+  HasLet' _     = 'False
 
-type HasApp l = HasApp' l ~ 'True
+type HasLet l = HasLet' l ~ 'True
 
 -- }}}
 
@@ -77,11 +83,8 @@ data Expr (l :: Level) a where
   Var  :: HasVar  l => Var -> Expr l a
   App  :: HasApp  l => Expr l a -> Expr l a -> Expr l a
   Lam  :: HasLam  l => Var -> Expr l a -> Expr l a
-  -- TODO: make Case expressions more similar to Haskell case expressions and
-  -- use real patterns
   Case :: HasCase l => Expr l a -> [Branch (Expr l a)] -> Expr l a
-    --[Branch (Expr l a)] -> Expr l a
-  -- TODO: pattern matching using unification
+  Let  :: HasLet  l => Var -> Expr l a -> Expr l a -> Expr l a
 
 pattern Arr :: () => (HasVar l, HasApp l) => Expr l a -> Expr l a -> Expr l a
 pattern Arr t u = App (App (Var (MkVar "->")) t) u
@@ -181,6 +184,7 @@ instance Applicative (Expr l) where
   App f x <*> y = App (f <*> y) (x <*> y)
   Lam b x <*> y = Lam b (x <*> y)
   Case x xs <*> y = Case (x <*> y) (fmap (<*> y) <$> xs)
+  Let a x e <*> y = Let a (x <*> y) (e <*> y)
 
 instance Monad (Expr l) where
   Hole h >>= k = k h
@@ -189,6 +193,7 @@ instance Monad (Expr l) where
   App f x >>= k = App (f >>= k) (x >>= k)
   Lam b x >>= k = Lam b (x >>= k)
   Case x xs >>= k = Case (x >>= k) (fmap (>>= k) <$> xs)
+  Let a x e >>= k = Let a (x >>= k) (e >>= k)
 
 -- }}}
 
@@ -239,6 +244,7 @@ instance Pretty a => Pretty (Expr l a) where
     Lam b e -> "\\" <> pretty b <> "." <+> pretty e
     Case x xs -> "[" <+> pretty x <+> "]" <+>
       mconcat (intersperse "; " $ pretty <$> xs)
+    Let a x e -> "@" <> pretty a <+> "=" <+> pretty x <> "," <+> pretty e
 
 -- }}}
 

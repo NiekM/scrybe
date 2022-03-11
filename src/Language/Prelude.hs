@@ -3,7 +3,6 @@ module Language.Prelude where
 import Import
 import Language.Syntax
 import Language.Parser
-import qualified RIO.Map as Map
 
 -- TODO: select a set of functions to form a dataset/benchmark of functions
 -- that we should be able to synthesize, consisting of simple prelude functions
@@ -24,7 +23,7 @@ prelude = parseUnsafe parser <$>
   , "compose :: forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2}) = \\f. \\g. \\x. f (g x)"
   , "const :: forall 0 1. {0} -> {1} -> {0} = \\x. \\y. x"
   , "id :: forall 0. {0} -> {0} = \\x. x"
-  , "fix :: forall 0. ({0} -> {0}) -> {0} = fix"
+  , "fix :: forall 0. ({0} -> {0}) -> {0} = @go = \\f. f (go f), go"
   , "rec :: forall 0 1. (({0} -> {1}) -> {0} -> {1}) -> {0} -> {1} = fix"
 
   , "true :: forall . Bool = True"
@@ -37,21 +36,18 @@ prelude = parseUnsafe parser <$>
   , "zero :: forall . Nat = Zero"
   , "succ :: forall . Nat -> Nat = Succ"
 
-  , "elimNat :: forall 0. {0} -> (Nat -> {0}) -> Nat -> {0} = elimNat"
-  , "foldNat :: forall 0. {0} -> ({0} -> {0}) -> Nat -> {0} = foldNat"
+  , "elimNat :: forall 0. {0} -> (Nat -> {0}) -> Nat -> {0} = \\z. \\s. \\n. [n] Zero => z; Succ {m} => s m"
+  , "foldNat :: forall 0. {0} -> ({0} -> {0}) -> Nat -> {0} = \\z. \\s. @go = \\n. [n] Zero => z; Succ {m} => s (go m), go"
 
-  , "even :: forall . Nat -> Bool = even"
-  , "odd :: forall . Nat -> Bool = odd"
-
-  , "plus :: forall . Nat -> Nat -> Nat = plus"
+  , "plus :: forall . Nat -> Nat -> Nat = \\n. foldNat n Succ"
   , "mult :: forall . Nat -> Nat -> Nat = mult"
 
   , "nil :: forall 0. List {0} = Nil"
   , "cons :: forall 0. {0} -> List {0} -> List {0} = Cons"
 
-  , "elimList :: forall 0 1. {0} -> ({1} -> List {1} -> {0}) -> List {1} -> {0} = elimList"
+  , "elimList :: forall 0 1. {0} -> ({1} -> List {1} -> {0}) -> List {1} -> {0} = \\nil. \\cons. \\xs. [xs] Nil => nil; Cons {y} {ys} => cons y ys"
 
-  , "foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1} = foldr"
+  , "foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1} = \\f. \\e. @go = \\xs. [xs] Nil => e; Cons {x} {ys} => f x (go ys), go"
   , "map :: forall 0 1. ({0} -> {1}) -> List {0} -> List {1} = \\f. foldr (\\x. Cons (f x)) Nil"
   , "reverse :: forall 0. List {0} -> List {0} = reverse"
   , "length :: forall 0. List {0} -> Nat = foldr (\\x. \\r. Succ r) Zero"

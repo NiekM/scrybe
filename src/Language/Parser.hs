@@ -78,6 +78,8 @@ instance ParseAtom 'Term where
   parseAtom = Lam <$ symbol "\\" <*> parser <* symbol "." <*> parser
     <|> Case <$ symbol "[" <*> parser <* symbol "]" <*>
       (toList <$> interleaved parser (symbol ";"))
+    <|> Let <$ symbol "@" <*> parser <* symbol "=" <*> parser
+      <* symbol "," <*> parser
     <|> Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser
 
 instance ParseAtom 'Type where

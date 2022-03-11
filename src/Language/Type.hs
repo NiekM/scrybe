@@ -80,7 +80,8 @@ infer expr = do
           let t' = subst th t
           modifying variables $ Map.insert i (Variable x t' 1 0)
           return (Arr t' u, th, local')
-        Case _x _xs -> undefined
+        Case {} -> undefined
+        Let {} -> undefined
   go Map.empty expr
 
 -- TODO: maybe this should return a sketch along with a type and unification

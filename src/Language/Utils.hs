@@ -81,3 +81,4 @@ dissect e = e : case e of
   App f x -> dissect f ++ dissect x
   Lam _ x -> dissect x
   Case x xs -> x : concatMap (dissect . arm) xs
+  Let _ x y -> dissect x ++ dissect y
