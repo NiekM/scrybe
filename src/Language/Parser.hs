@@ -74,6 +74,10 @@ class ParseAtom l where
 instance ParseAtom 'Pattern where
   parseAtom = Hole <$> braces parser <|> Ctr <$> parser
 
+num :: Int -> Term a
+num 0 = Ctr "Zero"
+num n = App (Ctr "Succ") (num $ n - 1)
+
 instance ParseAtom 'Term where
   parseAtom = Lam <$ symbol "\\" <*> parser <* symbol "." <*> parser
     <|> Case <$ symbol "[" <*> parser <* symbol "]" <*>
@@ -81,6 +85,7 @@ instance ParseAtom 'Term where
     <|> Let <$ symbol "@" <*> parser <* symbol "=" <*> parser
       <* symbol "," <*> parser
     <|> Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser
+    <|> num <$> int
 
 instance ParseAtom 'Type where
   parseAtom = Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser

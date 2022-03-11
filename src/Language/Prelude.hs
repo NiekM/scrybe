@@ -40,7 +40,7 @@ prelude = parseUnsafe parser <$>
   , "foldNat :: forall 0. {0} -> ({0} -> {0}) -> Nat -> {0} = \\z. \\s. @go = \\n. [n] Zero => z; Succ {m} => s (go m), go"
 
   , "plus :: forall . Nat -> Nat -> Nat = \\n. foldNat n Succ"
-  , "mult :: forall . Nat -> Nat -> Nat = mult"
+  , "mult :: forall . Nat -> Nat -> Nat = Mult"
 
   , "nil :: forall 0. List {0} = Nil"
   , "cons :: forall 0. {0} -> List {0} -> List {0} = Cons"
@@ -49,7 +49,7 @@ prelude = parseUnsafe parser <$>
 
   , "foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1} = \\f. \\e. @go = \\xs. [xs] Nil => e; Cons {x} {ys} => f x (go ys), go"
   , "map :: forall 0 1. ({0} -> {1}) -> List {0} -> List {1} = \\f. foldr (\\x. Cons (f x)) Nil"
-  , "reverse :: forall 0. List {0} -> List {0} = reverse"
+  , "reverse :: forall 0. List {0} -> List {0} = Reverse"
   , "length :: forall 0. List {0} -> Nat = foldr (\\x. \\r. Succ r) Zero"
 
   , "pair :: forall 0 1. {0} -> {1} -> Pair {0} {1} = Pair"
@@ -61,5 +61,5 @@ prelude = parseUnsafe parser <$>
   , "curry :: forall 0 1 2. (Pair {0} {1} -> {2}) -> {0} -> {1} -> {2} = \\f. \\x. \\y. f (Pair x y)"
   , "uncurry :: forall 0 1 2. ({0} -> {1} -> {2}) -> Pair {0} {1} -> {2} = \\f. \\p. [p] Pair {x} {y} => f x y"
 
-  , "zip :: forall 0 1. List {0} -> List {1} -> List (Pair {0} {1}) = zip"
+  , "zip :: forall 0 1. List {0} -> List {1} -> List (Pair {0} {1}) = Zip"
   ]

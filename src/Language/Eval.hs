@@ -26,7 +26,9 @@ eval = \case
   Hole h -> return $ Hole h
   Var x -> do
     m <- use env
-    maybe (return $ Var x) eval $ Map.lookup x m
+    case Map.lookup x m of
+      Nothing -> fail $ "Unknown variable " <> show x
+      Just e -> return e
   Ctr c -> return $ Ctr c
   App f x -> do
     g <- eval f
