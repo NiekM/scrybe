@@ -7,12 +7,12 @@ import Language.Type
 import qualified RIO.Map as Map
 import Control.Monad.State
 
-class HasEnv a b where
-  env :: Lens' a (Map Var (Term b))
+class HasEnv a where
+  env :: Lens' a (Map Var (Term Var))
 
 -- TODO: unification should be with variables rather than holes
 
-instance HasEnv (Map Var (Term a)) a where
+instance HasEnv (Map Var (Term Var)) where
   env = id
 
 eval' :: Map Var (Term Var) -> Term Var -> Maybe (Term Var)
@@ -20,15 +20,15 @@ eval' m e = evalStateT (eval e) m
 
 -- | A simple evaluator/normalizer for expressions that leaves subexpressions
 -- as if when they cannot be evaluated further.
-eval :: (MonadFail m, MonadState s m, HasEnv s Var) =>
-  Term Var -> m (Term Var)
+-- TODO: add alpha renaming
+eval :: (MonadFail m, MonadState s m, HasEnv s) => Term Var -> m (Term Var)
 eval = \case
   Hole h -> return $ Hole h
   Var x -> do
     m <- use env
     case Map.lookup x m of
       Nothing -> fail $ "Unknown variable " <> show x
-      Just e -> return e
+      Just e -> eval e
   Ctr c -> return $ Ctr c
   App f x -> do
     g <- eval f
