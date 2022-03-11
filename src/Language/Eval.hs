@@ -52,6 +52,33 @@ eval = \case
     modifying env $ Map.insert a y
     eval e
 
+replace :: Var -> Expr l a -> Expr l a -> Expr l a
+replace a e = \case
+  Var b | a == b -> e
+  App f x -> App (replace a e f) (replace a e x)
+  Lam b x -> Lam b (replace a e x) -- TODO: what about alpha-renaming?
+  Case x xs -> Case (replace a e x) (fmap (replace a e) <$> xs) -- TODO: alpha-renaming
+  Let b x y -> Let b (replace a e x) (replace a e y) -- TODO: alpha-renaming
+  x -> x
+
+whnf' :: Map Var (Term Var) -> Term Var -> Maybe (Term Var)
+whnf' m e = evalStateT (whnf e) m
+
+whnf :: (MonadFail m, MonadState s m, HasEnv s) => Term Var -> m (Term Var)
+whnf = \case
+  Var x -> do
+    m <- use env
+    case Map.lookup x m of
+      Nothing -> fail $ "Unknown variable " <> show x
+      Just e -> whnf e
+  App f e -> whnf f >>= \case
+    Lam a x -> do
+      whnf (replace a e x)
+    c -> return $ App c e
+  Case {} -> undefined -- TODO: here whnf is forced
+  Let {} -> undefined -- TODO: should this introduce a closure?
+  e -> return e
+
 fromPattern :: Pattern Var -> Term Var
 fromPattern = \case
   Hole x -> Hole x
