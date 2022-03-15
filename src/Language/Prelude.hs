@@ -23,21 +23,21 @@ prelude = parseUnsafe parser <$>
   , "compose :: forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2}) = \\f. \\g. \\x. f (g x)"
   , "const :: forall 0 1. {0} -> {1} -> {0} = \\x. \\y. x"
   , "id :: forall 0. {0} -> {0} = \\x. x"
-  , "fix :: forall 0. ({0} -> {0}) -> {0} = @go = \\f. f (go f), go"
+  , "fix :: forall 0. ({0} -> {0}) -> {0} = let go = \\f. f (go f) in go"
   , "rec :: forall 0 1. (({0} -> {1}) -> {0} -> {1}) -> {0} -> {1} = fix"
 
   , "true :: forall . Bool = True"
   , "false :: forall . Bool = False"
 
-  , "elimBool :: forall 0. {0} -> {0} -> Bool -> {0} = \\f. \\t. \\b. [b] False => f; True => t"
+  , "elimBool :: forall 0. {0} -> {0} -> Bool -> {0} = \\f. \\t. \\b. case b of False => f; True => t"
 
   , "not :: forall . Bool -> Bool = elimBool True False"
 
   , "zero :: forall . Nat = Zero"
   , "succ :: forall . Nat -> Nat = Succ"
 
-  , "elimNat :: forall 0. {0} -> (Nat -> {0}) -> Nat -> {0} = \\z. \\s. \\n. [n] Zero => z; Succ {m} => s m"
-  , "foldNat :: forall 0. {0} -> ({0} -> {0}) -> Nat -> {0} = \\z. \\s. @go = \\n. [n] Zero => z; Succ {m} => s (go m), go"
+  , "elimNat :: forall 0. {0} -> (Nat -> {0}) -> Nat -> {0} = \\z. \\s. \\n. case n of Zero => z; Succ {m} => s m"
+  , "foldNat :: forall 0. {0} -> ({0} -> {0}) -> Nat -> {0} = \\z. \\s. let go = \\n. case n of Zero => z; Succ {m} => s (go m) in go"
 
   , "plus :: forall . Nat -> Nat -> Nat = \\n. foldNat n Succ"
   , "mult :: forall . Nat -> Nat -> Nat = Mult"
@@ -45,21 +45,21 @@ prelude = parseUnsafe parser <$>
   , "nil :: forall 0. List {0} = Nil"
   , "cons :: forall 0. {0} -> List {0} -> List {0} = Cons"
 
-  , "elimList :: forall 0 1. {0} -> ({1} -> List {1} -> {0}) -> List {1} -> {0} = \\nil. \\cons. \\xs. [xs] Nil => nil; Cons {y} {ys} => cons y ys"
+  , "elimList :: forall 0 1. {0} -> ({1} -> List {1} -> {0}) -> List {1} -> {0} = \\nil. \\cons. \\xs. case xs of Nil => nil; Cons {y} {ys} => cons y ys"
 
-  , "foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1} = \\f. \\e. @go = \\xs. [xs] Nil => e; Cons {x} {ys} => f x (go ys), go"
+  , "foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1} = \\f. \\e. let go = \\xs. case xs of Nil => e; Cons {x} {ys} => f x (go ys) in go"
   , "map :: forall 0 1. ({0} -> {1}) -> List {0} -> List {1} = \\f. foldr (\\x. Cons (f x)) Nil"
   , "reverse :: forall 0. List {0} -> List {0} = Reverse"
   , "length :: forall 0. List {0} -> Nat = foldr (\\x. \\r. Succ r) Zero"
 
   , "pair :: forall 0 1. {0} -> {1} -> Pair {0} {1} = Pair"
 
-  , "fst :: forall 0 1. Pair {0} {1} -> {0} = \\p. [p] Pair {x} {y} => x"
-  , "snd :: forall 0 1. Pair {0} {1} -> {1} = \\p. [p] Pair {x} {y} => y"
-  , "swap :: forall 0 1. Pair {0} {1} -> Pair {1} {0} = \\p. [p] Pair {x} {y} => Pair y x"
+  , "fst :: forall 0 1. Pair {0} {1} -> {0} = \\p. case p of Pair {x} {y} => x"
+  , "snd :: forall 0 1. Pair {0} {1} -> {1} = \\p. case p of Pair {x} {y} => y"
+  , "swap :: forall 0 1. Pair {0} {1} -> Pair {1} {0} = \\p. case p of Pair {x} {y} => Pair y x"
 
   , "curry :: forall 0 1 2. (Pair {0} {1} -> {2}) -> {0} -> {1} -> {2} = \\f. \\x. \\y. f (Pair x y)"
-  , "uncurry :: forall 0 1 2. ({0} -> {1} -> {2}) -> Pair {0} {1} -> {2} = \\f. \\p. [p] Pair {x} {y} => f x y"
+  , "uncurry :: forall 0 1 2. ({0} -> {1} -> {2}) -> Pair {0} {1} -> {2} = \\f. \\p. case p of Pair {x} {y} => f x y"
 
   , "zip :: forall 0 1. List {0} -> List {1} -> List (Pair {0} {1}) = Zip"
   ]

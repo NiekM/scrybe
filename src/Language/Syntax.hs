@@ -242,9 +242,9 @@ instance Pretty a => Pretty (Expr l a) where
       , prettyParens (\y -> isLam y || isApp y) x
       ]
     Lam b e -> "\\" <> pretty b <> "." <+> pretty e
-    Case x xs -> "[" <+> pretty x <+> "]" <+>
+    Case x xs -> "case" <+> pretty x <+> "of" <+>
       mconcat (intersperse "; " $ pretty <$> xs)
-    Let a x e -> "@" <> pretty a <+> "=" <+> pretty x <> "," <+> pretty e
+    Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e
 
 -- }}}
 

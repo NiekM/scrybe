@@ -46,6 +46,10 @@ extract = fmap fst &&& Map.fromList . holes
 nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
 
+instantiate :: Map Free (Type Free) -> Poly -> Poly
+instantiate th (Poly fr ty) =
+  Poly (filter (`notElem` Map.keys th) fr) (subst th ty)
+
 instantiateFresh :: FreshFree m => Poly -> m (Type Free)
 instantiateFresh (Poly xs t) = do
   th <- Map.fromList <$> forM xs \x -> (x,) . Hole <$> fresh

@@ -27,11 +27,11 @@ don't have to perform the same unification twice.
 
 -- | Normalize a type along with an expression with types in the holes, such
 -- that the holes are numbered in order of their appearance.
-normalize :: Type Hole -> Term (Type Hole) -> (Type Hole, Term (Type Hole))
+normalize :: Type Free -> Term (Type Free) -> (Type Free, Term (Type Free))
 normalize t e = (subst rename t, subst rename <$> e)
   where
     xs = holes t
     ys = concatMap holes (holes e)
     -- All holes in order of their appearance, given preference to holes in t
     zs = nubOrd $ xs ++ ys
-    rename = Map.fromList $ zip zs (Hole . MkHole <$> [0..])
+    rename = Map.fromList $ zip zs (Hole . MkFree <$> [0..])

@@ -1,42 +1,86 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Language.Parser where
 
-import Import hiding (some, many, lift)
+import Import hiding (some, many, lift, bracket)
 import RIO.Partial (read)
 import Language.Syntax
 import Language.Utils
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
+import qualified RIO.Set as Set
 
-type Parser = Parsec Void Text
+type Lexer = Parsec Void Text
 
-sc :: Parser ()
+data Lexeme
+  = Keyword Text
+  | Identifier Text
+  | Constructor Text
+  | Operator Text
+  | Separator Text
+  | Bracket Bracket
+  | Literal Int
+  deriving (Eq, Ord, Show, Read)
+
+type Bracket = (Shape, Position)
+
+data Shape = Round | Curly | Square
+  deriving (Eq, Ord, Show, Read)
+
+data Position = Open | Close
+  deriving (Eq, Ord, Show, Read)
+
+sc :: Lexer ()
 sc = L.space space1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
 
-lexeme :: Parser a -> Parser a
-lexeme = L.lexeme sc
+identChar :: Lexer Char
+identChar = alphaNumChar <|> char '_' <|> char '\''
 
-symbol :: Text -> Parser Text
-symbol = L.symbol sc
+keywords :: [Text]
+keywords = ["case", "of", "let", "in", "forall", "data"]
 
-var :: Parser Text
-var = lexeme $ fromString <$> ((:) <$> lowerChar <*> many alphaNumChar)
+ident :: Lexer Char -> Lexer Text
+ident start = fmap fromString $ (:) <$> start <*> many identChar
 
-ctr :: Parser Text
-ctr = lexeme $ fromString <$> ((:) <$> upperChar <*> many alphaNumChar)
+identOrKeyword :: Lexer Lexeme
+identOrKeyword = ident lowerChar <&> \case
+  t | t `elem` keywords -> Keyword t
+    | otherwise -> Identifier t
 
-int :: Parser Int
-int = lexeme $ read <$> some digitChar
+operator :: Lexer Text
+operator = fmap fromString . some . choice . fmap char $
+  ("!$%^&*-=+\\:<>." :: String)
 
-parens :: Parser a -> Parser a
-parens = between (symbol "(") (symbol ")")
+separator :: Lexer Text
+separator = string "," <|> string ";"
 
-braces :: Parser a -> Parser a
-braces = between (symbol "{") (symbol "}")
+bracket :: Lexer Bracket
+bracket = (Round, Open) <$ char '('
+  <|> (Round, Close) <$ char ')'
+  <|> (Curly, Open) <$ char '{'
+  <|> (Curly, Close) <$ char '}'
+  <|> (Square, Open) <$ char '['
+  <|> (Square, Close) <$ char ']'
 
-brackets :: Parser a -> Parser a
-brackets = between (symbol "[") (symbol "]")
+literal :: Lexer Int
+literal = read <$> some digitChar
+
+lex :: Lexer [Lexeme]
+lex = many . choice . fmap (L.lexeme sc) $
+  [ identOrKeyword
+  , Constructor <$> ident upperChar
+  , Operator <$> operator
+  , Separator <$> separator
+  , Bracket <$> bracket
+  , Literal <$> literal
+  ]
+
+type Parser = Parsec Void [Lexeme]
+
+brackets :: Shape -> Parser a -> Parser a
+brackets sh = between
+  (single $ Bracket (sh, Open))
+  (single $ Bracket (sh, Close))
 
 interleaved :: Parser a -> Parser b -> Parser (NonEmpty a)
 interleaved p q = (:|) <$> p <*> many (q *> p)
@@ -45,19 +89,44 @@ class Parse a where
   parser :: Parser a
 
 parseUnsafe :: Parser a -> Text -> a
-parseUnsafe p = either (error . show) id . parse p ""
+parseUnsafe p t = either (error . show)
+  (either (error . show) id . parse p "") $ parse lex "" t
+
+identifier :: Parser Text
+identifier = flip token Set.empty \case
+  Identifier i -> Just i
+  _ -> Nothing
+
+constructor :: Parser Text
+constructor = flip token Set.empty \case
+  Constructor i -> Just i
+  _ -> Nothing
+
+int :: Parser Int
+int = flip token Set.empty \case
+  Literal i -> Just i
+  _ -> Nothing
+
+sep :: Text -> Parser Lexeme
+sep = single . Separator
+
+op :: Text -> Parser Lexeme
+op = single . Operator
+
+key :: Text -> Parser Lexeme
+key = single . Keyword
 
 instance Parse Void where
   parser = mzero
 
 instance Parse Unit where
-  parser = Unit <$> sc
+  parser = return $ Unit ()
 
 instance Parse Var where
-  parser = MkVar <$> var
+  parser = MkVar <$> identifier
 
 instance Parse Ctr where
-  parser = MkCtr <$> ctr
+  parser = MkCtr <$> constructor
 
 instance Parse Hole where
   parser = MkHole <$> int
@@ -66,32 +135,40 @@ instance Parse Free where
   parser = MkFree <$> int
 
 instance Parse a => Parse (Branch a) where
-  parser = Branch <$> parser <* symbol "=>" <*> parser
+  parser = Branch <$> parser <* op "=>" <*> parser
 
 class ParseAtom l where
   parseAtom :: Parse a => Parser (Expr l a)
 
 instance ParseAtom 'Pattern where
-  parseAtom = Hole <$> braces parser <|> Ctr <$> parser
+  parseAtom = Hole <$> brackets Curly parser <|> Ctr <$> parser
 
 num :: Int -> Term a
 num 0 = Ctr "Zero"
 num n = App (Ctr "Succ") (num $ n - 1)
 
 instance ParseAtom 'Term where
-  parseAtom = Lam <$ symbol "\\" <*> parser <* symbol "." <*> parser
-    <|> Case <$ symbol "[" <*> parser <* symbol "]" <*>
-      (toList <$> interleaved parser (symbol ";"))
-    <|> Let <$ symbol "@" <*> parser <* symbol "=" <*> parser
-      <* symbol "," <*> parser
-    <|> Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser
-    <|> num <$> int
+  parseAtom = choice
+    [ Lam <$ op "\\" <*> parser <* op "." <*> parser
+    , Case <$ key "case" <*> parser <* key "of" <*>
+      (toList <$> interleaved parser (sep ";"))
+    , Let <$ key "let" <*> parser <* op "=" <*> parser <* key "in" <*> parser
+    , Hole <$> brackets Curly parser
+    , Var <$> parser
+    , Ctr <$> parser
+    , num <$> int
+    ]
 
 instance ParseAtom 'Type where
-  parseAtom = Hole <$> braces parser <|> Var <$> parser <|> Ctr <$> parser
+  parseAtom = choice
+    [ Hole <$> brackets Curly parser
+    , Var <$> parser
+    , Ctr <$> parser
+    ]
 
 parseApps :: (Parse a, HasApp l, ParseAtom l) => Parser (Expr l a)
-parseApps = apps <$> interleaved (parens parseApps <|> parseAtom) (pure ())
+parseApps =
+  apps <$> interleaved (brackets Round parseApps <|> parseAtom) (pure ())
 
 instance Parse a => Parse (Pattern a) where
   parser = parseApps
@@ -100,15 +177,15 @@ instance Parse a => Parse (Term a) where
   parser = parseApps
 
 instance Parse a => Parse (Type a) where
-  parser = arrs <$> interleaved (parens parser <|> parseApps) (symbol "->")
+  parser = arrs <$> interleaved (brackets Round parser <|> parseApps) (op "->")
 
 instance Parse Poly where
-  parser = Poly <$ symbol "forall"
+  parser = Poly <$ key "forall"
     <*> many parser
-    <* symbol "." <*> parser
+    <* op "." <*> parser
 
 instance Parse Def where
-  parser = Def <$> parser <* symbol "::" <*> parser <* symbol "=" <*> parser
+  parser = Def <$> parser <* op "::" <*> parser <* op "=" <*> parser
 
 instance Parse Sketch where
-  parser = Sketch <$> parser <* symbol "::" <*> parser
+  parser = Sketch <$> parser <* op "::" <*> parser
