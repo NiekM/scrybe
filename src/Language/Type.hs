@@ -40,7 +40,9 @@ infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader Module m
          , WithVariables s m) =>
   Term Hole -> m (Type Free, Unify 'Type Free, Map Hole HoleCtx)
 infer expr = do
-  Module { ctrs, functions } <- ask
+  m <- ask
+  let cs = ctrs m
+  let fs = functions m
   let go local = \case
         Hole h -> do
           goal <- Hole <$> fresh
@@ -50,7 +52,7 @@ infer expr = do
             v -> v
           return (goal, Map.empty, Map.singleton h HoleCtx { goal, local })
         Ctr c -> do
-          t <- failMaybe $ Map.lookup c ctrs
+          t <- failMaybe $ Map.lookup c cs
           u <- instantiateFresh t
           return (u, Map.empty, Map.empty)
         Var a | Just x <- Map.lookup a local -> use variables >>= \vs ->
@@ -61,7 +63,7 @@ infer expr = do
               modifying variables . Map.insert x $ Variable name t i (n + 1)
               return (t, Map.empty, Map.empty)
         Var a -> do
-          (_, t) <- failMaybe $ Map.lookup a functions
+          (_, t) <- failMaybe $ Map.lookup a fs
           u <- instantiateFresh t
           return (u, Map.empty, Map.empty)
         App f x -> do

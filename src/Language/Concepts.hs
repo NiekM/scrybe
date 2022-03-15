@@ -47,7 +47,7 @@ sub a b = (<> Map.difference a b) . Map.mapMaybe id
 -- | Concepts within our language, used to categorize hole fillings.
 data Concept
   = Function Var
-  | Datatype Var
+  | Datatyp Var
   {-
   | EtaExpansion
   | PartialApplication -- TODO: is a function applied to no arguments considered partially applied?

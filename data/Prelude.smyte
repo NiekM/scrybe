@@ -1,0 +1,77 @@
+id :: forall 0. {0} -> {0}
+id = \x. x
+
+const :: forall 0 1. {0} -> {1} -> {0}
+const = \x. \y. x
+
+fix :: forall 0. ({0} -> {0}) -> {0}
+fix = let go = \f. f (go f) in go
+
+flip :: forall 0 1 2. ({0} -> {1} -> {2}) -> {1} -> {0} -> {2}
+flip = \f. \x. \y. f y x
+
+compose :: forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})
+compose = \f. \g. \x. f (g x)
+
+rec :: forall 0 1. (({0} -> {1}) -> ({0} -> {1})) -> {0} -> {1}
+rec = fix
+
+data Bool = False | True
+
+elimBool :: forall 0. {0} -> {0} -> Bool -> {0}
+elimBool = \f. \t. \b. case b of False => f; True => t
+
+not :: Bool -> Bool
+not = elimBool True False
+
+data Nat = Zero | Succ Nat
+
+elimNat :: forall 0. {0} -> (Nat -> {0}) -> Nat -> {0}
+elimNat = \z. \s. \n. case n of Zero => z; Succ {m} => s m
+
+foldNat :: forall 0. {0} -> ({0} -> {0}) -> Nat -> {0}
+foldNat = \z. \s. let go = \n. case n of Zero => z; Succ {m} => s (go m) in go
+
+plus :: Nat -> Nat -> Nat
+plus = \n. foldNat n Succ
+
+mult :: Nat -> Nat -> Nat
+mult = Mult -- TODO: make sure this works correctly
+
+data List 0 = Nil | Cons {0} (List {0})
+
+nil :: forall 0. List {0}
+nil = Nil
+
+cons :: forall 0. {0} -> List {0} -> List {0}
+cons = Cons
+
+elimList :: forall 0 1. {0} -> ({1} -> List {1} -> {0}) -> List {1} -> {0}
+elimList = \n. \c. \l. case l of Nil => n; Cons {h} {t} => c h t
+
+foldList :: forall 0 1. {1} -> ({0} -> {1} -> {1}) -> List {0} -> {1}
+foldList = \n. \c. let go = \l. case l of Nil => n; Cons {h} {t} => c h (go t) in go
+
+foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}
+foldr = flip foldList
+
+map :: forall 0 1. ({0} -> {1}) -> List {0} -> List {1}
+map = \f. foldList [] (\x. Cons (f x))
+
+data Pair 0 1 = Pair {0} {1}
+
+fst :: forall 0 1. Pair {0} {1} -> {0}
+fst = \p. case p of Pair {x} {y} => x
+
+snd :: forall 0 1. Pair {0} {1} -> {1}
+snd = \p. case p of Pair {x} {y} => y
+
+swap :: forall 0 1. Pair {0} {1} -> Pair {1} {0}
+swap = \p. case p of Pair {x} {y} => Pair y x
+
+curry :: forall 0 1 2. (Pair {0} {1} -> {2}) -> {0} -> {1} -> {2}
+curry = \f. \x. \y. f (Pair x y)
+
+uncurry :: forall 0 1 2. ({0} -> {1} -> {2}) -> Pair {0} {1} -> {2}
+uncurry = \f. \p. case p of Pair {x} {y} => f x y
+

@@ -32,7 +32,6 @@ library
       Language.Concepts
       Language.Eval
       Language.Parser
-      Language.Prelude
       Language.Syntax
       Language.Type
       Language.Utils

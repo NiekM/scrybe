@@ -3,19 +3,8 @@ module Language.Utils where
 
 import Import hiding (reverse)
 import Language.Syntax
-import Data.Foldable
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
-import RIO.NonEmpty (cons)
-
--- TODO: replace with more general infix function
-arrs :: HasApp l => NonEmpty (Expr l a) -> Expr l a
-arrs = foldr1 Arr
-
-unArrs :: Expr l a -> NonEmpty (Expr l a)
-unArrs = \case
-  Arr t u -> t `cons` unArrs u
-  t -> pure t
 
 splitArgs :: Expr l a -> ([Expr l a], Expr l a)
 splitArgs = unsnoc . unArrs

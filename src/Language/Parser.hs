@@ -4,7 +4,6 @@ module Language.Parser where
 import Import hiding (some, many, lift, bracket)
 import RIO.Partial (read)
 import Language.Syntax
-import Language.Utils
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -20,6 +19,7 @@ data Lexeme
   | Separator Text
   | Bracket Bracket
   | Literal Int
+  | Newline
   deriving (Eq, Ord, Show, Read)
 
 type Bracket = (Shape, Position)
@@ -31,7 +31,7 @@ data Position = Open | Close
   deriving (Eq, Ord, Show, Read)
 
 sc :: Lexer ()
-sc = L.space space1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
+sc = L.space hspace1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
 
 identChar :: Lexer Char
 identChar = alphaNumChar <|> char '_' <|> char '\''
@@ -49,18 +49,17 @@ identOrKeyword = ident lowerChar <&> \case
 
 operator :: Lexer Text
 operator = fmap fromString . some . choice . fmap char $
-  ("!$%^&*-=+\\:<>." :: String)
+  ("!$%^&*-=+\\:<>.|" :: String)
 
 separator :: Lexer Text
 separator = string "," <|> string ";"
 
 bracket :: Lexer Bracket
-bracket = (Round, Open) <$ char '('
-  <|> (Round, Close) <$ char ')'
-  <|> (Curly, Open) <$ char '{'
-  <|> (Curly, Close) <$ char '}'
-  <|> (Square, Open) <$ char '['
-  <|> (Square, Close) <$ char ']'
+bracket = choice
+  [ (Round , Open) <$ char '(', (Round , Close) <$ char ')'
+  , (Curly , Open) <$ char '{', (Curly , Close) <$ char '}'
+  , (Square, Open) <$ char '[', (Square, Close) <$ char ']'
+  ]
 
 literal :: Lexer Int
 literal = read <$> some digitChar
@@ -73,6 +72,7 @@ lex = many . choice . fmap (L.lexeme sc) $
   , Separator <$> separator
   , Bracket <$> bracket
   , Literal <$> literal
+  , Newline <$ eol
   ]
 
 type Parser = Parsec Void [Lexeme]
@@ -82,15 +82,18 @@ brackets sh = between
   (single $ Bracket (sh, Open))
   (single $ Bracket (sh, Close))
 
-interleaved :: Parser a -> Parser b -> Parser (NonEmpty a)
-interleaved p q = (:|) <$> p <*> many (q *> p)
+alt :: Parser a -> Parser b -> Parser [a]
+alt p q = toList <$> alt1 p q <|> mempty
+
+alt1 :: Parser a -> Parser b -> Parser (NonEmpty a)
+alt1 p q = (:|) <$> p <*> many (q *> p)
 
 class Parse a where
   parser :: Parser a
 
 parseUnsafe :: Parser a -> Text -> a
-parseUnsafe p t = either (error . show)
-  (either (error . show) id . parse p "") $ parse lex "" t
+parseUnsafe p = maybe undefined
+  (fromMaybe undefined . parseMaybe p) . parseMaybe lex
 
 identifier :: Parser Text
 identifier = flip token Set.empty \case
@@ -120,7 +123,7 @@ instance Parse Void where
   parser = mzero
 
 instance Parse Unit where
-  parser = return $ Unit ()
+  parser = mempty
 
 instance Parse Var where
   parser = MkVar <$> identifier
@@ -147,16 +150,19 @@ num :: Int -> Term a
 num 0 = Ctr "Zero"
 num n = App (Ctr "Succ") (num $ n - 1)
 
+list :: Foldable f => f (Term a) -> Term a
+list = foldr (\x r -> apps [Ctr "Cons", x, r]) (Ctr "Nil")
+
 instance ParseAtom 'Term where
   parseAtom = choice
     [ Lam <$ op "\\" <*> parser <* op "." <*> parser
-    , Case <$ key "case" <*> parser <* key "of" <*>
-      (toList <$> interleaved parser (sep ";"))
+    , Case <$ key "case" <*> parser <* key "of" <*> alt parser (sep ";")
     , Let <$ key "let" <*> parser <* op "=" <*> parser <* key "in" <*> parser
     , Hole <$> brackets Curly parser
     , Var <$> parser
     , Ctr <$> parser
     , num <$> int
+    , list <$> brackets Square (alt parser (sep ","))
     ]
 
 instance ParseAtom 'Type where
@@ -167,8 +173,7 @@ instance ParseAtom 'Type where
     ]
 
 parseApps :: (Parse a, HasApp l, ParseAtom l) => Parser (Expr l a)
-parseApps =
-  apps <$> interleaved (brackets Round parseApps <|> parseAtom) (pure ())
+parseApps = apps <$> some (brackets Round parseApps <|> parseAtom)
 
 instance Parse a => Parse (Pattern a) where
   parser = parseApps
@@ -177,15 +182,39 @@ instance Parse a => Parse (Term a) where
   parser = parseApps
 
 instance Parse a => Parse (Type a) where
-  parser = arrs <$> interleaved (brackets Round parser <|> parseApps) (op "->")
+  parser = arrs <$> alt1 (brackets Round parser <|> parseApps) (op "->")
 
 instance Parse Poly where
-  parser = Poly <$ key "forall"
-    <*> many parser
-    <* op "." <*> parser
+  parser = Poly <$ key "forall" <*> many parser <* op "." <*> parser
+    <|> Poly [] <$> parser
 
 instance Parse Def where
   parser = Def <$> parser <* op "::" <*> parser <* op "=" <*> parser
 
 instance Parse Sketch where
   parser = Sketch <$> parser <* op "::" <*> parser
+
+instance Parse Datatype where
+  parser = MkDatatype <$ key "data" <*> parser <*> many parser <*> choice
+    [ do
+      _ <- op "="
+      cs <- alt1
+        ((,) <$> parser <*> many (brackets Round parser <|> parseAtom))
+        (op "|")
+      return . toList $ cs
+    , mempty
+    ]
+
+instance Parse Definition where
+  parser = choice
+    [ Datatype <$> parser
+    , do
+      x <- parser
+      choice
+        [ Signature x <$ op "::" <*> parser
+        , Binding   x <$ op "="  <*> parser
+        ]
+    ]
+
+instance Parse Module where
+  parser = Module . catMaybes <$> alt (optional parser) (single Newline)

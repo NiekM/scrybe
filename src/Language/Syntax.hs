@@ -5,9 +5,10 @@ module Language.Syntax where
 import Import hiding (reverse)
 import Test.QuickCheck (Arbitrary(..), Gen, choose, sized, oneof, elements)
 import Data.Foldable
-import RIO.List (intersperse)
+import RIO.List (intersperse, repeat)
 import RIO.NonEmpty (cons, reverse)
 import Prettyprinter
+import qualified RIO.Map as Map
 
 newtype Hole = MkHole Int
   deriving stock (Eq, Ord, Read, Show)
@@ -49,10 +50,8 @@ type family HasVar' (l :: Level) where
 type HasVar l = HasVar' l ~ 'True
 
 type family HasApp' (l :: Level) where
-  HasApp' 'Term    = 'True
-  HasApp' 'Type    = 'True
-  HasApp' 'Pattern = 'True
-  HasApp' _        = 'False
+  HasApp' 'Value = 'False
+  HasApp' _      = 'True
 
 type HasApp l = HasApp' l ~ 'True
 
@@ -104,11 +103,8 @@ data Branch a = Branch { pat :: Pattern Var, arm :: a }
   deriving (Eq, Ord, Show)
   deriving (Functor, Foldable, Traversable)
 
--- TODO: Have Mono and Poly types, where Poly types are isomorphic to
--- ([Free], Expr 'Type Free)
-
 newtype Unit = Unit ()
-  deriving newtype (Eq, Ord, Show, Read)
+  deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
 
 data Sketch = Sketch (Term Unit) (Type Free)
   deriving (Eq, Ord, Show)
@@ -137,22 +133,54 @@ substVar th (Variable v t i n) = Variable v (subst th t) i n
 class HasVariables a where
   variables :: Lens' a (Map VarId Variable)
 
-data Module = Module
-  { ctrs :: Map Ctr Poly
-  , functions :: Map Var (Term Void, Poly)
-  } deriving (Eq, Ord, Show)
+data Datatype = MkDatatype Ctr [Free] [(Ctr, [Type Free])]
+  deriving (Eq, Ord, Show)
 
-instance Semigroup Module where
-  Module a b <> Module c d = Module (a <> c) (b <> d)
+constructors :: Datatype -> [(Ctr, Poly)]
+constructors (MkDatatype d as cs) = cs <&> second \ts ->
+  Poly as (arrs (ts ++ [apps (Ctr d :| fmap Hole as)]))
 
-instance Monoid Module where
-  mempty = Module mempty mempty
+data Definition
+  = Signature Var Poly
+  | Binding Var (Term Void)
+  | Datatype Datatype
+  deriving (Eq, Ord, Show)
+
+newtype Module = Module [Definition]
+  deriving (Eq, Ord, Show)
+
+ctrs :: Module -> Map Ctr Poly
+ctrs (Module xs) = Map.fromList $ xs >>= \case
+  Datatype d -> constructors d
+  _ -> []
+
+sigs :: Module -> Map Var Poly
+sigs (Module xs) = Map.fromList $ xs >>= \case
+  Signature x t -> [(x, t)]
+  _ -> []
+
+binds :: Module -> Map Var (Term Void)
+binds (Module xs) = Map.fromList $ xs >>= \case
+  Binding x t -> [(x, t)]
+  _ -> []
+
+functions :: Module -> Map Var (Term Void, Poly)
+functions m = Map.intersectionWith (,) (binds m) (sigs m)
 
 type FreshHole m = MonadFresh Hole m
 type FreshFree m = MonadFresh Free m
 type FreshVarId m = MonadFresh VarId m
 type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
 type WithVariables s m = (MonadState s m, HasVariables s)
+
+-- TODO: replace with more general infix function
+arrs :: (Foldable f, HasApp l) => f (Expr l a) -> Expr l a
+arrs = foldr1 Arr
+
+unArrs :: Expr l a -> NonEmpty (Expr l a)
+unArrs = \case
+  Arr t u -> t `cons` unArrs u
+  t -> pure t
 
 apps :: (Foldable f, HasApp l) => f (Expr l a) -> Expr l a
 apps = foldl1 App
@@ -223,7 +251,9 @@ instance Pretty Sketch where
   pretty (Sketch def sig) = pretty def <+> "::" <+> pretty sig
 
 instance Pretty Poly where
-  pretty (Poly xs t) = "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
+  pretty = \case
+    Poly [] t -> pretty t
+    Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
 instance Pretty Def where
   pretty (Def x t e) = pretty x <+> "::" <+> pretty t <+> "=" <+> pretty e
@@ -246,6 +276,21 @@ instance Pretty a => Pretty (Expr l a) where
       mconcat (intersperse "; " $ pretty <$> xs)
     Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e
 
+instance Pretty Datatype where
+  pretty (MkDatatype d as cs) =
+    "data" <+> sep (pretty d : fmap pretty as) <+>
+      ( align . sep . zipWith (<+>) ("=" : repeat "|")
+      $ cs <&> \(c, xs) -> pretty (apps (Ctr c :| xs))
+      )
+
+instance Pretty Definition where
+  pretty = \case
+    Signature x t -> pretty x <+> "::" <+> pretty t
+    Binding x e -> pretty x <+> "=" <+> pretty e
+    Datatype d -> pretty d
+
+instance Pretty Module where
+  pretty (Module cs) = vsep . fmap pretty $ cs
 -- }}}
 
 -- QuickCheck {{{

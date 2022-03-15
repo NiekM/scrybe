@@ -4,7 +4,6 @@ import Types hiding (Options)
 import Import
 import TermGen
 import Language
-import Language.Prelude
 import Algorithms.Naive as Naive
 import Prettyprinter
 import Data.Tree
@@ -56,9 +55,10 @@ foldrConcepts = Map.fromList
   , (Function "elimList", Just 1)
   ]
 
-runSyn :: Module -> Technique -> MultiSet Concept
+runSyn :: String -> Technique -> MultiSet Concept
   -> Sketch -> RIO Application ()
-runSyn m t c dec = do
+runSyn file t c dec = do
+  m <- p <$> readFileUtf8 file
   let env' = restrict (Map.keysSet c) $ Map.assocs (functions m) <&>
         \(x, (_, u)) -> (x, u, Set.singleton $ Function x)
   logInfo "Sketch:"
@@ -85,17 +85,17 @@ runSyn m t c dec = do
           --           <$> Map.assocs local)
   logInfo ""
 
-pre :: Module
-pre = Module mempty . Map.fromList $ prelude <&> \(Def x t e) -> (x, (e, t))
+-- pre :: Module
+-- pre = Module mempty . Map.fromList $ prelude <&> \(Def x t e) -> (x, (e, t))
 
 run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  runSyn pre EtaLong mempty composeSketch
-  runSyn pre EtaLong mempty flipSketch
-  runSyn pre EtaLong mapConcepts mapSketch
-  -- runSyn pre EtaLong mapConcepts2 mapSketch2
-  -- runSyn pre PointFree mapConcepts3 mapSketch
-  -- runSyn pre EtaLong foldrConcepts foldrSketch
+  runSyn "data/Prelude.smyte" EtaLong mempty composeSketch
+  runSyn "data/Prelude.smyte" EtaLong mempty flipSketch
+  runSyn "data/Prelude.smyte" EtaLong mapConcepts mapSketch
+  -- runSyn "data/Prelude.smyte" EtaLong mapConcepts2 mapSketch2
+  -- runSyn "data/Prelude.smyte" PointFree mapConcepts3 mapSketch
+  -- runSyn "data/Prelude.smyte" EtaLong foldrConcepts foldrSketch
   logInfo "Finished!"
