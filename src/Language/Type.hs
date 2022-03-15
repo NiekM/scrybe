@@ -5,31 +5,48 @@ import Import
 import Language.Syntax
 import Language.Utils
 import qualified RIO.Map as Map
+import Lens.Micro.Platform
 
-type Unify l a = Map a (Expr l a)
+type Unify l a = Map Var (Expr l a)
 
 -- TODO: Add unit tests to test type unification, inference and checking
 
--- TODO: unify should also work on patterns!
--- TODO: can types and patterns not have holes other than free variables?
-
 -- | Unify two expressions, by checking if their holes can be filled such that
 -- they are equivalent.
-unify :: (MonadFail m, Ord a) => Expr l a -> Expr l a -> m (Unify l a)
+unify :: (Eq a, MonadFail m) => Expr l a -> Expr l a -> m (Map Var (Expr l a))
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
   (Ctr  a, Ctr  b) | a == b -> return Map.empty
   (Hole a, Hole b) | a == b -> return Map.empty
-  (Hole a, _) | occurs a u -> return $ Map.singleton a u
-  (_, Hole a) | occurs a t -> return $ Map.singleton a t
+  (Var a, _) | occurs a u -> return $ Map.singleton a u
+  (_, Var a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
 
-occurs :: Eq a => a -> Expr l a -> Bool
-occurs a tau = a `notElem` holes tau
+vars :: HasVar l => Traversal' (Expr l a) Var
+vars g = \case
+  Hole h -> pure $ Hole h
+  Ctr c -> pure $ Ctr c
+  Var v -> Var <$> g v
+  App f x -> App <$> vars g f <*> vars g x
+  Lam a x -> Lam a <$> vars g x
+  Case x xs -> Case <$> vars g x <*> traverse (traverse $ vars g) xs
+  Let a x y -> Let a <$> vars g x <*> vars g y
 
-unifies :: (MonadFail m, Foldable t, Ord a) =>
-  t (Expr l a, Expr l a) -> m (Unify l a)
+occurs :: HasVar l => Var -> Expr l a -> Bool
+occurs a tau = a `notElem` toListOf vars tau
+
+-- NOTE: it seems that the left hand side of the composition should be the
+-- newer composition, in effect updating the old substitution according to the
+-- new ones
+compose :: Map Var (Expr l a) -> Map Var (Expr l a) -> Map Var (Expr l a)
+compose sigma gamma = Map.unions
+  [ subst sigma <$> gamma
+  , Map.withoutKeys sigma (Map.keysSet gamma)
+  ]
+
+unifies :: (Eq a, MonadFail m, Foldable t) =>
+  t (Expr l a, Expr l a) -> m (Map Var (Expr l a))
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)
@@ -38,14 +55,14 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
 -- TODO: move holeCtxs to Monad
 infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader Module m
          , WithVariables s m) =>
-  Term Hole -> m (Type Free, Unify 'Type Free, Map Hole HoleCtx)
+  Term Hole -> m (Type Void, Unify 'Type Void, Map Hole HoleCtx)
 infer expr = do
   m <- ask
   let cs = ctrs m
   let fs = functions m
   let go local = \case
         Hole h -> do
-          goal <- Hole <$> fresh
+          goal <- Var . freeId <$> fresh
           -- Note variable availability
           modifying variables $ Map.mapWithKey \x -> \case
             Variable name t i n | x `elem` local -> Variable name t (i + 1) n
@@ -69,14 +86,14 @@ infer expr = do
         App f x -> do
           (a, th1, ctx1) <- go local f
           (b, th2, ctx2) <- go local x
-          t <- Hole <$> fresh
+          t <- Var . freeId <$> fresh
           th3 <- unify (subst th2 a) (Arr b t)
           let th4 = th3 `compose` th2 `compose` th1
           let ctx3 = substCtx th4 <$> ctx1 <> ctx2
           modifying variables $ fmap (substVar th4)
           return (subst th4 t, th4, ctx3)
         Lam x e -> do
-          t <- Hole <$> fresh
+          t <- Var . freeId <$> fresh
           i <- fresh
           (u, th, local') <- go (Map.insert x i local) e
           let t' = subst th t
@@ -89,7 +106,7 @@ infer expr = do
 -- TODO: maybe this should return a sketch along with a type and unification
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
   MonadReader Module m, WithVariables s m) =>
-  Sketch -> m (Term Hole, Type Free, Unify 'Type Free, Map Hole HoleCtx)
+  Sketch -> m (Term Hole, Type Void, Unify 'Type Void, Map Hole HoleCtx)
 check (Sketch e t) = do
   e' <- sequence $ fresh <$ e
   (u, th1, ctx1) <- infer e'

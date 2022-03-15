@@ -33,6 +33,9 @@ newtype Ctr = MkCtr Text
 varId :: VarId -> Var
 varId (MkVarId n) = MkVar . fromString . ('a':) . show $ n
 
+freeId :: Free -> Var
+freeId (MkFree n) = MkVar . fromString . ('t':) . show $ n
+
 -- Levels {{{
 
 -- TODO: maybe add kinds?
@@ -44,7 +47,6 @@ data Level = Type | Term | Pattern | Value
 
 type family HasVar' (l :: Level) where
   HasVar' 'Value   = 'False
-  HasVar' 'Pattern = 'False
   HasVar' _        = 'True
 
 type HasVar l = HasVar' l ~ 'True
@@ -93,52 +95,66 @@ type Term = Expr 'Term
 type Pattern = Expr 'Pattern
 type Value = Expr 'Value Void
 
-data Poly = Poly [Free] (Type Free)
+data Poly = Poly [Var] (Type Void)
   deriving (Eq, Ord, Show)
 
 data Def = Def Var Poly (Term Void)
   deriving (Eq, Ord, Show)
 
-data Branch a = Branch { pat :: Pattern Var, arm :: a }
+data Branch a = Branch { pat :: Pattern Void, arm :: a }
   deriving (Eq, Ord, Show)
   deriving (Functor, Foldable, Traversable)
 
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
 
-data Sketch = Sketch (Term Unit) (Type Free)
+data Sketch = Sketch (Term Unit) (Type Void)
   deriving (Eq, Ord, Show)
 
 data HoleCtx = HoleCtx
-  { goal :: Type Free
+  { goal :: Type Void
   , local :: Map Var VarId
   } deriving (Eq, Ord, Show)
 
 class HasHoleCtxs a where
   holeCtxs :: Lens' a (Map Hole HoleCtx)
 
+subst :: Map Var (Expr l a) -> Expr l a -> Expr l a
+subst th = go where
+  go = \case
+    Hole h -> Hole h
+    Ctr c -> Ctr c
+    Var v -> case Map.lookup v th of
+      Nothing -> Var v
+      Just x -> x
+    App f x -> App (go f) (go x)
+    -- TODO: do we need alpha renaming here?
+    Lam a x -> Lam a (go x)
+    Case x xs -> Case (go x) (fmap go <$> xs)
+    Let a x y -> Let a (go x) (go y)
+
 -- TODO: replace this with a function that substitutes all goals and variables
 -- within the gen monad.
-substCtx :: Map Free (Type Free) -> HoleCtx -> HoleCtx
+substCtx :: Map Var (Type Void) -> HoleCtx -> HoleCtx
 substCtx th ctx = ctx { goal = subst th $ goal ctx }
 
 -- TODO: what else do we need to track for local variables?
 -- Variable name, type, number of holes it appears in, number of occurrences
-data Variable = Variable Var (Type Free) Int Int
+data Variable = Variable Var (Type Void) Int Int
   deriving (Eq, Ord, Show)
 
-substVar :: Map Free (Type Free) -> Variable -> Variable
+substVar :: Map Var (Type Void) -> Variable -> Variable
 substVar th (Variable v t i n) = Variable v (subst th t) i n
 
 class HasVariables a where
   variables :: Lens' a (Map VarId Variable)
 
-data Datatype = MkDatatype Ctr [Free] [(Ctr, [Type Free])]
+data Datatype = MkDatatype Ctr [Var] [(Ctr, [Type Void])]
   deriving (Eq, Ord, Show)
 
 constructors :: Datatype -> [(Ctr, Poly)]
 constructors (MkDatatype d as cs) = cs <&> second \ts ->
-  Poly as (arrs (ts ++ [apps (Ctr d :| fmap Hole as)]))
+  Poly as (arrs (ts ++ [apps (Ctr d :| fmap Var as)]))
 
 data Definition
   = Signature Var Poly
@@ -259,7 +275,7 @@ instance Pretty Def where
   pretty (Def x t e) = pretty x <+> "::" <+> pretty t <+> "=" <+> pretty e
 
 instance Pretty a => Pretty (Branch a) where
-  pretty (Branch c e) = pretty c <+> "=>" <+> pretty e
+  pretty (Branch c e) = pretty c <+> "->" <+> pretty e
 
 instance Pretty a => Pretty (Expr l a) where
   pretty = \case
@@ -271,7 +287,7 @@ instance Pretty a => Pretty (Expr l a) where
       [ prettyParens isLam f
       , prettyParens (\y -> isLam y || isApp y) x
       ]
-    Lam b e -> "\\" <> pretty b <> "." <+> pretty e
+    Lam b e -> "\\" <> pretty b <+> "->" <+> pretty e
     Case x xs -> "case" <+> pretty x <+> "of" <+>
       mconcat (intersperse "; " $ pretty <$> xs)
     Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e

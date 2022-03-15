@@ -18,7 +18,7 @@ step :: Term Hole -> GenT [] (Term Hole)
 step expr = do
   i <- selectFirst
   hf <- pick i
-  return $ subst (Map.singleton i hf) expr
+  return $ subst' (Map.singleton i hf) expr
 
 type SynMonad s m =
   ( WithEnvironment s m, WithConcepts s m
@@ -29,7 +29,7 @@ type SynMonad s m =
   , MonadPlus m
   )
 
-type HoleFilling = (Term (Type Free), Type Free)
+type HoleFilling = (Term (Type Void), Type Void)
 
 -- | Select the first hole to fill.
 selectFirst :: (MonadPlus m, WithHoleCtxs s m) => m Hole
@@ -102,7 +102,7 @@ closeHole h = do
 
 -- | Performs type substitutions in holes and local variables.
 applySubst :: (WithHoleCtxs s m, WithVariables s m) =>
-  Map Free (Type Free) -> m ()
+  Map Var (Type Void) -> m ()
 applySubst th = do
   modifying holeCtxs $ fmap \ctx -> ctx { goal = subst th $ goal ctx }
   modifying variables $ fmap \(Variable x t i n) -> Variable x (subst th t) i n
@@ -141,7 +141,7 @@ constructs = mzero -- TODO
 
 -- | Compute the possible hole fillings from a function.
 holeFillings :: (MonadPlus m, WithTechnique s m) =>
-  Var -> Type Free -> m HoleFilling
+  Var -> Type Void -> m HoleFilling
 holeFillings x t = use technique >>= \case
   EtaLong   -> return $ fullyApply (Var x, t)
   PointFree -> expand (Var x, t)

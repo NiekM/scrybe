@@ -138,13 +138,17 @@ instance Parse Free where
   parser = MkFree <$> int
 
 instance Parse a => Parse (Branch a) where
-  parser = Branch <$> parser <* op "=>" <*> parser
+  parser = Branch <$> parser <* op "->" <*> parser
 
 class ParseAtom l where
   parseAtom :: Parse a => Parser (Expr l a)
 
 instance ParseAtom 'Pattern where
-  parseAtom = Hole <$> brackets Curly parser <|> Ctr <$> parser
+  parseAtom = choice
+    [ Hole <$> brackets Curly parser
+    , Var <$> parser
+    , Ctr <$> parser
+    ]
 
 num :: Int -> Term a
 num 0 = Ctr "Zero"
@@ -155,7 +159,7 @@ list = foldr (\x r -> apps [Ctr "Cons", x, r]) (Ctr "Nil")
 
 instance ParseAtom 'Term where
   parseAtom = choice
-    [ Lam <$ op "\\" <*> parser <* op "." <*> parser
+    [ Lam <$ op "\\" <*> parser <* op "->" <*> parser
     , Case <$ key "case" <*> parser <* key "of" <*> alt parser (sep ";")
     , Let <$ key "let" <*> parser <* op "=" <*> parser <* key "in" <*> parser
     , Hole <$> brackets Curly parser

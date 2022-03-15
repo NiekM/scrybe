@@ -13,11 +13,13 @@ import qualified RIO.Set as Set
 p :: Parse a => Text -> a
 p = parseUnsafe parser
 
+-- TODO: use polytypes and skolemnization
+
 mapSketch :: Sketch
-mapSketch = p "\\f. { } :: (a -> b) -> List a -> List b"
+mapSketch = p "\\f -> { } :: (A -> B) -> List A -> List B"
 
 mapSketch2 :: Sketch
-mapSketch2 = p "\\f. foldr { } { } :: (a -> b) -> List a -> List b"
+mapSketch2 = p "\\f -> foldr { } { } :: (A -> B) -> List A -> List B"
 
 mapConcepts :: MultiSet Concept
 mapConcepts = Map.fromList
@@ -41,13 +43,13 @@ mapConcepts3 = Map.fromList
   ]
 
 composeSketch :: Sketch
-composeSketch = p "{ } :: (b -> c) -> (a -> b) -> a -> c"
+composeSketch = p "{ } :: (B -> C) -> (A -> B) -> A -> C"
 
 flipSketch :: Sketch
-flipSketch = p "{ } :: (a -> b -> c) -> b -> a -> c"
+flipSketch = p "{ } :: (A -> B -> C) -> B -> A -> C"
 
 foldrSketch :: Sketch
-foldrSketch = p "{ } :: (a -> b -> b) -> b -> List a -> b"
+foldrSketch = p "{ } :: (A -> B -> B) -> B -> List A -> B"
 
 foldrConcepts :: MultiSet Concept
 foldrConcepts = Map.fromList
@@ -71,7 +73,7 @@ runSyn file t c dec = do
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
       let syn = levels $ runGenT (genTree step x) m g
-      let xss = take 11 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
+      let xss = take 9 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)
         forM_ xs \(e, _s) -> do
@@ -84,9 +86,6 @@ runSyn file t c dec = do
           --         ((a,) . (\(Variable _ u _ _) -> u)))
           --           <$> Map.assocs local)
   logInfo ""
-
--- pre :: Module
--- pre = Module mempty . Map.fromList $ prelude <&> \(Def x t e) -> (x, (e, t))
 
 run :: RIO Application ()
 run = do

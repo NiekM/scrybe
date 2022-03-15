@@ -33,17 +33,6 @@ sub a b = (<> Map.difference a b) . Map.mapMaybe id
 -- instantiated. how do we handle these related concepts in a way that is sound
 -- and makes sense?
 
--- TODO: 'naive' synthesis is actually point-free synthesis using a single
--- occurence for each concept. 'eta' synthesis is actually synthesis that keeps
--- the expression in eta-long form by allowing only eta expansion at function
--- types and disallowing partial application. this can all easily be captured
--- in environments, by seeing eta expansion as a hole filling. 'naive'
--- synthesis simply removes eta-expansions from the environment and 'eta'
--- synthesis removes partial applications (non eta-expansion hole fillings with
--- function types) from the environment. we can make 'eta-long' and
--- 'point-free' functions that add restrictions by transforming the
--- environment.
-
 -- | Concepts within our language, used to categorize hole fillings.
 data Concept
   = Function Var

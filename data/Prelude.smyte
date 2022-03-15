@@ -1,77 +1,77 @@
-id :: forall 0. {0} -> {0}
-id = \x. x
+id :: forall a. a -> a
+id = \x -> x
 
-const :: forall 0 1. {0} -> {1} -> {0}
-const = \x. \y. x
+const :: forall a b. a -> b -> a
+const = \x -> \y -> x
 
-fix :: forall 0. ({0} -> {0}) -> {0}
-fix = let go = \f. f (go f) in go
+fix :: forall a. (a -> a) -> a
+fix = let go = \f -> f (go f) in go
 
-flip :: forall 0 1 2. ({0} -> {1} -> {2}) -> {1} -> {0} -> {2}
-flip = \f. \x. \y. f y x
+flip :: forall a b c. (a -> b -> c) -> b -> a -> c
+flip = \f -> \x -> \y -> f y x
 
-compose :: forall 0 1 2. ({1} -> {2}) -> ({0} -> {1}) -> ({0} -> {2})
-compose = \f. \g. \x. f (g x)
+compose :: forall a b c. (b -> c) -> (a -> b) -> (a -> c)
+compose = \f -> \g -> \x -> f (g x)
 
-rec :: forall 0 1. (({0} -> {1}) -> ({0} -> {1})) -> {0} -> {1}
+rec :: forall a b. ((a -> b) -> (a -> b)) -> a -> b
 rec = fix
 
 data Bool = False | True
 
-elimBool :: forall 0. {0} -> {0} -> Bool -> {0}
-elimBool = \f. \t. \b. case b of False => f; True => t
+elimBool :: forall a. a -> a -> Bool -> a
+elimBool = \f -> \t -> \b -> case b of False -> f; True -> t
 
 not :: Bool -> Bool
 not = elimBool True False
 
 data Nat = Zero | Succ Nat
 
-elimNat :: forall 0. {0} -> (Nat -> {0}) -> Nat -> {0}
-elimNat = \z. \s. \n. case n of Zero => z; Succ {m} => s m
+elimNat :: forall a. a -> (Nat -> a) -> Nat -> a
+elimNat = \z -> \s -> \n -> case n of Zero -> z; Succ m -> s m
 
-foldNat :: forall 0. {0} -> ({0} -> {0}) -> Nat -> {0}
-foldNat = \z. \s. let go = \n. case n of Zero => z; Succ {m} => s (go m) in go
+foldNat :: forall a. a -> (a -> a) -> Nat -> a
+foldNat = \z -> \s -> let go = \n -> case n of Zero -> z; Succ m -> s (go m) in go
 
 plus :: Nat -> Nat -> Nat
-plus = \n. foldNat n Succ
+plus = \n -> foldNat n Succ
 
 mult :: Nat -> Nat -> Nat
 mult = Mult -- TODO: make sure this works correctly
 
-data List 0 = Nil | Cons {0} (List {0})
+data List a = Nil | Cons a (List a)
 
-nil :: forall 0. List {0}
+nil :: forall a. List a
 nil = Nil
 
-cons :: forall 0. {0} -> List {0} -> List {0}
+cons :: forall a. a -> List a -> List a
 cons = Cons
 
-elimList :: forall 0 1. {0} -> ({1} -> List {1} -> {0}) -> List {1} -> {0}
-elimList = \n. \c. \l. case l of Nil => n; Cons {h} {t} => c h t
+elimList :: forall a b. a -> (b -> List b -> a) -> List b -> a
+elimList = \n -> \c -> \l -> case l of Nil -> n; Cons h t -> c h t
 
-foldList :: forall 0 1. {1} -> ({0} -> {1} -> {1}) -> List {0} -> {1}
-foldList = \n. \c. let go = \l. case l of Nil => n; Cons {h} {t} => c h (go t) in go
+foldList :: forall a b. b -> (a -> b -> b) -> List a -> b
+foldList = \n -> \c -> let go = \l -> case l of Nil -> n; Cons h t -> c h (go t) in go
 
-foldr :: forall 0 1. ({0} -> {1} -> {1}) -> {1} -> List {0} -> {1}
+foldr :: forall a b. (a -> b -> b) -> b -> List a -> b
 foldr = flip foldList
 
-map :: forall 0 1. ({0} -> {1}) -> List {0} -> List {1}
-map = \f. foldList [] (\x. Cons (f x))
+map :: forall a b. (a -> b) -> List a -> List b
+map = \f -> foldList [] (\x -> Cons (f x))
 
-data Pair 0 1 = Pair {0} {1}
+data Pair a b = Pair a b
 
-fst :: forall 0 1. Pair {0} {1} -> {0}
-fst = \p. case p of Pair {x} {y} => x
+fst :: forall a b. Pair a b -> a
+fst = \p -> case p of Pair x y -> x
 
-snd :: forall 0 1. Pair {0} {1} -> {1}
-snd = \p. case p of Pair {x} {y} => y
+snd :: forall a b. Pair a b -> b
+snd = \p -> case p of Pair x y -> y
 
-swap :: forall 0 1. Pair {0} {1} -> Pair {1} {0}
-swap = \p. case p of Pair {x} {y} => Pair y x
+swap :: forall a b. Pair a b -> Pair b a
+swap = \p -> case p of Pair x y -> Pair y x
 
-curry :: forall 0 1 2. (Pair {0} {1} -> {2}) -> {0} -> {1} -> {2}
-curry = \f. \x. \y. f (Pair x y)
+curry :: forall a b c. (Pair a b -> c) -> a -> b -> c
+curry = \f -> \x -> \y -> f (Pair x y)
 
-uncurry :: forall 0 1 2. ({0} -> {1} -> {2}) -> Pair {0} {1} -> {2}
-uncurry = \f. \p. case p of Pair {x} {y} => f x y
+uncurry :: forall a b c. (a -> b -> c) -> Pair a b -> c
+uncurry = \f -> \p -> case p of Pair x y -> f x y
 

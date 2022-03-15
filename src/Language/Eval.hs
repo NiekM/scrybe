@@ -8,20 +8,20 @@ import qualified RIO.Map as Map
 import Control.Monad.State
 
 class HasEnv a where
-  env :: Lens' a (Map Var (Term Var))
+  env :: Lens' a (Map Var (Term Void))
 
 -- TODO: unification should be with variables rather than holes
 
-instance HasEnv (Map Var (Term Var)) where
+instance HasEnv (Map Var (Term Void)) where
   env = id
 
-eval' :: Map Var (Term Var) -> Term Var -> Maybe (Term Var)
+eval' :: Map Var (Term Void) -> Term Void -> Maybe (Term Void)
 eval' m e = evalStateT (eval e) m
 
 -- | A simple evaluator/normalizer for expressions that leaves subexpressions
 -- as if when they cannot be evaluated further.
 -- TODO: add alpha renaming
-eval :: (MonadFail m, MonadState s m, HasEnv s) => Term Var -> m (Term Var)
+eval :: (MonadFail m, MonadState s m, HasEnv s) => Term Void -> m (Term Void)
 eval = \case
   Hole h -> return $ Hole h
   Var x -> do
@@ -52,38 +52,39 @@ eval = \case
     modifying env $ Map.insert a y
     eval e
 
-replace :: Var -> Expr l a -> Expr l a -> Expr l a
-replace a e = \case
-  Var b | a == b -> e
-  App f x -> App (replace a e f) (replace a e x)
-  Lam b x -> Lam b (replace a e x) -- TODO: what about alpha-renaming?
-  Case x xs -> Case (replace a e x) (fmap (replace a e) <$> xs) -- TODO: alpha-renaming
-  Let b x y -> Let b (replace a e x) (replace a e y) -- TODO: alpha-renaming
-  x -> x
+-- replace :: Var -> Expr l a -> Expr l a -> Expr l a
+-- replace a e = \case
+--   Var b | a == b -> e
+--   App f x -> App (replace a e f) (replace a e x)
+--   Lam b x -> Lam b (replace a e x) -- TODO: what about alpha-renaming?
+--   Case x xs -> Case (replace a e x) (fmap (replace a e) <$> xs) -- TODO: alpha-renaming
+--   Let b x y -> Let b (replace a e x) (replace a e y) -- TODO: alpha-renaming
+--   x -> x
 
-whnf' :: Map Var (Term Var) -> Term Var -> Maybe (Term Var)
-whnf' m e = evalStateT (whnf e) m
+-- whnf' :: Map Var (Term Void) -> Term Void -> Maybe (Term Void)
+-- whnf' m e = evalStateT (whnf e) m
 
-whnf :: (MonadFail m, MonadState s m, HasEnv s) => Term Var -> m (Term Var)
-whnf = \case
-  Var x -> do
-    m <- use env
-    case Map.lookup x m of
-      Nothing -> fail $ "Unknown variable " <> show x
-      Just e -> whnf e
-  App f e -> whnf f >>= \case
-    Lam a x -> do
-      whnf (replace a e x)
-    c -> return $ App c e
-  Case {} -> undefined -- TODO: here whnf is forced
-  Let {} -> undefined -- TODO: should this introduce a closure?
-  e -> return e
+-- whnf :: (MonadFail m, MonadState s m, HasEnv s) => Term Void -> m (Term Void)
+-- whnf = \case
+--   Var x -> do
+--     m <- use env
+--     case Map.lookup x m of
+--       Nothing -> fail $ "Unknown variable " <> show x
+--       Just e -> whnf e
+--   App f e -> whnf f >>= \case
+--     Lam a x -> do
+--       whnf (replace a e x)
+--     c -> return $ App c e
+--   Case {} -> undefined -- TODO: here whnf is forced
+--   Let {} -> undefined -- TODO: should this introduce a closure?
+--   e -> return e
 
-fromPattern :: Pattern Var -> Term Var
+fromPattern :: Pattern a -> Term a
 fromPattern = \case
   Hole x -> Hole x
+  Var x -> Var x
   Ctr c -> Ctr c
   App f x -> App (fromPattern f) (fromPattern x)
 
-match :: Pattern Var -> Term Var -> Maybe (Map Var (Term Var))
+match :: Eq a => Pattern a -> Term a -> Maybe (Map Var (Term a))
 match = unify . fromPattern

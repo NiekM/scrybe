@@ -10,8 +10,7 @@ module Import
   , use
   , assign
   , modifying
-  , subst
-  , compose
+  , subst'
   , unsnoc
   , maximumDef
   , mfold
@@ -39,17 +38,8 @@ instance Display (Doc ann) where
 class Monad m => MonadFresh s m where
   fresh :: m s
 
-subst :: (Monad m, Ord a) => Map a (m a) -> m a -> m a
-subst th e = e >>= \i -> fromMaybe (return i) (Map.lookup i th)
-
--- NOTE: it seems that the left hand side of the composition should be the
--- newer composition, in effect updating the old substitution according to the
--- new ones
-compose :: (Monad m, Ord a) => Map a (m a) -> Map a (m a) -> Map a (m a)
-compose sigma gamma = Map.unions
-  [ subst sigma <$> gamma
-  , Map.withoutKeys sigma (Map.keysSet gamma)
-  ]
+subst' :: (Monad m, Ord a) => Map a (m a) -> m a -> m a
+subst' th e = e >>= \i -> fromMaybe (return i) (Map.lookup i th)
 
 unsnoc :: NonEmpty a -> ([a], a)
 unsnoc (x :| []) = ([], x)
