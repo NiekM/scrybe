@@ -87,14 +87,17 @@ runSyn file t c dec = do
           --           <$> Map.assocs local)
   logInfo ""
 
+prelude :: String
+prelude = "data/Prelude.hs"
+
 run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  runSyn "data/Prelude.smyte" EtaLong mempty composeSketch
-  runSyn "data/Prelude.smyte" EtaLong mempty flipSketch
-  runSyn "data/Prelude.smyte" EtaLong mapConcepts mapSketch
-  -- runSyn "data/Prelude.smyte" EtaLong mapConcepts2 mapSketch2
-  -- runSyn "data/Prelude.smyte" PointFree mapConcepts3 mapSketch
-  -- runSyn "data/Prelude.smyte" EtaLong foldrConcepts foldrSketch
+  runSyn prelude EtaLong mempty composeSketch
+  runSyn prelude EtaLong mempty flipSketch
+  runSyn prelude EtaLong mapConcepts mapSketch
+  -- runSyn prelude EtaLong mapConcepts2 mapSketch2
+  -- runSyn prelude PointFree mapConcepts3 mapSketch
+  -- runSyn prelude EtaLong foldrConcepts foldrSketch
   logInfo "Finished!"

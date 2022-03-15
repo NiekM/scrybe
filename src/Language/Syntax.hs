@@ -207,9 +207,13 @@ unApps = reverse . go where
     App f x -> x `cons` go f
     e -> pure e
 
-lams :: (Foldable f, HasLam l) =>
-  f Var -> Expr l a -> Expr l a
+lams :: (Foldable f, HasLam l) => f Var -> Expr l a -> Expr l a
 lams = flip (foldr Lam)
+
+unLams :: Expr l a -> ([Var], Expr l a)
+unLams = \case
+  Lam a x -> first (a:) $ unLams x
+  e -> ([], e)
 
 -- Instances {{{
 
@@ -287,7 +291,9 @@ instance Pretty a => Pretty (Expr l a) where
       [ prettyParens isLam f
       , prettyParens (\y -> isLam y || isApp y) x
       ]
-    Lam b e -> "\\" <> pretty b <+> "->" <+> pretty e
+    e@Lam {} ->
+      let (as, x) = unLams e
+      in "\\" <> sep (pretty <$> as) <+> "->" <+> pretty x
     Case x xs -> "case" <+> pretty x <+> "of" <+>
       mconcat (intersperse "; " $ pretty <$> xs)
     Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e

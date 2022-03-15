@@ -143,30 +143,38 @@ instance Parse a => Parse (Branch a) where
 class ParseAtom l where
   parseAtom :: Parse a => Parser (Expr l a)
 
+nat :: HasApp l => Int -> Expr l a
+nat 0 = Ctr "Zero"
+nat n = App (Ctr "Succ") (nat $ n - 1)
+
+parseNat :: HasApp l => Parser (Expr l a)
+parseNat = nat <$> int
+
+list :: (Foldable f, HasApp l) => f (Expr l a) -> Expr l a
+list = foldr (\x r -> apps [Ctr "Cons", x, r]) (Ctr "Nil")
+
+parseList :: HasApp l => Parser (Expr l a) -> Parser (Expr l a)
+parseList p = list <$> brackets Square (alt p (sep ","))
+
 instance ParseAtom 'Pattern where
   parseAtom = choice
     [ Hole <$> brackets Curly parser
     , Var <$> parser
     , Ctr <$> parser
+    , parseNat
+    , parseList parser
     ]
-
-num :: Int -> Term a
-num 0 = Ctr "Zero"
-num n = App (Ctr "Succ") (num $ n - 1)
-
-list :: Foldable f => f (Term a) -> Term a
-list = foldr (\x r -> apps [Ctr "Cons", x, r]) (Ctr "Nil")
 
 instance ParseAtom 'Term where
   parseAtom = choice
-    [ Lam <$ op "\\" <*> parser <* op "->" <*> parser
+    [ lams <$ op "\\" <*> some parser <* op "->" <*> parser
     , Case <$ key "case" <*> parser <* key "of" <*> alt parser (sep ";")
     , Let <$ key "let" <*> parser <* op "=" <*> parser <* key "in" <*> parser
     , Hole <$> brackets Curly parser
     , Var <$> parser
     , Ctr <$> parser
-    , num <$> int
-    , list <$> brackets Square (alt parser (sep ","))
+    , parseNat
+    , parseList parser
     ]
 
 instance ParseAtom 'Type where
