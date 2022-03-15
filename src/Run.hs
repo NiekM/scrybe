@@ -4,7 +4,7 @@ import Types hiding (Options)
 import Import
 import TermGen
 import Language
-import Algorithms.Naive as Naive
+import Synthesis
 import Prettyprinter
 import Data.Tree
 import qualified RIO.Map as Map

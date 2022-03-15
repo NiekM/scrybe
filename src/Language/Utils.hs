@@ -75,3 +75,14 @@ dissect e = e : case e of
   Lam _ x -> dissect x
   Case x xs -> x : concatMap (dissect . arm) xs
   Let _ x y -> dissect x ++ dissect y
+
+-- | Normalize a type along with an expression with types in the holes, such
+-- that the holes are numbered in order of their appearance.
+normalize :: Type Free -> Term (Type Free) -> (Type Free, Term (Type Free))
+normalize t e = (subst rename t, subst rename <$> e)
+  where
+    xs = holes t
+    ys = concatMap holes (holes e)
+    -- All holes in order of their appearance, given preference to holes in t
+    zs = nubOrd $ xs ++ ys
+    rename = Map.fromList $ zip zs (Hole . MkFree <$> [0..])

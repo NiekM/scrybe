@@ -1,38 +1,10 @@
-{-# LANGUAGE MultiWayIf #-}
-module Algorithms.Naive where
+module Synthesis where
 
 import Import
 import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import TermGen
-
-{-
-
-Naive synthesis
-
-This is a naive type-driven synthesizer that tries to fill each hole by
-unifying its type with all possible instantiations of expressions in the
-environment. It introduces no language constructs (lambda abstractions, case
-analyses etc.). It does, however, use every expression in the environment only
-once, to emulate simple synthesis parameters.
-
-It is immediately clear how this synthesizer will try to fill in `compose` and
-`foldr` at every step of the synthesis, since their return types are
-polymorphic.
-
-Rather than using `compose` to synthesize point-free expressions, we should
-probably eta-expand each hole, in a sense inlining any compositions. Perhaps
-all combinators, such as `id`, `const` and `flip`, should be disallowed, as
-they all try to serve the same purpose that lambda abstractions already
-provide.
-
-Even though we do not want to use `compose` and friends, `foldr` is a very
-useful function that we do want to use during synthesis. It should, however,
-come with some restrictions, similar to the ones we would put on case analyses
-and recursive calls, since `foldr` uses both internally.
-
--}
 
 -- TODO: does init make sense? Maybe we should just have a module as input
 -- and compute the GenState
@@ -123,13 +95,10 @@ closeHole h = do
   xs <- use variables
   forM_ local \i -> case Map.lookup i xs of
     Nothing -> fail $ "Missing variable id " <> show i
-    Just (Variable x t n m) ->
-      if | n <= 1, m == 0 -> fail $ "Unused variable " <> show x
-         -- TODO: why does this break? make sure the number of occurences is
-         -- kept track of correctly.
-         --  | n <= 1 -> modifying variables $ Map.delete i
-         | otherwise ->
-           modifying variables $ Map.insert i (Variable x t (n - 1) m)
+    Just (Variable x t n m)
+      | n <= 1, m == 0 -> fail $ "Unused variable " <> show x
+      | otherwise ->
+        modifying variables $ Map.insert i (Variable x t (n - 1) m)
 
 -- | Performs type substitutions in holes and local variables.
 applySubst :: (WithHoleCtxs s m, WithVariables s m) =>
@@ -165,7 +134,8 @@ locals h = do
 -- | Compute hole fillings from available language constructs.
 -- TODO: I guess this is mzero for PointFree, and just pattern matching for
 -- eta-long. Explicit lambda's could be used by a less restrictive synthesis
--- technique.
+-- technique. Perhaps we should not try to generate language constructs
+-- directly, but rather use eliminators, folds and fixpoints.
 constructs :: MonadPlus m => m (HoleFilling, Set Concept)
 constructs = mzero -- TODO
 
