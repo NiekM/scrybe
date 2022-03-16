@@ -55,6 +55,8 @@ default-extensions:
 - StandaloneDeriving
 - TupleSections
 - TypeApplications
+- TypeFamilies
+- TypeOperators
 - ViewPatterns
 - QuasiQuotes
 

@@ -1,5 +1,4 @@
-{-# LANGUAGE DataKinds, GADTs, RankNTypes #-}
-{-# LANGUAGE TypeFamilies, ConstraintKinds #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Language.Syntax where
 
