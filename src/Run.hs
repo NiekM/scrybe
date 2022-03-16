@@ -23,23 +23,23 @@ mapSketch2 = p "\\f -> foldr { } { } :: (A -> B) -> List A -> List B"
 
 mapConcepts :: MultiSet Concept
 mapConcepts = Map.fromList
-  [ (Function "nil", Just 1)
-  , (Function "cons", Just 1)
-  , (Function "foldr", Just 1)
+  [ (CCtr "Nil", Just 1)
+  , (CCtr "Cons", Just 1)
+  , (CVar "foldr", Just 1)
   ]
 
 mapConcepts2 :: MultiSet Concept
 mapConcepts2 = Map.fromList
-  [ (Function "nil", Just 1)
-  , (Function "cons", Just 1)
+  [ (CCtr "Nil", Just 1)
+  , (CCtr "Cons", Just 1)
   ]
 
 mapConcepts3 :: MultiSet Concept
 mapConcepts3 = Map.fromList
-  [ (Function "nil", Just 1)
-  , (Function "cons", Just 1)
-  , (Function "foldr", Just 1)
-  , (Function "compose", Just 1)
+  [ (CCtr "Nil", Just 1)
+  , (CCtr "Cons", Just 1)
+  , (CVar "foldr", Just 1)
+  , (CVar "compose", Just 1)
   ]
 
 composeSketch :: Sketch
@@ -53,16 +53,24 @@ foldrSketch = p "{ } :: (A -> B -> B) -> B -> List A -> B"
 
 foldrConcepts :: MultiSet Concept
 foldrConcepts = Map.fromList
-  [ (Function "rec", Just 1)
-  , (Function "elimList", Just 1)
+  [ (CVar "rec", Just 1)
+  , (CVar "elimList", Just 1)
   ]
 
-runSyn :: String -> Technique -> MultiSet Concept
-  -> Sketch -> RIO Application ()
+fromModule :: Module -> Environment
+fromModule m = concat
+  [ Map.assocs (functions m) <&>
+    \(x, (_, t)) -> (Var x, t, Set.singleton $ CVar x)
+  , Map.assocs (ctrs m) <&>
+    \(c, t) -> (Ctr c, t, Set.singleton $ CCtr c)
+  , []
+  ]
+
+runSyn :: String -> Technique -> MultiSet Concept -> Sketch ->
+  RIO Application ()
 runSyn file t c dec = do
   m <- p <$> readFileUtf8 file
-  let env' = restrict (Map.keysSet c) $ Map.assocs (functions m) <&>
-        \(x, (_, u)) -> (x, u, Set.singleton $ Function x)
+  let env' = restrict (Map.keysSet c) $ fromModule m
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ dec

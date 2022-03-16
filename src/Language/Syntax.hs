@@ -10,6 +10,8 @@ import RIO.NonEmpty (cons, reverse)
 import Prettyprinter
 import qualified RIO.Map as Map
 
+-- Identifiers {{{
+
 newtype Hole = MkHole Int
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (Num, Pretty)
@@ -35,6 +37,8 @@ varId (MkVarId n) = MkVar . fromString . ('a':) . show $ n
 
 freeId :: Free -> Var
 freeId (MkFree n) = MkVar . fromString . ('t':) . show $ n
+
+-- }}}
 
 -- Levels {{{
 
@@ -87,6 +91,10 @@ data Expr (l :: Level) a b where
   Case :: HasCase l => Expr l a b -> [Branch (Expr l a b)] -> Expr l a b
   Let  :: HasLet  l => Var -> Expr l a b -> Expr l a b -> Expr l a b
 
+deriving instance (Eq a, Eq b) => Eq (Expr l a b)
+deriving instance (Ord a, Ord b) => Ord (Expr l a b)
+deriving instance (Show a, Show b) => Show (Expr l a b)
+
 pattern Arr :: () => HasApp l => Expr l a b -> Expr l a b -> Expr l a b
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
@@ -123,6 +131,13 @@ vars = vars' . fmap (fmap Var)
 
 -- }}}
 
+type Type = Expr 'Type Var
+type Term = Expr 'Term Var
+type Pattern = Expr 'Pattern Var
+type Value = Expr 'Value Var Void
+
+-- Substitution {{{
+
 class Subst a b where
   subst :: Ord a => Map a b -> b -> b
 
@@ -141,15 +156,11 @@ instance HasVar l => Subst a (Expr l a b) where
   subst th = joinVars . over (vars' . fmap (fmap Var))
     \x -> Map.findWithDefault (Var x) x th
 
-type Type = Expr 'Type Var
-type Term = Expr 'Term Var
-type Pattern = Expr 'Pattern Var
-type Value = Expr 'Value Var Void
+-- }}}
+
+-- TODO: maybe move these definitions somewhere else
 
 data Poly = Poly [Var] (Type Void)
-  deriving (Eq, Ord, Show)
-
-data Def = Def Var Poly (Term Void)
   deriving (Eq, Ord, Show)
 
 data Branch a = Branch { pat :: Pattern Void, arm :: a }
@@ -167,13 +178,13 @@ data HoleCtx = HoleCtx
   , local :: Map Var VarId
   } deriving (Eq, Ord, Show)
 
-class HasHoleCtxs a where
-  holeCtxs :: Lens' a (Map Hole HoleCtx)
-
 -- TODO: replace this with a function that substitutes all goals and variables
 -- within the gen monad.
 substCtx :: Map Var (Type Void) -> HoleCtx -> HoleCtx
 substCtx th ctx = ctx { goal = subst th $ goal ctx }
+
+class HasHoleCtxs a where
+  holeCtxs :: Lens' a (Map Hole HoleCtx)
 
 -- TODO: what else do we need to track for local variables?
 -- Variable name, type, number of holes it appears in, number of occurrences
@@ -185,6 +196,8 @@ substVar th (Variable v t i n) = Variable v (subst th t) i n
 
 class HasVariables a where
   variables :: Lens' a (Map VarId Variable)
+
+-- Module {{{
 
 data Datatype = MkDatatype Ctr [Var] [(Ctr, [Type Void])]
   deriving (Eq, Ord, Show)
@@ -220,6 +233,8 @@ binds (Module xs) = Map.fromList $ xs >>= \case
 functions :: Module -> Map Var (Term Void, Poly)
 functions m = Map.intersectionWith (,) (binds m) (sigs m)
 
+-- }}}
+
 type FreshHole m = MonadFresh Hole m
 type FreshFree m = MonadFresh Free m
 type FreshVarId m = MonadFresh VarId m
@@ -252,36 +267,6 @@ unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
 
--- Instances {{{
-
-deriving instance (Eq a, Eq b) => Eq (Expr l a b)
-deriving instance (Ord a, Ord b) => Ord (Expr l a b)
-deriving instance (Show a, Show b) => Show (Expr l a b)
--- deriving instance Functor (Expr l a)
--- deriving instance Foldable (Expr l a)
--- deriving instance Traversable (Expr l a)
-
--- instance Applicative (Expr l a) where
---   pure = Hole
---   Hole h <*> y = h <$> y
---   Var x <*> _ = Var x
---   Ctr c <*> _ = Ctr c
---   App f x <*> y = App (f <*> y) (x <*> y)
---   Lam b x <*> y = Lam b (x <*> y)
---   Case x xs <*> y = Case (x <*> y) (fmap (<*> y) <$> xs)
---   Let a x e <*> y = Let a (x <*> y) (e <*> y)
-
--- instance Monad (Expr l a) where
---   Hole h >>= k = k h
---   Var x >>= _ = Var x
---   Ctr c >>= _ = Ctr c
---   App f x >>= k = App (f >>= k) (x >>= k)
---   Lam b x >>= k = Lam b (x >>= k)
---   Case x xs >>= k = Case (x >>= k) (fmap (>>= k) <$> xs)
---   Let a x e >>= k = Let a (x >>= k) (e >>= k)
-
--- }}}
-
 -- Pretty printing {{{
 
 isArr :: Expr l a b -> Bool
@@ -311,9 +296,6 @@ instance Pretty Poly where
   pretty = \case
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
-
-instance Pretty Def where
-  pretty (Def x t e) = pretty x <+> "::" <+> pretty t <+> "=" <+> pretty e
 
 instance Pretty a => Pretty (Branch a) where
   pretty (Branch c e) = pretty c <+> "->" <+> pretty e
@@ -350,6 +332,7 @@ instance Pretty Definition where
 
 instance Pretty Module where
   pretty (Module cs) = vsep . fmap pretty $ cs
+
 -- }}}
 
 -- QuickCheck {{{

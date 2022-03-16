@@ -200,9 +200,6 @@ instance Parse Poly where
   parser = Poly <$ key "forall" <*> many parser <* op "." <*> parser
     <|> Poly [] <$> parser
 
-instance Parse Def where
-  parser = Def <$> parser <* op "::" <*> parser <* op "=" <*> parser
-
 instance Parse Sketch where
   parser = Sketch <$> parser <* op "::" <*> parser
 

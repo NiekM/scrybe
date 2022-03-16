@@ -35,8 +35,8 @@ sub a b = (<> Map.difference a b) . Map.mapMaybe id
 
 -- | Concepts within our language, used to categorize hole fillings.
 data Concept
-  = Function Var
-  | Datatyp Var
+  = CVar Var
+  | CCtr Ctr
   {-
   | EtaExpansion
   | PartialApplication -- TODO: is a function applied to no arguments considered partially applied?
@@ -47,7 +47,7 @@ data Concept
   -- single arity and higher arity functions.
   deriving (Eq, Ord, Show, Read)
 
-type Environment = [(Var, Poly, Set Concept)]
+type Environment = [(Term Void, Poly, Set Concept)]
 
 restrict :: Set Concept -> Environment -> Environment
 restrict cs = filter \(_, _, c) -> c `Set.isSubsetOf` cs

@@ -116,7 +116,7 @@ globals :: (MonadPlus m, FreshFree m, WithTechnique s m, WithEnvironment s m) =>
 globals = do
   (x, t, c) <- mfold =<< use environment
   u <- instantiateFresh t
-  (,c) <$> holeFillings x u
+  (,c) <$> holeFillings (over holes absurd x) u
 
 -- | Compute hole fillings from local variables.
 locals :: (MonadFail m, MonadPlus m,
@@ -129,7 +129,7 @@ locals h = do
   Variable x t n m <- mfold $ Map.lookup i xs
   -- Note variable occurrence
   modifying variables . Map.insert i $ Variable x t n (m + 1)
-  (,Set.empty) <$> holeFillings x t
+  (,Set.empty) <$> holeFillings (Var x) t
 
 -- | Compute hole fillings from available language constructs.
 -- TODO: I guess this is mzero for PointFree, and just pattern matching for
@@ -141,10 +141,10 @@ constructs = mzero -- TODO
 
 -- | Compute the possible hole fillings from a function.
 holeFillings :: (MonadPlus m, WithTechnique s m) =>
-  Var -> Type Void -> m HoleFilling
-holeFillings x t = use technique >>= \case
-  EtaLong   -> return $ fullyApply (Var x, t)
-  PointFree -> expand (Var x, t)
+  Term (Type Void) -> Type Void -> m HoleFilling
+holeFillings e t = use technique >>= \case
+  EtaLong   -> return $ fullyApply (e, t)
+  PointFree -> expand (e, t)
 
 fullyApply :: HoleFilling -> HoleFilling
 fullyApply (e, t) = first (apps . (e :|) . fmap Hole) (splitArgs t)
