@@ -3,17 +3,10 @@ module Language.Utils where
 import Import hiding (reverse)
 import Language.Syntax
 import qualified RIO.Map as Map
-import qualified RIO.Set as Set
 
+-- | Split a type into its arguments and the result type.
 splitArgs :: expr ~ Expr l a b => expr -> ([expr], expr)
 splitArgs = unsnoc . unArrs
-
--- -- | Return all holes in an expression.
--- holes :: Expr l a b -> [b]
--- holes = toList
-
-free :: Ord a => Type a -> Set a
-free = Set.fromList . toListOf holes
 
 -- | Uniquely number all holes in an expression.
 number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
@@ -23,13 +16,11 @@ number = traverse \x -> (,x) <$> fresh
 extract :: Ord b => Expr l a (b, c) -> (Expr l a b, Map b c)
 extract = over holes fst &&& Map.fromList . toListOf holes
 
-nVar :: Int -> Var
-nVar = MkVar . ("a" <>) . fromString . show
-
 instantiate :: Map Var (Type Void) -> Poly -> Poly
 instantiate th (Poly fr ty) =
   Poly (filter (`notElem` Map.keys th) fr) (subst th ty)
 
+-- | Instantiate all quantified variables of a polytype with fresh variables.
 instantiateFresh :: FreshFree m => Poly -> m (Type Void)
 instantiateFresh (Poly xs t) = do
   th <- Map.fromList <$> forM xs \x -> (x,) . Var . freeId <$> fresh
