@@ -24,6 +24,11 @@ elimBool = \f t b -> case b of False -> f; True -> t
 not :: Bool -> Bool
 not = elimBool True False
 
+data Ord = LT | EQ | GT
+
+elimOrd :: forall a. a -> a -> a -> Ord -> a
+elimOrd = \l e g o -> case o of LT -> l; EQ -> e; GT -> g
+
 data Nat = Zero | Succ Nat
 
 elimNat :: forall a. a -> (Nat -> a) -> Nat -> a
@@ -74,4 +79,9 @@ curry = \f x y -> f (Pair x y)
 
 uncurry :: forall a b c. (a -> b -> c) -> Pair a b -> c
 uncurry = \f p -> case p of Pair x y -> f x y
+
+data Either a b = Left a | Right b
+
+elimEither :: forall a b c. (a -> c) -> (b -> c) -> Either a b -> c
+elimEither = \l r e -> case e of Left x -> l x; Right y -> r y
 

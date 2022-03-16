@@ -18,7 +18,7 @@ step :: Term Hole -> GenT [] (Term Hole)
 step expr = do
   i <- selectFirst
   hf <- pick i
-  return $ subst' (Map.singleton i hf) expr
+  return $ subst (Map.singleton i hf) expr
 
 type SynMonad s m =
   ( WithEnvironment s m, WithConcepts s m
@@ -56,7 +56,7 @@ fillHole h (e, t) = do
   -- Check if the hole filling fits.
   th <- unify t goal
   -- Introduce holes in the sketch.
-  x <- forM e \u -> introduceHole HoleCtx { goal = u, local }
+  x <- forOf holes e \u -> introduceHole HoleCtx { goal = u, local }
   -- Apply type substitutions to all relevant types.
   applySubst th
   -- Close the current hole.

@@ -5,15 +5,15 @@ import Import
 import Language.Syntax
 import Language.Utils
 import qualified RIO.Map as Map
-import Lens.Micro.Platform
 
-type Unify l a = Map Var (Expr l a)
+type Unify l a = Map Var (Expr l Var a)
 
 -- TODO: Add unit tests to test type unification, inference and checking
 
 -- | Unify two expressions, by checking if their holes can be filled such that
 -- they are equivalent.
-unify :: (Eq a, MonadFail m) => Expr l a -> Expr l a -> m (Map Var (Expr l a))
+unify :: (Ord a, Eq b, MonadFail m, HasVar l, expr ~ Expr l a b) =>
+  expr -> expr -> m (Map a expr)
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
@@ -23,30 +23,21 @@ unify t u = case (t, u) of
   (_, Var a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
 
-vars :: HasVar l => Traversal' (Expr l a) Var
-vars g = \case
-  Hole h -> pure $ Hole h
-  Ctr c -> pure $ Ctr c
-  Var v -> Var <$> g v
-  App f x -> App <$> vars g f <*> vars g x
-  Lam a x -> Lam a <$> vars g x
-  Case x xs -> Case <$> vars g x <*> traverse (traverse $ vars g) xs
-  Let a x y -> Let a <$> vars g x <*> vars g y
-
-occurs :: HasVar l => Var -> Expr l a -> Bool
+occurs :: (Eq a, HasVar l) => a -> Expr l a b -> Bool
 occurs a tau = a `notElem` toListOf vars tau
 
 -- NOTE: it seems that the left hand side of the composition should be the
 -- newer composition, in effect updating the old substitution according to the
 -- new ones
-compose :: Map Var (Expr l a) -> Map Var (Expr l a) -> Map Var (Expr l a)
+compose :: (HasVar l, Ord a, expr ~ Expr l a b) =>
+  Map a expr -> Map a expr -> Map a expr
 compose sigma gamma = Map.unions
   [ subst sigma <$> gamma
   , Map.withoutKeys sigma (Map.keysSet gamma)
   ]
 
-unifies :: (Eq a, MonadFail m, Foldable t) =>
-  t (Expr l a, Expr l a) -> m (Map Var (Expr l a))
+unifies :: (Ord a, Eq b, MonadFail m, Foldable t, HasVar l) =>
+  expr ~ Expr l a b => t (expr, expr) -> m (Map a expr)
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)
@@ -108,7 +99,7 @@ check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
   MonadReader Module m, WithVariables s m) =>
   Sketch -> m (Term Hole, Type Void, Unify 'Type Void, Map Hole HoleCtx)
 check (Sketch e t) = do
-  e' <- sequence $ fresh <$ e
+  e' <- traverseOf holes (const fresh) e
   (u, th1, ctx1) <- infer e'
   th2 <- unify t u
   let th3 = compose th2 th1

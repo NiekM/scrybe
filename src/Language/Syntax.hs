@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds, GADTs, RankNTypes #-}
 {-# LANGUAGE TypeFamilies, ConstraintKinds #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Language.Syntax where
 
 import Import hiding (reverse)
@@ -77,23 +78,74 @@ type HasLet l = HasLet' l ~ 'True
 
 -- }}}
 
-data Expr (l :: Level) a where
-  Hole :: a -> Expr l a
-  Ctr  :: Ctr -> Expr l a
+data Expr (l :: Level) a b where
+  Hole :: b -> Expr l a b
+  Ctr  :: Ctr -> Expr l a b
 
-  Var  :: HasVar  l => Var -> Expr l a
-  App  :: HasApp  l => Expr l a -> Expr l a -> Expr l a
-  Lam  :: HasLam  l => Var -> Expr l a -> Expr l a
-  Case :: HasCase l => Expr l a -> [Branch (Expr l a)] -> Expr l a
-  Let  :: HasLet  l => Var -> Expr l a -> Expr l a -> Expr l a
+  Var  :: HasVar  l => a -> Expr l a b
+  App  :: HasApp  l => Expr l a b -> Expr l a b -> Expr l a b
+  Lam  :: HasLam  l => Var -> Expr l a b -> Expr l a b
+  Case :: HasCase l => Expr l a b -> [Branch (Expr l a b)] -> Expr l a b
+  Let  :: HasLet  l => Var -> Expr l a b -> Expr l a b -> Expr l a b
 
-pattern Arr :: () => HasApp l => Expr l a -> Expr l a -> Expr l a
+pattern Arr :: () => HasApp l => Expr l a b -> Expr l a b -> Expr l a b
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
-type Type = Expr 'Type
-type Term = Expr 'Term
-type Pattern = Expr 'Pattern
-type Value = Expr 'Value Void
+-- Lenses {{{
+
+holes' :: Traversal (Expr l a b) (Expr l a c) b (Expr l a c)
+holes' g = go where
+  go = \case
+    Hole h -> g h
+    Ctr c -> pure $ Ctr c
+    Var v -> pure $ Var v
+    App f x -> App <$> go f <*> go x
+    Lam a x -> Lam a <$> go x
+    Case x xs -> Case <$> go x <*> traverse (traverse go) xs
+    Let a x y -> Let a <$> go x <*> go y
+
+holes :: Traversal (Expr l a b) (Expr l a c) b c
+holes = holes' . fmap (fmap Hole)
+
+-- TODO: allow l to be changed in traversal
+vars' :: Traversal (Expr l a c) (Expr l b c) a (Expr l b c)
+vars' g = go where
+  go = \case
+    Hole h -> pure $ Hole h
+    Ctr c -> pure $ Ctr c
+    Var v -> g v
+    App f x -> App <$> go f <*> go x
+    Lam a x -> Lam a <$> go x
+    Case x xs -> Case <$> go x <*> traverse (traverse go) xs
+    Let a x y -> Let a <$> go x <*> go y
+
+vars :: HasVar l => Traversal (Expr l a c) (Expr l b c) a b
+vars = vars' . fmap (fmap Var)
+
+-- }}}
+
+class Subst a b where
+  subst :: Ord a => Map a b -> b -> b
+
+joinHoles :: Expr l a (Expr l a b) -> Expr l a b
+joinHoles = over holes' id
+
+-- TODO: make these more generic without overlapping
+instance Subst Hole (Expr l Var Hole) where
+  subst th = joinHoles. over (holes' . fmap (fmap Hole))
+    \x -> Map.findWithDefault (Hole x) x th
+
+joinVars :: Expr l (Expr l a b) b -> Expr l a b
+joinVars = over vars' id
+
+instance HasVar l => Subst a (Expr l a b) where
+  subst th = joinVars . over (vars' . fmap (fmap Var))
+    \x -> Map.findWithDefault (Var x) x th
+
+type Type = Expr 'Type Var
+type Term = Expr 'Term Var
+type Pattern = Expr 'Pattern Var
+type Value = Expr 'Value Var Void
 
 data Poly = Poly [Var] (Type Void)
   deriving (Eq, Ord, Show)
@@ -118,20 +170,6 @@ data HoleCtx = HoleCtx
 
 class HasHoleCtxs a where
   holeCtxs :: Lens' a (Map Hole HoleCtx)
-
-subst :: Map Var (Expr l a) -> Expr l a -> Expr l a
-subst th = go where
-  go = \case
-    Hole h -> Hole h
-    Ctr c -> Ctr c
-    Var v -> case Map.lookup v th of
-      Nothing -> Var v
-      Just x -> x
-    App f x -> App (go f) (go x)
-    -- TODO: do we need alpha renaming here?
-    Lam a x -> Lam a (go x)
-    Case x xs -> Case (go x) (fmap go <$> xs)
-    Let a x y -> Let a (go x) (go y)
 
 -- TODO: replace this with a function that substitutes all goals and variables
 -- within the gen monad.
@@ -190,72 +228,72 @@ type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
 type WithVariables s m = (MonadState s m, HasVariables s)
 
 -- TODO: replace with more general infix function
-arrs :: (Foldable f, HasApp l) => f (Expr l a) -> Expr l a
+arrs :: (Foldable f, HasApp l) => f (Expr l a b) -> Expr l a b
 arrs = foldr1 Arr
 
-unArrs :: Expr l a -> NonEmpty (Expr l a)
+unArrs :: Expr l a b -> NonEmpty (Expr l a b)
 unArrs = \case
   Arr t u -> t `cons` unArrs u
   t -> pure t
 
-apps :: (Foldable f, HasApp l) => f (Expr l a) -> Expr l a
+apps :: (Foldable f, HasApp l) => f (Expr l a b) -> Expr l a b
 apps = foldl1 App
 
-unApps :: Expr l a -> NonEmpty (Expr l a)
+unApps :: Expr l a b -> NonEmpty (Expr l a b)
 unApps = reverse . go where
   go = \case
     App f x -> x `cons` go f
     e -> pure e
 
-lams :: (Foldable f, HasLam l) => f Var -> Expr l a -> Expr l a
+lams :: (Foldable f, HasLam l) => f Var -> Expr l a b -> Expr l a b
 lams = flip (foldr Lam)
 
-unLams :: Expr l a -> ([Var], Expr l a)
+unLams :: Expr l a b -> ([Var], Expr l a b)
 unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
 
 -- Instances {{{
 
-deriving instance Eq a => Eq (Expr l a)
-deriving instance Ord a => Ord (Expr l a)
-deriving instance Show a => Show (Expr l a)
-deriving instance Functor (Expr l)
-deriving instance Foldable (Expr l)
-deriving instance Traversable (Expr l)
+deriving instance (Eq a, Eq b) => Eq (Expr l a b)
+deriving instance (Ord a, Ord b) => Ord (Expr l a b)
+deriving instance (Show a, Show b) => Show (Expr l a b)
+-- deriving instance Functor (Expr l a)
+-- deriving instance Foldable (Expr l a)
+-- deriving instance Traversable (Expr l a)
 
-instance Applicative (Expr l) where
-  pure = Hole
-  Hole h <*> y = h <$> y
-  Var x <*> _ = Var x
-  Ctr c <*> _ = Ctr c
-  App f x <*> y = App (f <*> y) (x <*> y)
-  Lam b x <*> y = Lam b (x <*> y)
-  Case x xs <*> y = Case (x <*> y) (fmap (<*> y) <$> xs)
-  Let a x e <*> y = Let a (x <*> y) (e <*> y)
+-- instance Applicative (Expr l a) where
+--   pure = Hole
+--   Hole h <*> y = h <$> y
+--   Var x <*> _ = Var x
+--   Ctr c <*> _ = Ctr c
+--   App f x <*> y = App (f <*> y) (x <*> y)
+--   Lam b x <*> y = Lam b (x <*> y)
+--   Case x xs <*> y = Case (x <*> y) (fmap (<*> y) <$> xs)
+--   Let a x e <*> y = Let a (x <*> y) (e <*> y)
 
-instance Monad (Expr l) where
-  Hole h >>= k = k h
-  Var x >>= _ = Var x
-  Ctr c >>= _ = Ctr c
-  App f x >>= k = App (f >>= k) (x >>= k)
-  Lam b x >>= k = Lam b (x >>= k)
-  Case x xs >>= k = Case (x >>= k) (fmap (>>= k) <$> xs)
-  Let a x e >>= k = Let a (x >>= k) (e >>= k)
+-- instance Monad (Expr l a) where
+--   Hole h >>= k = k h
+--   Var x >>= _ = Var x
+--   Ctr c >>= _ = Ctr c
+--   App f x >>= k = App (f >>= k) (x >>= k)
+--   Lam b x >>= k = Lam b (x >>= k)
+--   Case x xs >>= k = Case (x >>= k) (fmap (>>= k) <$> xs)
+--   Let a x e >>= k = Let a (x >>= k) (e >>= k)
 
 -- }}}
 
 -- Pretty printing {{{
 
-isArr :: Expr l a -> Bool
+isArr :: Expr l a b -> Bool
 isArr Arr {} = True
 isArr _ = False
 
-isLam :: Expr l a -> Bool
+isLam :: Expr l a b -> Bool
 isLam Lam {} = True
 isLam _ = False
 
-isApp :: Expr l a -> Bool
+isApp :: Expr l a b -> Bool
 isApp App {} = True
 isApp _ = False
 
@@ -281,7 +319,7 @@ instance Pretty Def where
 instance Pretty a => Pretty (Branch a) where
   pretty (Branch c e) = pretty c <+> "->" <+> pretty e
 
-instance Pretty a => Pretty (Expr l a) where
+instance (Pretty a, Pretty b) => Pretty (Expr l a b) where
   pretty = \case
     Hole i -> braces $ pretty i
     Var x -> pretty x

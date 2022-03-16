@@ -1,4 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
 module Language.Utils where
 
 import Import hiding (reverse)
@@ -6,31 +5,23 @@ import Language.Syntax
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 
-splitArgs :: Expr l a -> ([Expr l a], Expr l a)
+splitArgs :: expr ~ Expr l a b => expr -> ([expr], expr)
 splitArgs = unsnoc . unArrs
 
--- | Return all holes in an expression.
-holes :: Expr l a -> [a]
-holes = toList
+-- -- | Return all holes in an expression.
+-- holes :: Expr l a b -> [b]
+-- holes = toList
 
 free :: Ord a => Type a -> Set a
-free = Set.fromList . holes
+free = Set.fromList . toListOf holes
 
 -- | Uniquely number all holes in an expression.
 number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
 
--- | Renumber all holes in an expression.
--- TODO: Rewrite for polytypes and use the quantified type variables to do more
--- efficient renumbering
-renumber :: MonadFresh Free m => Expr l Var -> m (Expr l Var)
-renumber t = do
-  xs <- traverse (\x -> (x,) . return . freeId <$> fresh) (nubOrd $ toList t)
-  return $ subst (Map.fromList xs) t
-
 -- | Extract extra information in an expression into a map.
-extract :: Ord a => Expr l (a, b) -> (Expr l a, Map a b)
-extract = fmap fst &&& Map.fromList . holes
+extract :: Ord b => Expr l a (b, c) -> (Expr l a b, Map b c)
+extract = over holes fst &&& Map.fromList . toListOf holes
 
 nVar :: Int -> Var
 nVar = MkVar . ("a" <>) . fromString . show
@@ -47,7 +38,7 @@ instantiateFresh (Poly xs t) = do
 -- | Eta expand all holes in a sketch.
 etaExpand :: (FreshVarId m, WithHoleCtxs s m, WithVariables s m) =>
   Term Hole -> m (Term Hole)
-etaExpand = fmap join . traverse \i -> do
+etaExpand = fmap joinHoles . traverseOf holes \i -> do
   ctxs <- use holeCtxs
   case Map.lookup i ctxs of
     Nothing -> return $ Hole i
@@ -59,14 +50,14 @@ etaExpand = fmap join . traverse \i -> do
       let locals' = Map.fromList ((varId &&& id) . fst <$> xs)
       -- Update the hole context
       modifying holeCtxs $ Map.insert i $ HoleCtx u (local <> locals')
-      let vars = Map.fromList $ (\(x, t) -> (x, Variable (varId x) t 1 0)) <$> xs
+      let vs = Map.fromList $ xs <&> \(x, t) -> (x, Variable (varId x) t 1 0)
       -- traceShowM vars
-      modifying variables (vars <>)
+      modifying variables (vs <>)
       -- Eta expand the hole
       return $ lams (varId . fst <$> xs) (Hole i)
 
 -- | All subexpressions, including the expression itself.
-dissect :: Expr l a -> [Expr l a]
+dissect :: Expr l a b -> [Expr l a b]
 dissect e = e : case e of
   Hole _ -> []
   Var _ -> []

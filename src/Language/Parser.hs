@@ -141,19 +141,19 @@ instance Parse a => Parse (Branch a) where
   parser = Branch <$> parser <* op "->" <*> parser
 
 class ParseAtom l where
-  parseAtom :: Parse a => Parser (Expr l a)
+  parseAtom :: (Parse a, Parse b) => Parser (Expr l a b)
 
-nat :: HasApp l => Int -> Expr l a
+nat :: HasApp l => Int -> Expr l a b
 nat 0 = Ctr "Zero"
 nat n = App (Ctr "Succ") (nat $ n - 1)
 
-parseNat :: HasApp l => Parser (Expr l a)
+parseNat :: HasApp l => Parser (Expr l a b)
 parseNat = nat <$> int
 
-list :: (Foldable f, HasApp l) => f (Expr l a) -> Expr l a
+list :: (Foldable f, HasApp l) => f (Expr l a b) -> Expr l a b
 list = foldr (\x r -> apps [Ctr "Cons", x, r]) (Ctr "Nil")
 
-parseList :: HasApp l => Parser (Expr l a) -> Parser (Expr l a)
+parseList :: HasApp l => Parser (Expr l a b) -> Parser (Expr l a b)
 parseList p = list <$> brackets Square (alt p (sep ","))
 
 instance ParseAtom 'Pattern where
@@ -184,16 +184,16 @@ instance ParseAtom 'Type where
     , Ctr <$> parser
     ]
 
-parseApps :: (Parse a, HasApp l, ParseAtom l) => Parser (Expr l a)
+parseApps :: (Parse a, Parse b, HasApp l, ParseAtom l) => Parser (Expr l a b)
 parseApps = apps <$> some (brackets Round parseApps <|> parseAtom)
 
-instance Parse a => Parse (Pattern a) where
+instance (Parse a, Parse b) => Parse (Expr 'Pattern a b) where
   parser = parseApps
 
-instance Parse a => Parse (Term a) where
+instance (Parse a, Parse b) => Parse (Expr 'Term a b) where
   parser = parseApps
 
-instance Parse a => Parse (Type a) where
+instance (Parse a, Parse b) => Parse (Expr 'Type a b) where
   parser = arrs <$> alt1 (brackets Round parser <|> parseApps) (op "->")
 
 instance Parse Poly where

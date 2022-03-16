@@ -5,12 +5,9 @@ module Import
   ( module RIO
   , module RIO.Text
   , module Control.Monad.RWS
+  , module Lens.Micro.Platform
   , Pretty(..)
   , MonadFresh(..)
-  , use
-  , assign
-  , modifying
-  , subst'
   , unsnoc
   , maximumDef
   , mfold
@@ -21,7 +18,6 @@ module Import
 import RIO hiding (local)
 import RIO.Text (unpack)
 import RIO.List
-import qualified RIO.Map as Map
 import Prettyprinter
 import Data.Tree
 import Control.Monad.RWS hiding (local)
@@ -37,9 +33,6 @@ instance Display (Doc ann) where
 
 class Monad m => MonadFresh s m where
   fresh :: m s
-
-subst' :: (Monad m, Ord a) => Map a (m a) -> m a -> m a
-subst' th e = e >>= \i -> fromMaybe (return i) (Map.lookup i th)
 
 unsnoc :: NonEmpty a -> ([a], a)
 unsnoc (x :| []) = ([], x)
