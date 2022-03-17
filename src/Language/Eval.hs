@@ -3,7 +3,6 @@ module Language.Eval where
 
 import Import
 import Language.Syntax
-import Language.Type
 import qualified RIO.Map as Map
 import Control.Monad.State
 
@@ -39,7 +38,7 @@ eval = \case
   Lam a x -> return $ Lam a x
   Case x xs -> do
     y <- eval x
-    let ys = xs <&> \Branch { pat, arm } -> (,arm) <$> match pat y
+    let ys = xs <&> \(Branch p a) -> (,a) <$> match p y
     case msum ys of
       Nothing -> return $ Case y xs
       Just (m, e) -> do
@@ -50,12 +49,11 @@ eval = \case
     modifying env $ Map.insert a y
     eval e
 
-fromPattern :: Pattern a -> Term a
-fromPattern = \case
-  Hole x -> Hole x
-  Var x -> Var x
-  Ctr c -> Ctr c
-  App f x -> App (fromPattern f) (fromPattern x)
-
-match :: Eq a => Pattern a -> Term a -> Maybe (Map Var (Term a))
-match = unify . fromPattern
+match :: Pattern Void -> Term a -> Maybe (Map Var (Term a))
+match p e = case p of
+  Hole h -> absurd h
+  Var a -> return $ Map.singleton a e
+  Ctr c | Ctr d <- e, c == d -> return Map.empty
+  -- Note: pattern matching does not check for duplicate variables in a pattern
+  App f x | App g y <- e -> liftM2 (<>) (match f g) (match x y)
+  _ -> fail "Pattern match failed"

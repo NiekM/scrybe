@@ -1,5 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 module Language.Syntax where
 
 import Import hiding (reverse)
@@ -79,17 +81,20 @@ type family HasLet' (l :: Level) where
 
 type HasLet l = HasLet' l ~ 'True
 
+type NoBind l = (HasLam' l ~ 'False, HasCase' l ~ 'False, HasLet' l ~ 'False)
+
 -- }}}
 
+-- TODO: do we need a Core language and a surface language?
 data Expr (l :: Level) a b where
   Hole :: b -> Expr l a b
   Ctr  :: Ctr -> Expr l a b
 
   Var  :: HasVar  l => a -> Expr l a b
   App  :: HasApp  l => Expr l a b -> Expr l a b -> Expr l a b
-  Lam  :: HasLam  l => Var -> Expr l a b -> Expr l a b
-  Case :: HasCase l => Expr l a b -> [Branch (Expr l a b)] -> Expr l a b
-  Let  :: HasLet  l => Var -> Expr l a b -> Expr l a b -> Expr l a b
+  Lam  :: HasLam  l => a -> Expr l a b -> Expr l a b
+  Case :: HasCase l => Expr l a b -> [Branch l a b] -> Expr l a b
+  Let  :: HasLet  l => a -> Expr l a b -> Expr l a b -> Expr l a b
 
 deriving instance (Eq a, Eq b) => Eq (Expr l a b)
 deriving instance (Ord a, Ord b) => Ord (Expr l a b)
@@ -108,26 +113,23 @@ holes' g = go where
     Var v -> pure $ Var v
     App f x -> App <$> go f <*> go x
     Lam a x -> Lam a <$> go x
-    Case x xs -> Case <$> go x <*> traverse (traverse go) xs
+    Case x xs -> Case <$> go x <*> traverse (traverseOf arm go) xs
     Let a x y -> Let a <$> go x <*> go y
 
 holes :: Traversal (Expr l a b) (Expr l a c) b c
 holes = holes' . fmap (fmap Hole)
 
 -- TODO: allow l to be changed in traversal
-vars' :: Traversal (Expr l a c) (Expr l b c) a (Expr l b c)
-vars' g = go where
+free' :: NoBind l => Traversal (Expr l a c) (Expr l b c) a (Expr l b c)
+free' g = go where
   go = \case
     Hole h -> pure $ Hole h
     Ctr c -> pure $ Ctr c
     Var v -> g v
     App f x -> App <$> go f <*> go x
-    Lam a x -> Lam a <$> go x
-    Case x xs -> Case <$> go x <*> traverse (traverse go) xs
-    Let a x y -> Let a <$> go x <*> go y
 
-vars :: HasVar l => Traversal (Expr l a c) (Expr l b c) a b
-vars = vars' . fmap (fmap Var)
+free :: (HasVar l, NoBind l) => Traversal (Expr l a c) (Expr l b c) a b
+free = free' . fmap (fmap Var)
 
 -- }}}
 
@@ -149,23 +151,28 @@ instance Subst Hole (Expr l Var Hole) where
   subst th = joinHoles. over (holes' . fmap (fmap Hole))
     \x -> Map.findWithDefault (Hole x) x th
 
-joinVars :: Expr l (Expr l a b) b -> Expr l a b
-joinVars = over vars' id
+joinFree :: NoBind l => Expr l (Expr l a b) b -> Expr l a b
+joinFree = over free' id
 
-instance HasVar l => Subst a (Expr l a b) where
-  subst th = joinVars . over (vars' . fmap (fmap Var))
+instance (HasVar l, NoBind l) => Subst a (Expr l a b) where
+  subst th = joinFree . over (free' . fmap (fmap Var))
     \x -> Map.findWithDefault (Var x) x th
 
 -- }}}
+
+data Branch l a b = Branch (Expr 'Pattern a Void) (Expr l a b)
+  deriving (Eq, Ord, Show)
+
+pat :: Lens' (Branch l a b) (Expr 'Pattern a Void)
+pat = lens (\(Branch p _) -> p) \(Branch _ a) p -> Branch p a
+
+arm :: Lens (Branch l a b) (Branch l a c) (Expr l a b) (Expr l a c)
+arm = lens (\(Branch _ a) -> a) \(Branch p _) a -> Branch p a
 
 -- TODO: maybe move these definitions somewhere else
 
 data Poly = Poly [Var] (Type Void)
   deriving (Eq, Ord, Show)
-
-data Branch a = Branch { pat :: Pattern Void, arm :: a }
-  deriving (Eq, Ord, Show)
-  deriving (Functor, Foldable, Traversable)
 
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
@@ -259,10 +266,10 @@ unApps = reverse . go where
     App f x -> x `cons` go f
     e -> pure e
 
-lams :: (Foldable f, HasLam l) => f Var -> Expr l a b -> Expr l a b
+lams :: (Foldable f, HasLam l) => f a -> Expr l a b -> Expr l a b
 lams = flip (foldr Lam)
 
-unLams :: Expr l a b -> ([Var], Expr l a b)
+unLams :: Expr l a b -> ([a], Expr l a b)
 unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
@@ -297,7 +304,7 @@ instance Pretty Poly where
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
-instance Pretty a => Pretty (Branch a) where
+instance (Pretty a, Pretty b) => Pretty (Branch l a b) where
   pretty (Branch c e) = pretty c <+> "->" <+> pretty e
 
 instance (Pretty a, Pretty b) => Pretty (Expr l a b) where

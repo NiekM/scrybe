@@ -58,13 +58,10 @@ foldrConcepts = Map.fromList
   ]
 
 fromModule :: Module -> Environment
-fromModule m = concat
-  [ Map.assocs (functions m) <&>
-    \(x, (_, t)) -> (Var x, t, Set.singleton $ CVar x)
-  , Map.assocs (ctrs m) <&>
-    \(c, t) -> (Ctr c, t, Set.singleton $ CCtr c)
-  , []
-  ]
+fromModule m = (Map.assocs (functions m) <&>
+  \(x, (_, t)) -> (Var x, t, Set.singleton $ CVar x))
+  ++ (Map.assocs (ctrs m) <&>
+  \(c, t) -> (Ctr c, t, Set.singleton $ CCtr c))
 
 runSyn :: String -> Technique -> MultiSet Concept -> Sketch ->
   RIO Application ()
@@ -74,6 +71,8 @@ runSyn file t c dec = do
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ dec
+  logInfo ""
+  logInfo $ "Technique: " <> displayShow t
   logInfo ""
   logInfo "Possible refinements:"
   logInfo ""
@@ -105,7 +104,7 @@ run = do
   runSyn prelude EtaLong mempty composeSketch
   runSyn prelude EtaLong mempty flipSketch
   runSyn prelude EtaLong mapConcepts mapSketch
-  -- runSyn prelude EtaLong mapConcepts2 mapSketch2
-  -- runSyn prelude PointFree mapConcepts3 mapSketch
+  runSyn prelude EtaLong mapConcepts2 mapSketch2
+  runSyn prelude PointFree mapConcepts3 mapSketch
   -- runSyn prelude EtaLong foldrConcepts foldrSketch
   logInfo "Finished!"

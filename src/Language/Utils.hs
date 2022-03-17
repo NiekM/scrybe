@@ -55,7 +55,7 @@ dissect e = e : case e of
   Ctr _ -> []
   App f x -> dissect f ++ dissect x
   Lam _ x -> dissect x
-  Case x xs -> x : concatMap (dissect . arm) xs
+  Case x xs -> x : concatMap (dissect . view arm) xs
   Let _ x y -> dissect x ++ dissect y
 
 -- -- | Normalize a type along with an expression with types in the holes, such

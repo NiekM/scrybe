@@ -135,7 +135,9 @@ locals h = do
 -- TODO: I guess this is mzero for PointFree, and just pattern matching for
 -- eta-long. Explicit lambda's could be used by a less restrictive synthesis
 -- technique. Perhaps we should not try to generate language constructs
--- directly, but rather use eliminators, folds and fixpoints.
+-- directly, but rather use eliminators, folds and fixpoints. However, it is
+-- still useful to describe the associated holes fillings to trace student
+-- solutions.
 constructs :: MonadPlus m => m (HoleFilling, Set Concept)
 constructs = mzero -- TODO
 

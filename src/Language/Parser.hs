@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances, UndecidableInstances #-}
 module Language.Parser where
 
 import Import hiding (some, many, lift, bracket)
@@ -49,7 +49,7 @@ identOrKeyword = ident lowerChar <&> \case
 
 operator :: Lexer Text
 operator = fmap fromString . some . choice . fmap char $
-  ("!$%^&*-=+\\:<>.|" :: String)
+  ("!$%&*+-.:<=>\\^|" :: String)
 
 separator :: Lexer Text
 separator = string "," <|> string ";"
@@ -137,7 +137,7 @@ instance Parse Hole where
 instance Parse Free where
   parser = MkFree <$> int
 
-instance Parse a => Parse (Branch a) where
+instance (Parse a, Parse (Expr l a b)) => Parse (Branch l a b) where
   parser = Branch <$> parser <* op "->" <*> parser
 
 class ParseAtom l where
