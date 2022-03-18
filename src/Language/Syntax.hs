@@ -48,18 +48,23 @@ freeId (MkFree n) = MkVar . fromString . ('t':) . show $ n
 -- TODO: term level might get extra parameters for e.g. type annotations
 -- TODO: maybe level should contain values (concrete evaluation results) as
 -- well as 'results' (as seen in Smyth)
-data Level = Type | Term | Pattern | Value
+data Level = Type | Term | Pattern | Value | Lambda
   deriving (Eq, Ord, Show, Read)
 
+type family HasCtr' (l :: Level) where
+  HasCtr' 'Lambda = 'False
+  HasCtr' _       = 'True
+
+type HasCtr l = HasCtr' l ~ 'True
+
 type family HasVar' (l :: Level) where
-  HasVar' 'Value   = 'False
-  HasVar' _        = 'True
+  HasVar' 'Value = 'False
+  HasVar' _      = 'True
 
 type HasVar l = HasVar' l ~ 'True
 
 type family HasApp' (l :: Level) where
-  HasApp' 'Value = 'False
-  HasApp' _      = 'True
+  HasApp' _ = 'True
 
 type HasApp l = HasApp' l ~ 'True
 
@@ -81,6 +86,7 @@ type family HasLet' (l :: Level) where
 
 type HasLet l = HasLet' l ~ 'True
 
+type HasArr l = (HasCtr l, HasApp l)
 type NoBind l = (HasLam' l ~ 'False, HasCase' l ~ 'False, HasLet' l ~ 'False)
 
 -- }}}
@@ -88,8 +94,7 @@ type NoBind l = (HasLam' l ~ 'False, HasCase' l ~ 'False, HasLet' l ~ 'False)
 -- TODO: do we need a Core language and a surface language?
 data Expr (l :: Level) a b where
   Hole :: b -> Expr l a b
-  Ctr  :: Ctr -> Expr l a b
-
+  Ctr  :: HasCtr  l => Ctr -> Expr l a b
   Var  :: HasVar  l => a -> Expr l a b
   App  :: HasApp  l => Expr l a b -> Expr l a b -> Expr l a b
   Lam  :: HasLam  l => a -> Expr l a b -> Expr l a b
@@ -100,7 +105,7 @@ deriving instance (Eq a, Eq b) => Eq (Expr l a b)
 deriving instance (Ord a, Ord b) => Ord (Expr l a b)
 deriving instance (Show a, Show b) => Show (Expr l a b)
 
-pattern Arr :: () => HasApp l => Expr l a b -> Expr l a b -> Expr l a b
+pattern Arr :: () => HasArr l => Expr l a b -> Expr l a b -> Expr l a b
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
 -- Lenses {{{
@@ -249,7 +254,7 @@ type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
 type WithVariables s m = (MonadState s m, HasVariables s)
 
 -- TODO: replace with more general infix function
-arrs :: (Foldable f, HasApp l) => f (Expr l a b) -> Expr l a b
+arrs :: (Foldable f, HasArr l) => f (Expr l a b) -> Expr l a b
 arrs = foldr1 Arr
 
 unArrs :: Expr l a b -> NonEmpty (Expr l a b)

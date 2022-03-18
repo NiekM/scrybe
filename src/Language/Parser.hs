@@ -143,17 +143,17 @@ instance (Parse a, Parse (Expr l a b)) => Parse (Branch l a b) where
 class ParseAtom l where
   parseAtom :: (Parse a, Parse b) => Parser (Expr l a b)
 
-nat :: HasApp l => Int -> Expr l a b
+nat :: (HasCtr l, HasApp l) => Int -> Expr l a b
 nat 0 = Ctr "Zero"
 nat n = App (Ctr "Succ") (nat $ n - 1)
 
-parseNat :: HasApp l => Parser (Expr l a b)
+parseNat :: (HasCtr l, HasApp l) => Parser (Expr l a b)
 parseNat = nat <$> int
 
-list :: (Foldable f, HasApp l) => f (Expr l a b) -> Expr l a b
+list :: (Foldable f, HasCtr l, HasApp l) => f (Expr l a b) -> Expr l a b
 list = foldr (\x r -> apps [Ctr "Cons", x, r]) (Ctr "Nil")
 
-parseList :: HasApp l => Parser (Expr l a b) -> Parser (Expr l a b)
+parseList :: (HasCtr l, HasApp l) => Parser (Expr l a b) -> Parser (Expr l a b)
 parseList p = list <$> brackets Square (alt p (sep ","))
 
 instance ParseAtom 'Pattern where
