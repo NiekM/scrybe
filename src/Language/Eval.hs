@@ -39,18 +39,18 @@ eval = \case
         eval z
       _ -> return $ App g y
   Lam a x -> return $ Lam a x
+  Let a x e -> do
+    y <- eval x
+    modifying env $ Map.insert a y
+    eval e
   Case x xs -> do
     y <- eval x
-    let ys = xs <&> \(Branch p a) -> (,a) <$> match p y
+    let ys = traverseOf _1 (`match` y) <$> xs
     case msum ys of
       Nothing -> return $ Case y xs
       Just (m, e) -> do
         modifying env (m <>)
         eval e
-  Let a x e -> do
-    y <- eval x
-    modifying env $ Map.insert a y
-    eval e
 
 match :: Pattern Void -> Term a -> Maybe (Map Var (Term a))
 match p e = case p of
@@ -154,7 +154,6 @@ defs =
 
 steps :: GraphState -> ([GraphState], GraphState)
 steps s = (s:) `first` either ([],) steps (step_ s)
-
 
 -- TODO: add more language constructs
 -- TODO: add garbage collection

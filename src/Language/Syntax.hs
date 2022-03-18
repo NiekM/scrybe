@@ -103,12 +103,13 @@ type NoBind l =
 -- TODO: do we need a Core language and a surface language?
 data Expr (l :: Level) a b where
   Hole :: b -> Expr l a b
-  Ctr  :: HasCtr  l => Ctr -> Expr l a b
-  Var  :: HasVar  l => a -> Expr l a b
-  App  :: HasApp  l => Expr l a b -> Expr l a b -> Expr l a b
-  Lam  :: HasLam  l => a -> Expr l a b -> Expr l a b
-  Case :: HasCase l p => Expr l a b -> [Branch p l a b] -> Expr l a b
-  Let  :: HasLet  l => a -> Expr l a b -> Expr l a b -> Expr l a b
+  Ctr  :: HasCtr l => Ctr -> Expr l a b
+  Var  :: HasVar l => a -> Expr l a b
+  App  :: HasApp l => Expr l a b -> Expr l a b -> Expr l a b
+  Lam  :: HasLam l => a -> Expr l a b -> Expr l a b
+  Let  :: HasLet l => a -> Expr l a b -> Expr l a b -> Expr l a b
+  Case :: HasCase l p => Expr l a b ->
+    [(Expr p a Void, Expr l a b)] -> Expr l a b
 
 deriving instance (Eq a, Eq b) => Eq (Expr l a b)
 deriving instance (Ord a, Ord b) => Ord (Expr l a b)
@@ -127,8 +128,8 @@ holes' g = go where
     Var v -> pure $ Var v
     App f x -> App <$> go f <*> go x
     Lam a x -> Lam a <$> go x
-    Case x xs -> Case <$> go x <*> traverse (traverseOf arm go) xs
     Let a x y -> Let a <$> go x <*> go y
+    Case x xs -> Case <$> go x <*> traverse (traverse go) xs
 
 holes :: Traversal (Expr l a b) (Expr l a c) b c
 holes = holes' . fmap (fmap Hole)
@@ -173,15 +174,6 @@ instance (HasVar l, NoBind l) => Subst a (Expr l a b) where
     \x -> Map.findWithDefault (Var x) x th
 
 -- }}}
-
-data Branch p l a b = Branch (Expr p a Void) (Expr l a b)
-  deriving (Eq, Ord, Show)
-
-pat :: Lens' (Branch p l a b) (Expr p a Void)
-pat = lens (\(Branch p _) -> p) \(Branch _ a) p -> Branch p a
-
-arm :: Lens (Branch p l a b) (Branch p l a c) (Expr l a b) (Expr l a c)
-arm = lens (\(Branch _ a) -> a) \(Branch p _) a -> Branch p a
 
 -- TODO: maybe move these definitions somewhere else
 
@@ -318,9 +310,6 @@ instance Pretty Poly where
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
-instance (Pretty a, Pretty b) => Pretty (Branch p l a b) where
-  pretty (Branch c e) = pretty c <+> "->" <+> pretty e
-
 instance (Pretty a, Pretty b) => Pretty (Expr l a b) where
   pretty = \case
     Hole i -> braces $ pretty i
@@ -334,9 +323,10 @@ instance (Pretty a, Pretty b) => Pretty (Expr l a b) where
     e@Lam {} ->
       let (as, x) = unLams e
       in "\\" <> sep (pretty <$> as) <+> "->" <+> pretty x
-    Case x xs -> "case" <+> pretty x <+> "of" <+>
-      mconcat (intersperse "; " $ pretty <$> xs)
     Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e
+    Case x xs -> "case" <+> pretty x <+> "of" <+>
+      mconcat (intersperse "; " $ xs <&>
+        \(p, a) -> pretty p <+> "->" <+> pretty a)
 
 instance Pretty Datatype where
   pretty (MkDatatype d as cs) =

@@ -1,4 +1,3 @@
-{-# LANGUAGE FlexibleInstances, UndecidableInstances #-}
 module Language.Parser where
 
 import Import hiding (some, many, lift, bracket)
@@ -137,9 +136,6 @@ instance Parse Hole where
 instance Parse Free where
   parser = MkFree <$> int
 
-instance (Parse a, Parse (Expr l a b)) => Parse (Branch 'Pattern l a b) where
-  parser = Branch <$> parser <* op "->" <*> parser
-
 class ParseAtom l where
   parseAtom :: (Parse a, Parse b) => Parser (Expr l a b)
 
@@ -168,7 +164,8 @@ instance ParseAtom 'Pattern where
 instance ParseAtom 'Term where
   parseAtom = choice
     [ lams <$ op "\\" <*> some parser <* op "->" <*> parser
-    , Case <$ key "case" <*> parser <* key "of" <*> alt parser (sep ";")
+    , Case <$ key "case" <*> parser <* key "of" <*>
+      alt ((,) <$> parser <* op "->" <*> parser) (sep ";")
     , Let <$ key "let" <*> parser <* op "=" <*> parser <* key "in" <*> parser
     , Hole <$> brackets Curly parser
     , Var <$> parser
