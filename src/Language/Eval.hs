@@ -154,3 +154,7 @@ defs =
 
 steps :: GraphState -> ([GraphState], GraphState)
 steps s = (s:) `first` either ([],) steps (step_ s)
+
+
+-- TODO: add more language constructs
+-- TODO: add garbage collection

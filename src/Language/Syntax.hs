@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, PolyKinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
@@ -75,10 +75,10 @@ type family HasLam' (l :: Level) where
 type HasLam l = HasLam' l ~ 'True
 
 type family HasCase' (l :: Level) where
-  HasCase' 'Term = 'True
-  HasCase' _     = 'False
+  HasCase' 'Term = ('Just 'Pattern)
+  HasCase' _     = 'Nothing
 
-type HasCase l = HasCase' l ~ 'True
+type HasCase l p = HasCase' l ~ 'Just p
 
 type family HasLet' (l :: Level) where
   HasLet' 'Term = 'True
@@ -87,7 +87,16 @@ type family HasLet' (l :: Level) where
 type HasLet l = HasLet' l ~ 'True
 
 type HasArr l = (HasCtr l, HasApp l)
-type NoBind l = (HasLam' l ~ 'False, HasCase' l ~ 'False, HasLet' l ~ 'False)
+
+type family IsJust (t :: Maybe a) where
+  IsJust ('Just _) = 'True
+  IsJust 'Nothing  = 'False
+
+type NoBind l =
+  ( HasLam' l ~ 'False
+  , IsJust (HasCase' l) ~ 'False
+  , HasLet' l ~ 'False
+  )
 
 -- }}}
 
@@ -98,7 +107,7 @@ data Expr (l :: Level) a b where
   Var  :: HasVar  l => a -> Expr l a b
   App  :: HasApp  l => Expr l a b -> Expr l a b -> Expr l a b
   Lam  :: HasLam  l => a -> Expr l a b -> Expr l a b
-  Case :: HasCase l => Expr l a b -> [Branch l a b] -> Expr l a b
+  Case :: HasCase l p => Expr l a b -> [Branch p l a b] -> Expr l a b
   Let  :: HasLet  l => a -> Expr l a b -> Expr l a b -> Expr l a b
 
 deriving instance (Eq a, Eq b) => Eq (Expr l a b)
@@ -165,13 +174,13 @@ instance (HasVar l, NoBind l) => Subst a (Expr l a b) where
 
 -- }}}
 
-data Branch l a b = Branch (Expr 'Pattern a Void) (Expr l a b)
+data Branch p l a b = Branch (Expr p a Void) (Expr l a b)
   deriving (Eq, Ord, Show)
 
-pat :: Lens' (Branch l a b) (Expr 'Pattern a Void)
+pat :: Lens' (Branch p l a b) (Expr p a Void)
 pat = lens (\(Branch p _) -> p) \(Branch _ a) p -> Branch p a
 
-arm :: Lens (Branch l a b) (Branch l a c) (Expr l a b) (Expr l a c)
+arm :: Lens (Branch p l a b) (Branch p l a c) (Expr l a b) (Expr l a c)
 arm = lens (\(Branch _ a) -> a) \(Branch p _) a -> Branch p a
 
 -- TODO: maybe move these definitions somewhere else
@@ -309,7 +318,7 @@ instance Pretty Poly where
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
-instance (Pretty a, Pretty b) => Pretty (Branch l a b) where
+instance (Pretty a, Pretty b) => Pretty (Branch p l a b) where
   pretty (Branch c e) = pretty c <+> "->" <+> pretty e
 
 instance (Pretty a, Pretty b) => Pretty (Expr l a b) where

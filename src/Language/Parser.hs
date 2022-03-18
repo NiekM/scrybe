@@ -137,7 +137,7 @@ instance Parse Hole where
 instance Parse Free where
   parser = MkFree <$> int
 
-instance (Parse a, Parse (Expr l a b)) => Parse (Branch l a b) where
+instance (Parse a, Parse (Expr l a b)) => Parse (Branch 'Pattern l a b) where
   parser = Branch <$> parser <* op "->" <*> parser
 
 class ParseAtom l where
