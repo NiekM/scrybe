@@ -64,38 +64,37 @@ match p e = case p of
 type Address = Int
 type Body = Expr 'Term Var Void
 
-data Node
-  = NApp Address Address
-  | NFun Var [Var] Body
-  | NCtr Ctr
-  deriving (Eq, Ord, Show)
+type Node = Expr' ('Base Address) 'Term Var Void
 
 type Stack = [Address]
 type Heap = Map Address Node
 type Global = Map Var Address
+type Funs = Map Var ([Var], Body)
 type Def = (Var, [Var], Body)
 
 data GraphState = GraphState
   { stack :: [Address]
-  , heap :: Map Address Node
-  , global :: Map Var Address
+  , heap :: Heap
+  , global :: Global
+  , funs :: Funs
   } deriving (Eq, Ord, Show)
 
 step_ :: GraphState -> Either GraphState GraphState
-step_ g@GraphState { stack, heap, global } = case stack of
+step_ g@GraphState { stack, heap, global, funs } = case stack of
   [] -> Left g
   (a:s) -> case Map.lookup a heap of
     Nothing -> Left g
     Just x -> case x of
-      NApp a1 a2 -> return $ GraphState (a1:a2:s) heap global
-      NFun _ xs e
-        | n <- length xs
+      App a1 a2 -> return $ GraphState (a1:a2:s) heap global funs
+      Var v
+        | Just (xs, e) <- Map.lookup v funs
+        , n <- length xs
         , (as, s') <- splitAt n s
         , length as == n ->
           let (h, b) = inst e heap (Map.fromList (zip xs as) <> global)
-          in return $ GraphState (b:s') h global
+          in return $ GraphState (b:s') h global funs
         | otherwise -> Left g
-      NCtr {} -> Left g
+      _ -> Left g
 
 alloc :: Heap -> Node -> (Heap, Address)
 alloc h n = (Map.insert i n h, i) where
@@ -109,28 +108,32 @@ inst e h g = case e of
   App e1 e2 ->
     let (h1, a1) = inst e1 h g
         (h2, a2) = inst e2 h1 g
-    in alloc h2 (NApp a1 a2)
+    in alloc h2 (App a1 a2)
   Var a -> (h, fromMaybe (error "Oh oh") $ Map.lookup a g)
-  Ctr c -> alloc h (NCtr c)
+  Ctr c -> alloc h (Ctr c)
   _ -> undefined
 
-initialHeap :: [Def] -> (Heap, Global)
-initialHeap = foldr (\x (h, g) -> allocate x h <> (h, g)) mempty
+initialHeap :: [Def] -> (Heap, Global, Funs)
+initialHeap = foldr (\(x, as, b) (h, g, f) ->
+  let (h', g') = allocate (x, as, b) h
+  in (h', g', Map.singleton x (as, b)) <> (h, g, f)) mempty
 
 compile :: [Def] -> GraphState
-compile program = GraphState { stack, heap, global } where
+compile program = GraphState { stack, heap, global, funs } where
   stack = [Map.findWithDefault (error "Oh no") "main" global]
-  (heap, global) = initialHeap program
+  (heap, global, funs) = initialHeap program
 
 fromAddress :: Heap -> Address -> Maybe (Term Void)
 fromAddress h i = Map.lookup i h >>= \case
-  NApp x y -> App <$> fromAddress h x <*> fromAddress h y
-  NFun f _ _ -> return $ Var f
-  NCtr c -> return $ Ctr c
+  App x y -> App <$> fromAddress h x <*> fromAddress h y
+  Var v -> return $ Var v
+  Ctr c -> return $ Ctr c
+  _ -> Nothing
 
 allocate :: Def -> Heap -> (Heap, Global)
-allocate (name, args, body) heap = (heap', Map.singleton name address) where
-  (heap', address) = alloc heap (NFun name args body)
+allocate (name, _, _) heap =
+  (heap', Map.singleton name address)
+    where (heap', address) = alloc heap (Var name)
 
 toExpr :: GraphState -> NonEmpty (Term Void)
 toExpr GraphState { stack, heap } =

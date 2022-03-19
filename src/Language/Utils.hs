@@ -49,14 +49,14 @@ etaExpand = fmap joinHoles . traverseOf holes \i -> do
 
 -- | All subexpressions, including the expression itself.
 dissect :: Expr l a b -> [Expr l a b]
-dissect e = e : case e of
-  Hole _ -> []
-  Var _ -> []
-  Ctr _ -> []
-  App f x -> dissect f ++ dissect x
-  Lam _ x -> dissect x
-  Let _ x y -> dissect x ++ dissect y
-  Case x xs -> x : concatMap (dissect . snd) xs
+dissect = para \e -> (e:) . \case
+  Hole _ -> mempty
+  Var _ -> mempty
+  Ctr _ -> mempty
+  App f x -> f <> x
+  Lam _ x -> x
+  Let _ x y -> x <> y
+  Case x xs -> x <> mconcat (snd <$> xs)
 
 -- -- | Normalize a type along with an expression with types in the holes, such
 -- -- that the holes are numbered in order of their appearance.

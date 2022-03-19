@@ -1,10 +1,11 @@
-{-# LANGUAGE RankNTypes, PolyKinds #-}
+{-# LANGUAGE RankNTypes, PolyKinds, UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 module Language.Syntax where
 
 import Import hiding (reverse)
+import qualified Data.Kind as Kind
 import Test.QuickCheck (Arbitrary(..), Gen, choose, sized, oneof, elements)
 import Data.Foldable
 import RIO.List (intersperse, repeat)
@@ -98,60 +99,98 @@ type NoBind l =
   , HasLet' l ~ 'False
   )
 
+data Func a = Fix | Base a
+  deriving (Eq, Ord, Show, Read)
+
+type family Rec (f :: Func Kind.Type) (l :: Level) a b where
+  Rec 'Fix l a b = Expr' 'Fix l a b
+  Rec ('Base c) _ _ _ = c
+
 -- }}}
 
 -- TODO: do we need a Core language and a surface language?
-data Expr (l :: Level) a b where
-  Hole :: b -> Expr l a b
-  Ctr  :: HasCtr l => Ctr -> Expr l a b
-  Var  :: HasVar l => a -> Expr l a b
-  App  :: HasApp l => Expr l a b -> Expr l a b -> Expr l a b
-  Lam  :: HasLam l => a -> Expr l a b -> Expr l a b
-  Let  :: HasLet l => a -> Expr l a b -> Expr l a b -> Expr l a b
-  Case :: HasCase l p => Expr l a b ->
-    [(Expr p a Void, Expr l a b)] -> Expr l a b
+data Expr' (r :: Func Kind.Type) (l :: Level) a b where
+  Hole :: b -> Expr' r l a b
+  Ctr :: HasCtr l => Ctr -> Expr' r l a b
+  Var :: HasVar l => a -> Expr' r l a b
+  App :: HasApp l => Rec r l a b -> Rec r l a b -> Expr' r l a b
+  Lam :: HasLam l => a -> Rec r l a b -> Expr' r l a b
+  Let :: HasLet l => a -> Rec r l a b -> Rec r l a b -> Expr' r l a b
+  Case :: HasCase l p => Rec r l a b ->
+    [(Expr p a Void, Rec r l a b)] -> Expr' r l a b
 
-deriving instance (Eq a, Eq b) => Eq (Expr l a b)
-deriving instance (Ord a, Ord b) => Ord (Expr l a b)
-deriving instance (Show a, Show b) => Show (Expr l a b)
+type Expr = Expr' 'Fix
+type Base a = Expr' ('Base a)
+
+deriving instance (Eq a, Eq b, Eq (Rec r l a b)) => Eq (Expr' r l a b)
+deriving instance (Ord a, Ord b, Ord (Rec r l a b)) => Ord (Expr' r l a b)
+deriving instance (Show a, Show b, Show (Rec r l a b)) => Show (Expr' r l a b)
 
 pattern Arr :: () => HasArr l => Expr l a b -> Expr l a b -> Expr l a b
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
-
--- Lenses {{{
-
-holes' :: Traversal (Expr l a b) (Expr l a c) b (Expr l a c)
-holes' g = go where
-  go = \case
-    Hole h -> g h
-    Ctr c -> pure $ Ctr c
-    Var v -> pure $ Var v
-    App f x -> App <$> go f <*> go x
-    Lam a x -> Lam a <$> go x
-    Let a x y -> Let a <$> go x <*> go y
-    Case x xs -> Case <$> go x <*> traverse (traverse go) xs
-
-holes :: Traversal (Expr l a b) (Expr l a c) b c
-holes = holes' . fmap (fmap Hole)
-
--- TODO: allow l to be changed in traversal
-free' :: NoBind l => Traversal (Expr l a c) (Expr l b c) a (Expr l b c)
-free' g = go where
-  go = \case
-    Hole h -> pure $ Hole h
-    Ctr c -> pure $ Ctr c
-    Var v -> g v
-    App f x -> App <$> go f <*> go x
-
-free :: (HasVar l, NoBind l) => Traversal (Expr l a c) (Expr l b c) a b
-free = free' . fmap (fmap Var)
-
--- }}}
 
 type Type = Expr 'Type Var
 type Term = Expr 'Term Var
 type Pattern = Expr 'Pattern Var
 type Value = Expr 'Value Var Void
+
+-- Morphisms {{{
+
+traverseExpr :: Applicative f => (Rec r l a b -> f (Rec r' l a b)) ->
+  Expr' r l a b -> f (Expr' r' l a b)
+traverseExpr go = \case
+  Hole h -> pure $ Hole h
+  Ctr c -> pure $ Ctr c
+  Var v -> pure $ Var v
+  App f x -> App <$> go f <*> go x
+  Lam a x -> Lam a <$> go x
+  Let a x y -> Let a <$> go x <*> go y
+  Case x xs -> Case <$> go x <*> traverse (traverse go) xs
+
+mapExpr :: (Rec f l a b -> Rec f' l a b) -> Expr' f l a b -> Expr' f' l a b
+mapExpr go = runIdentity . traverseExpr (Identity . go)
+
+para :: (Expr l a b -> Base c l a b -> c) -> Expr l a b -> c
+para g e = g e (mapExpr (para g) e)
+
+cata :: (Base c l a b -> c) -> Expr l a b -> c
+cata = para . const
+
+apo :: (c -> Either (Expr l a b) (Base c l a b)) -> c -> Expr l a b
+apo g e = either id (mapExpr (apo g)) (g e)
+
+ana :: (c -> Base c l a b) -> c -> Expr l a b
+ana = apo . (return .)
+
+-- }}}
+
+-- Lenses {{{
+
+-- TODO: allow l to be changed in traversal
+holes' :: Traversal (Expr l a b) (Expr l a c) b (Expr l a c)
+holes' g = cata \case
+  Hole h -> g h
+  Ctr c -> pure $ Ctr c
+  Var v -> pure $ Var v
+  App f x -> App <$> f <*> x
+  Lam a x -> Lam a <$> x
+  Let a x y -> Let a <$> x <*> y
+  Case x xs -> Case <$> x <*> traverse sequenceA xs
+
+holes :: Traversal (Expr l a b) (Expr l a c) b c
+holes = holes' . fmap (fmap Hole)
+
+free' :: NoBind l => Traversal (Expr l a c) (Expr l b c) a (Expr l b c)
+free' g = cata \case
+  Hole h -> pure $ Hole h
+  Ctr c -> pure $ Ctr c
+  Var v -> g v
+  App f x -> App <$> f <*> x
+
+free :: (HasVar l, NoBind l) => Traversal (Expr l a c) (Expr l b c) a b
+free = free' . fmap (fmap Var)
+
+-- }}}
 
 -- Substitution {{{
 
