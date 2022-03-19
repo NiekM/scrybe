@@ -1,12 +1,10 @@
 {-# LANGUAGE RankNTypes, PolyKinds, UndecidableInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 module Language.Syntax where
 
 import Import hiding (reverse)
 import qualified Data.Kind as Kind
-import Test.QuickCheck (Arbitrary(..), Gen, choose, sized, oneof, elements)
 import Data.Foldable
 import RIO.List (intersperse, repeat)
 import RIO.NonEmpty (cons, reverse)
@@ -194,23 +192,25 @@ free = free' . fmap (fmap Var)
 
 -- Substitution {{{
 
-class Subst a b where
-  subst :: Ord a => Map a b -> b -> b
+fixExpr :: Base (Expr l a b) l a b -> Expr l a b
+fixExpr = \case
+  Hole h -> Hole h
+  Ctr c -> Ctr c
+  Var v -> Var v
+  App f x -> App f x
+  Lam a x -> Lam a x
+  Let a x y -> Let a x y
+  Case x xs -> Case x xs
 
-joinHoles :: Expr l a (Expr l a b) -> Expr l a b
-joinHoles = over holes' id
+subst :: (Ord a, expr ~ Expr l a b) => Map a expr -> expr -> expr
+subst th = cata \case
+  Var v | Just x <- Map.lookup v th -> x
+  e -> fixExpr e
 
--- TODO: make these more generic without overlapping
-instance Subst Hole (Expr l Var Hole) where
-  subst th = joinHoles. over (holes' . fmap (fmap Hole))
-    \x -> Map.findWithDefault (Hole x) x th
-
-joinFree :: NoBind l => Expr l (Expr l a b) b -> Expr l a b
-joinFree = over free' id
-
-instance (HasVar l, NoBind l) => Subst a (Expr l a b) where
-  subst th = joinFree . over (free' . fmap (fmap Var))
-    \x -> Map.findWithDefault (Var x) x th
+fill :: (Ord b, expr ~ Expr l a b) => Map b expr -> expr -> expr
+fill th = cata \case
+  Hole h | Just x <- Map.lookup h th -> x
+  e -> fixExpr e
 
 -- }}}
 

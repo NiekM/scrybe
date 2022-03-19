@@ -29,7 +29,7 @@ instantiateFresh (Poly xs t) = do
 -- | Eta expand all holes in a sketch.
 etaExpand :: (FreshVarId m, WithHoleCtxs s m, WithVariables s m) =>
   Term Hole -> m (Term Hole)
-etaExpand = fmap joinHoles . traverseOf holes \i -> do
+etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
   ctxs <- use holeCtxs
   case Map.lookup i ctxs of
     Nothing -> return $ Hole i

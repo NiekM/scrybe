@@ -18,7 +18,7 @@ step :: Term Hole -> GenT [] (Term Hole)
 step expr = do
   i <- selectFirst
   hf <- pick i
-  return $ subst (Map.singleton i hf) expr
+  return $ fill (Map.singleton i hf) expr
 
 type SynMonad s m =
   ( WithEnvironment s m, WithConcepts s m

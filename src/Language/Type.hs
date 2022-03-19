@@ -29,8 +29,7 @@ occurs a tau = a `notElem` toListOf free tau
 -- NOTE: it seems that the left hand side of the composition should be the
 -- newer composition, in effect updating the old substitution according to the
 -- new ones
-compose :: (Ord a, HasVar l, NoBind l, expr ~ Expr l a b) =>
-  Map a expr -> Map a expr -> Map a expr
+compose :: (Ord a, expr ~ Expr l a b) => Map a expr -> Map a expr -> Map a expr
 compose sigma gamma = Map.unions
   [ subst sigma <$> gamma
   , Map.withoutKeys sigma (Map.keysSet gamma)
