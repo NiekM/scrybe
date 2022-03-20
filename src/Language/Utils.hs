@@ -5,7 +5,7 @@ import Language.Syntax
 import qualified RIO.Map as Map
 
 -- | Split a type into its arguments and the result type.
-splitArgs :: expr ~ Expr l a b => expr -> ([expr], expr)
+splitArgs :: expr ~ Expr l b => expr -> ([expr], expr)
 splitArgs = unsnoc . unArrs
 
 -- | Uniquely number all holes in an expression.
@@ -13,7 +13,7 @@ number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
 
 -- | Extract extra information in an expression into a map.
-extract :: Ord b => Expr l a (b, c) -> (Expr l a b, Map b c)
+extract :: Ord b => Expr l (b, c) -> (Expr l b, Map b c)
 extract = over holes fst &&& Map.fromList . toListOf holes
 
 instantiate :: Map Var (Type Void) -> Poly -> Poly
@@ -48,7 +48,7 @@ etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
       return $ lams (varId . fst <$> xs) (Hole i)
 
 -- | All subexpressions, including the expression itself.
-dissect :: Expr l a b -> [Expr l a b]
+dissect :: Expr l b -> [Expr l b]
 dissect = para \e -> (e:) . \case
   Hole _ -> mempty
   Var _ -> mempty

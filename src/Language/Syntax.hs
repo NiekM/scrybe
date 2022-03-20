@@ -101,41 +101,44 @@ type NoBind l =
 data Func a = Fix | Base a
   deriving (Eq, Ord, Show, Read)
 
-type family Rec (f :: Func Kind.Type) (l :: Level) a b where
-  Rec 'Fix l a b = Expr' 'Fix l a b
-  Rec ('Base c) _ _ _ = c
+type family Rec (f :: Func Kind.Type) (l :: Level) b where
+  Rec 'Fix l b = Expr' 'Fix l b
+  Rec ('Base c) _ _ = c
+
+type family VAR (l :: Level) where
+  VAR _ = Var
 
 -- }}}
 
 -- TODO: do we need a Core language and a surface language?
-data Expr' (r :: Func Kind.Type) (l :: Level) a b where
-  Hole :: b -> Expr' r l a b
-  Ctr :: HasCtr l => Ctr -> Expr' r l a b
-  Var :: HasVar l => a -> Expr' r l a b
-  App :: HasApp l => Rec r l a b -> Rec r l a b -> Expr' r l a b
-  Lam :: HasLam l => a -> Rec r l a b -> Expr' r l a b
-  Let :: HasLet l => a -> Rec r l a b -> Rec r l a b -> Expr' r l a b
-  Case :: HasCase l => Rec r l a b -> [(Ctr, Rec r l a b)] -> Expr' r l a b
+data Expr' (r :: Func Kind.Type) (l :: Level) b where
+  Hole :: b -> Expr' r l b
+  Ctr :: HasCtr l => Ctr -> Expr' r l b
+  Var :: HasVar l => VAR l -> Expr' r l b
+  App :: HasApp l => Rec r l b -> Rec r l b -> Expr' r l b
+  Lam :: HasLam l => VAR l -> Rec r l b -> Expr' r l b
+  Let :: HasLet l => VAR l -> Rec r l b -> Rec r l b -> Expr' r l b
+  Case :: HasCase l => Rec r l b -> [(Ctr, Rec r l b)] -> Expr' r l b
 
 type Expr = Expr' 'Fix
 type Base a = Expr' ('Base a)
 
-deriving instance (Eq a, Eq b, Eq (Rec r l a b)) => Eq (Expr' r l a b)
-deriving instance (Ord a, Ord b, Ord (Rec r l a b)) => Ord (Expr' r l a b)
-deriving instance (Show a, Show b, Show (Rec r l a b)) => Show (Expr' r l a b)
+deriving instance (Eq b, Eq (Rec r l b)) => Eq (Expr' r l b)
+deriving instance (Ord b, Ord (Rec r l b)) => Ord (Expr' r l b)
+deriving instance (Show b, Show (Rec r l b)) => Show (Expr' r l b)
 
-pattern Arr :: () => HasArr l => Expr l a b -> Expr l a b -> Expr l a b
+pattern Arr :: () => HasArr l => Expr l b -> Expr l b -> Expr l b
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
-type Type = Expr 'Type Var
-type Term = Expr 'Term Var
-type Pattern = Expr 'Pattern Var
-type Value = Expr 'Value Var Void
+type Type = Expr 'Type
+type Term = Expr 'Term
+type Pattern = Expr 'Pattern
+type Value = Expr 'Value Void
 
 -- Morphisms {{{
 
-traverseExpr :: Applicative f => (Rec r l a b -> f (Rec r' l a b)) ->
-  Expr' r l a b -> f (Expr' r' l a b)
+traverseExpr :: Applicative f => (Rec r l b -> f (Rec r' l b)) ->
+  Expr' r l b -> f (Expr' r' l b)
 traverseExpr go = \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
@@ -145,19 +148,19 @@ traverseExpr go = \case
   Let a x y -> Let a <$> go x <*> go y
   Case x xs -> Case <$> go x <*> traverse (traverse go) xs
 
-mapExpr :: (Rec r l a b -> Rec r' l a b) -> Expr' r l a b -> Expr' r' l a b
+mapExpr :: (Rec r l b -> Rec r' l b) -> Expr' r l b -> Expr' r' l b
 mapExpr go = runIdentity . traverseExpr (Identity . go)
 
-para :: (Expr l a b -> Base c l a b -> c) -> Expr l a b -> c
+para :: (Expr l b -> Base c l b -> c) -> Expr l b -> c
 para g e = g e (mapExpr (para g) e)
 
-cata :: (Base c l a b -> c) -> Expr l a b -> c
+cata :: (Base c l b -> c) -> Expr l b -> c
 cata = para . const
 
-apo :: (c -> Either (Expr l a b) (Base c l a b)) -> c -> Expr l a b
+apo :: (c -> Either (Expr l b) (Base c l b)) -> c -> Expr l b
 apo g e = either id (mapExpr (apo g)) (g e)
 
-ana :: (c -> Base c l a b) -> c -> Expr l a b
+ana :: (c -> Base c l b) -> c -> Expr l b
 ana = apo . (return .)
 
 coerceExpr ::
@@ -167,7 +170,7 @@ coerceExpr ::
   , d ~ HasLam l, d' ~ HasLam l', d => d'
   , e ~ HasLet l, e' ~ HasLet l', e => e'
   , f ~ HasCase l, f' ~ HasCase l', f => f'
-  ) => Expr l x y -> Expr l' x y
+  ) => Expr l y -> Expr l' y
 coerceExpr = cata \case
   Hole h -> Hole h
   Ctr c -> Ctr c
@@ -182,7 +185,7 @@ coerceExpr = cata \case
 -- Lenses {{{
 
 -- TODO: allow l to be changed in traversal
-holes' :: Traversal (Expr l a b) (Expr l a c) b (Expr l a c)
+holes' :: Traversal (Expr l b) (Expr l c) b (Expr l c)
 holes' g = cata \case
   Hole h -> g h
   Ctr c -> pure $ Ctr c
@@ -192,24 +195,25 @@ holes' g = cata \case
   Let a x y -> Let a <$> x <*> y
   Case x xs -> Case <$> x <*> traverse sequenceA xs
 
-holes :: Traversal (Expr l a b) (Expr l a c) b c
+holes :: Traversal (Expr l b) (Expr l c) b c
 holes = holes' . fmap (fmap Hole)
 
-free' :: NoBind l => Traversal (Expr l a c) (Expr l b c) a (Expr l b c)
+free' :: NoBind l => Traversal (Expr l c) (Expr l c) (VAR l) (Expr l c)
 free' g = cata \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
   Var v -> g v
   App f x -> App <$> f <*> x
 
-free :: (HasVar l, NoBind l) => Traversal (Expr l a c) (Expr l b c) a b
+-- TODO: VAR l -> VAR l'
+free :: (HasVar l, NoBind l) => Traversal (Expr l c) (Expr l c) (VAR l) (VAR l)
 free = free' . fmap (fmap Var)
 
 -- }}}
 
 -- Substitution {{{
 
-fixExpr :: Base (Expr l a b) l a b -> Expr l a b
+fixExpr :: Base (Expr l b) l b -> Expr l b
 fixExpr = \case
   Hole h -> Hole h
   Ctr c -> Ctr c
@@ -219,12 +223,12 @@ fixExpr = \case
   Let a x y -> Let a x y
   Case x xs -> Case x xs
 
-subst :: (Ord a, expr ~ Expr l a b) => Map a expr -> expr -> expr
+subst :: (Ord (VAR l), expr ~ Expr l b) => Map (VAR l) expr -> expr -> expr
 subst th = cata \case
   Var v | Just x <- Map.lookup v th -> x
   e -> fixExpr e
 
-fill :: (Ord b, expr ~ Expr l a b) => Map b expr -> expr -> expr
+fill :: (Ord b, expr ~ Expr l b) => Map b expr -> expr -> expr
 fill th = cata \case
   Hole h | Just x <- Map.lookup h th -> x
   e -> fixExpr e
@@ -311,42 +315,42 @@ type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
 type WithVariables s m = (MonadState s m, HasVariables s)
 
 -- TODO: replace with more general infix function
-arrs :: (Foldable f, HasArr l) => f (Expr l a b) -> Expr l a b
+arrs :: (Foldable f, HasArr l) => f (Expr l b) -> Expr l b
 arrs = foldr1 Arr
 
-unArrs :: Expr l a b -> NonEmpty (Expr l a b)
+unArrs :: Expr l b -> NonEmpty (Expr l b)
 unArrs = \case
   Arr t u -> t `cons` unArrs u
   t -> pure t
 
-apps :: (Foldable f, HasApp l) => f (Expr l a b) -> Expr l a b
+apps :: (Foldable f, HasApp l) => f (Expr l b) -> Expr l b
 apps = foldl1 App
 
-unApps :: Expr l a b -> NonEmpty (Expr l a b)
+unApps :: Expr l b -> NonEmpty (Expr l b)
 unApps = reverse . go where
   go = \case
     App f x -> x `cons` go f
     e -> pure e
 
-lams :: (Foldable f, HasLam l) => f a -> Expr l a b -> Expr l a b
+lams :: (Foldable f, HasLam l) => f (VAR l) -> Expr l b -> Expr l b
 lams = flip (foldr Lam)
 
-unLams :: Expr l a b -> ([a], Expr l a b)
+unLams :: Expr l b -> ([VAR l], Expr l b)
 unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
 
 -- Pretty printing {{{
 
-isArr :: Expr l a b -> Bool
+isArr :: Expr l b -> Bool
 isArr Arr {} = True
 isArr _ = False
 
-isLam :: Expr l a b -> Bool
+isLam :: Expr l b -> Bool
 isLam Lam {} = True
 isLam _ = False
 
-isApp :: Expr l a b -> Bool
+isApp :: Expr l b -> Bool
 isApp App {} = True
 isApp _ = False
 
@@ -366,7 +370,7 @@ instance Pretty Poly where
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
-instance (Pretty a, Pretty b) => Pretty (Expr l a b) where
+instance Pretty b => Pretty (Expr l b) where
   pretty = \case
     Hole i -> braces $ pretty i
     Var x -> pretty x

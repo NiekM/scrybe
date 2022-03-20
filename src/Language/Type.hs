@@ -6,14 +6,14 @@ import Language.Syntax
 import Language.Utils
 import qualified RIO.Map as Map
 
-type Unify l a = Map Var (Expr l Var a)
+type Unify l a = Map Var (Expr l a)
 
 -- TODO: Add unit tests to test type unification, inference and checking
 
 -- | Unify two expressions, by checking if their holes can be filled such that
 -- they are equivalent.
-unify :: (Ord a, Eq b, MonadFail m, HasVar l, NoBind l, expr ~ Expr l a b) =>
-  expr -> expr -> m (Map a expr)
+unify :: (Eq b, MonadFail m, HasVar l, NoBind l, expr ~ Expr l b) =>
+  expr -> expr -> m (Map (VAR l) expr)
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
@@ -23,20 +23,20 @@ unify t u = case (t, u) of
   (_, Var a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
 
-occurs :: (Eq a, HasVar l, NoBind l) => a -> Expr l a b -> Bool
+occurs :: (Eq (VAR l), HasVar l, NoBind l) => VAR l -> Expr l b -> Bool
 occurs a tau = a `notElem` toListOf free tau
 
 -- NOTE: it seems that the left hand side of the composition should be the
 -- newer composition, in effect updating the old substitution according to the
 -- new ones
-compose :: (Ord a, th ~ Map a (Expr l a b)) => th -> th -> th
+compose :: (Ord (VAR l), th ~ Map (VAR l) (Expr l b)) => th -> th -> th
 compose sigma gamma = Map.unions
   [ subst sigma <$> gamma
   , Map.withoutKeys sigma (Map.keysSet gamma)
   ]
 
-unifies :: (Ord a, Eq b, MonadFail m, Foldable t, HasVar l, NoBind l) =>
-  expr ~ Expr l a b => t (expr, expr) -> m (Map a expr)
+unifies :: (Ord (VAR l), Eq b, MonadFail m, Foldable t, HasVar l, NoBind l) =>
+  expr ~ Expr l b => t (expr, expr) -> m (Map (VAR l) expr)
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)

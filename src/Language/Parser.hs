@@ -137,19 +137,19 @@ instance Parse Free where
   parser = MkFree <$> int
 
 class ParseAtom l where
-  parseAtom :: (Parse a, Parse b) => Parser (Expr l a b)
+  parseAtom :: Parse b => Parser (Expr l b)
 
-nat :: (HasCtr l, HasApp l) => Int -> Expr l a b
+nat :: (HasCtr l, HasApp l) => Int -> Expr l b
 nat 0 = Ctr "Zero"
 nat n = App (Ctr "Succ") (nat $ n - 1)
 
-parseNat :: (HasCtr l, HasApp l) => Parser (Expr l a b)
+parseNat :: (HasCtr l, HasApp l) => Parser (Expr l b)
 parseNat = nat <$> int
 
-list :: (Foldable f, HasCtr l, HasApp l) => f (Expr l a b) -> Expr l a b
+list :: (Foldable f, HasCtr l, HasApp l) => f (Expr l b) -> Expr l b
 list = foldr (\x r -> apps [Ctr "Cons", x, r]) (Ctr "Nil")
 
-parseList :: (HasCtr l, HasApp l) => Parser (Expr l a b) -> Parser (Expr l a b)
+parseList :: (HasCtr l, HasApp l) => Parser (Expr l b) -> Parser (Expr l b)
 parseList p = list <$> brackets Square (alt p (sep ","))
 
 instance ParseAtom 'Pattern where
@@ -161,7 +161,7 @@ instance ParseAtom 'Pattern where
     , parseList parser
     ]
 
-parseBranch :: (Parse a, Parse b) => Parser (Ctr, Expr 'Term a b)
+parseBranch :: Parse b => Parser (Ctr, Expr 'Term b)
 parseBranch = (,) <$> parser <*> (lams <$> many parser <* op "->" <*> parser)
 
 instance ParseAtom 'Term where
@@ -183,16 +183,16 @@ instance ParseAtom 'Type where
     , Ctr <$> parser
     ]
 
-parseApps :: (Parse a, Parse b, HasApp l, ParseAtom l) => Parser (Expr l a b)
+parseApps :: (Parse b, HasApp l, ParseAtom l) => Parser (Expr l b)
 parseApps = apps <$> some (brackets Round parseApps <|> parseAtom)
 
-instance (Parse a, Parse b) => Parse (Expr 'Pattern a b) where
+instance Parse b => Parse (Expr 'Pattern b) where
   parser = parseApps
 
-instance (Parse a, Parse b) => Parse (Expr 'Term a b) where
+instance Parse b => Parse (Expr 'Term b) where
   parser = parseApps
 
-instance (Parse a, Parse b) => Parse (Expr 'Type a b) where
+instance Parse b => Parse (Expr 'Type b) where
   parser = arrs <$> alt1 (brackets Round parser <|> parseApps) (op "->")
 
 instance Parse Poly where

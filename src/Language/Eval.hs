@@ -63,9 +63,9 @@ match p e = case p of
   _ -> fail "Pattern match failed"
 
 type Address = Int
-type Body = Expr 'Term Var Void
+type Body = Expr 'Term Void
 
-type Node = Expr' ('Base Address) 'Term Var Void
+type Node = Expr' ('Base Address) 'Term Void
 
 type Stack = [Address]
 type Heap = Map Address Node
