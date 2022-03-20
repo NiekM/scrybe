@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes, PolyKinds, UndecidableInstances #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 module Language.Syntax where
@@ -144,7 +145,7 @@ traverseExpr go = \case
   Let a x y -> Let a <$> go x <*> go y
   Case x xs -> Case <$> go x <*> traverse (traverse go) xs
 
-mapExpr :: (Rec f l a b -> Rec f' l a b) -> Expr' f l a b -> Expr' f' l a b
+mapExpr :: (Rec r l a b -> Rec r' l a b) -> Expr' r l a b -> Expr' r' l a b
 mapExpr go = runIdentity . traverseExpr (Identity . go)
 
 para :: (Expr l a b -> Base c l a b -> c) -> Expr l a b -> c
@@ -158,6 +159,23 @@ apo g e = either id (mapExpr (apo g)) (g e)
 
 ana :: (c -> Base c l a b) -> c -> Expr l a b
 ana = apo . (return .)
+
+coerceExpr ::
+  ( a ~ HasCtr l, a' ~ HasCtr l', a => a'
+  , b ~ HasVar l, b' ~ HasVar l', b => b'
+  , c ~ HasApp l, c' ~ HasApp l', c => c'
+  , d ~ HasLam l, d' ~ HasLam l', d => d'
+  , e ~ HasLet l, e' ~ HasLet l', e => e'
+  , f ~ HasCase l, f' ~ HasCase l', f => f'
+  ) => Expr l x y -> Expr l' x y
+coerceExpr = cata \case
+  Hole h -> Hole h
+  Ctr c -> Ctr c
+  Var v -> Var v
+  App f x -> App f x
+  Lam a x -> Lam a x
+  Let a x y -> Let a x y
+  Case x xs -> Case x xs
 
 -- }}}
 
