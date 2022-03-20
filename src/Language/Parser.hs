@@ -161,11 +161,13 @@ instance ParseAtom 'Pattern where
     , parseList parser
     ]
 
+parseBranch :: (Parse a, Parse b) => Parser (Ctr, Expr 'Term a b)
+parseBranch = (,) <$> parser <*> (lams <$> many parser <* op "->" <*> parser)
+
 instance ParseAtom 'Term where
   parseAtom = choice
     [ lams <$ op "\\" <*> some parser <* op "->" <*> parser
-    , Case <$ key "case" <*> parser <* key "of" <*>
-      alt ((,) <$> parser <* op "->" <*> parser) (sep ";")
+    , Case <$ key "case" <*> parser <* key "of" <*> alt parseBranch (sep ";")
     , Let <$ key "let" <*> parser <* op "=" <*> parser <* key "in" <*> parser
     , Hole <$> brackets Curly parser
     , Var <$> parser
@@ -218,7 +220,7 @@ instance Parse Definition where
       x <- parser
       choice
         [ Signature x <$ op "::" <*> parser
-        , Binding   x <$ op "="  <*> parser
+        , Binding x <$> (lams <$> many parser <* op "=" <*> parser)
         ]
     ]
 

@@ -43,14 +43,15 @@ eval = \case
     y <- eval x
     modifying env $ Map.insert a y
     eval e
-  Case x xs -> do
-    y <- eval x
-    let ys = traverseOf _1 (`match` y) <$> xs
-    case msum ys of
-      Nothing -> return $ Case y xs
-      Just (m, e) -> do
-        modifying env (m <>)
-        eval e
+  Case {} -> undefined
+  -- Case x xs -> do
+  --   y <- eval x
+  --   let ys = traverseOf _1 (`match` y) <$> xs
+  --   case msum ys of
+  --     Nothing -> return $ Case y xs
+  --     Just (m, e) -> do
+  --       modifying env (m <>)
+  --       eval e
 
 match :: Pattern Void -> Term a -> Maybe (Map Var (Term a))
 match p e = case p of

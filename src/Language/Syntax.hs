@@ -74,10 +74,10 @@ type family HasLam' (l :: Level) where
 type HasLam l = HasLam' l ~ 'True
 
 type family HasCase' (l :: Level) where
-  HasCase' 'Term = ('Just 'Pattern)
-  HasCase' _     = 'Nothing
+  HasCase' 'Term = 'True
+  HasCase' _     = 'False
 
-type HasCase l p = HasCase' l ~ 'Just p
+type HasCase l = HasCase' l ~ 'True
 
 type family HasLet' (l :: Level) where
   HasLet' 'Term = 'True
@@ -93,7 +93,7 @@ type family IsJust (t :: Maybe a) where
 
 type NoBind l =
   ( HasLam' l ~ 'False
-  , IsJust (HasCase' l) ~ 'False
+  , HasCase' l ~ 'False
   , HasLet' l ~ 'False
   )
 
@@ -114,8 +114,7 @@ data Expr' (r :: Func Kind.Type) (l :: Level) a b where
   App :: HasApp l => Rec r l a b -> Rec r l a b -> Expr' r l a b
   Lam :: HasLam l => a -> Rec r l a b -> Expr' r l a b
   Let :: HasLet l => a -> Rec r l a b -> Rec r l a b -> Expr' r l a b
-  Case :: HasCase l p => Rec r l a b ->
-    [(Expr p a Void, Rec r l a b)] -> Expr' r l a b
+  Case :: HasCase l => Rec r l a b -> [(Ctr, Rec r l a b)] -> Expr' r l a b
 
 type Expr = Expr' 'Fix
 type Base a = Expr' ('Base a)
@@ -364,8 +363,9 @@ instance (Pretty a, Pretty b) => Pretty (Expr l a b) where
       in "\\" <> sep (pretty <$> as) <+> "->" <+> pretty x
     Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e
     Case x xs -> "case" <+> pretty x <+> "of" <+>
-      mconcat (intersperse "; " $ xs <&>
-        \(p, a) -> pretty p <+> "->" <+> pretty a)
+      mconcat (intersperse "; " $ xs <&> \(p, a) ->
+        let (as, b) = unLams a
+        in sep (pretty p : fmap pretty as) <+> "->" <+> pretty b)
 
 instance Pretty Datatype where
   pretty (MkDatatype d as cs) =
@@ -377,7 +377,9 @@ instance Pretty Datatype where
 instance Pretty Definition where
   pretty = \case
     Signature x t -> pretty x <+> "::" <+> pretty t
-    Binding x e -> pretty x <+> "=" <+> pretty e
+    Binding x e ->
+      let (as, b) = unLams e
+      in sep (pretty x : fmap pretty as) <+> "=" <+> pretty b
     Datatype d -> pretty d
 
 instance Pretty Module where
