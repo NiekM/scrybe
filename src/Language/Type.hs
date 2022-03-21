@@ -50,19 +50,19 @@ infer expr = do
   m <- ask
   let cs = ctrs m
   let fs = functions m
-  let go local = \case
+  let go loc = \case
         Hole h -> do
-          goal <- Var . freeId <$> fresh
+          g <- Var . freeId <$> fresh
           -- Note variable availability
           modifying variables $ Map.mapWithKey \x -> \case
-            Variable name t i n | x `elem` local -> Variable name t (i + 1) n
+            Variable name t i n | x `elem` loc -> Variable name t (i + 1) n
             v -> v
-          return (goal, Map.empty, Map.singleton h HoleCtx { goal, local })
+          return (g, Map.empty, Map.singleton h (HoleCtx g loc))
         Ctr c -> do
           t <- failMaybe $ Map.lookup c cs
           u <- instantiateFresh t
           return (u, Map.empty, Map.empty)
-        Var a | Just x <- Map.lookup a local -> use variables >>= \vs ->
+        Var a | Just x <- Map.lookup a loc -> use variables >>= \vs ->
           case Map.lookup x vs of
             Nothing -> fail $ "Missing variable id " <> show x
             Just (Variable name t i n) -> do
@@ -74,18 +74,18 @@ infer expr = do
           u <- instantiateFresh t
           return (u, Map.empty, Map.empty)
         App f x -> do
-          (a, th1, ctx1) <- go local f
-          (b, th2, ctx2) <- go local x
+          (a, th1, ctx1) <- go loc f
+          (b, th2, ctx2) <- go loc x
           t <- Var . freeId <$> fresh
           th3 <- unify (subst th2 a) (Arr b t)
           let th4 = th3 `compose` th2 `compose` th1
-          let ctx3 = substCtx th4 <$> ctx1 <> ctx2
-          modifying variables $ fmap (substVar th4)
+          let ctx3 = over goal (subst th4) <$> ctx1 <> ctx2
+          modifying variables .fmap $ over varType (subst th4)
           return (subst th4 t, th4, ctx3)
         Lam x e -> do
           t <- Var . freeId <$> fresh
           i <- fresh
-          (u, th, local') <- go (Map.insert x i local) e
+          (u, th, local') <- go (Map.insert x i loc) e
           let t' = subst th t
           modifying variables $ Map.insert i (Variable x t' 1 0)
           return (Arr t' u, th, local')
@@ -102,6 +102,6 @@ check (Sketch e t) = do
   (u, th1, ctx1) <- infer e'
   th2 <- unify t u
   let th3 = compose th2 th1
-  let ctx2 = substCtx th3 <$> ctx1
-  modifying variables . fmap $ substVar th3
+  let ctx2 = over goal (subst th3) <$> ctx1
+  modifying variables . fmap $ over varType (subst th3)
   return (e', subst th3 u, th3, ctx2)

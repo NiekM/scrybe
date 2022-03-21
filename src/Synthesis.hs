@@ -52,11 +52,11 @@ pick h = do
 -- | Try and fill a hole using a hole filling.
 fillHole :: SynMonad s m => Hole -> HoleFilling -> m (Term Hole)
 fillHole h (e, t) = do
-  HoleCtx { goal, local } <- getCtx h
+  ctx <- getCtx h
   -- Check if the hole filling fits.
-  th <- unify t goal
+  th <- unify t (view goal ctx)
   -- Introduce holes in the sketch.
-  x <- forOf holes e \u -> introduceHole HoleCtx { goal = u, local }
+  x <- forOf holes e \u -> introduceHole (set goal u ctx)
   -- Apply type substitutions to all relevant types.
   applySubst th
   -- Close the current hole.
@@ -83,17 +83,17 @@ introduceHole :: (FreshHole m, WithHoleCtxs s m, WithVariables s m) =>
 introduceHole ctx = do
   h <- fresh
   modifying holeCtxs $ Map.insert h ctx
-  forM_ (local ctx) $ modifying variables . Map.adjust
+  forM_ (view local ctx) $ modifying variables . Map.adjust
     \(Variable x t n m) -> Variable x t (n + 1) m
   return h
 
 -- | Handles everything regarding the closing of holes.
 closeHole :: SynMonad s m => Hole -> m ()
 closeHole h = do
-  HoleCtx { local } <- getCtx h
+  ctx <- getCtx h
   modifying holeCtxs $ Map.delete h
   xs <- use variables
-  forM_ local \i -> case Map.lookup i xs of
+  forM_ (view local ctx) \i -> case Map.lookup i xs of
     Nothing -> fail $ "Missing variable id " <> show i
     Just (Variable x t n m)
       | n <= 1, m == 0 -> fail $ "Unused variable " <> show x
@@ -104,8 +104,8 @@ closeHole h = do
 applySubst :: (WithHoleCtxs s m, WithVariables s m) =>
   Map Var (Type Void) -> m ()
 applySubst th = do
-  modifying holeCtxs $ fmap \ctx -> ctx { goal = subst th $ goal ctx }
-  modifying variables $ fmap \(Variable x t i n) -> Variable x (subst th t) i n
+  modifying holeCtxs . fmap $ over goal (subst th)
+  modifying variables . fmap $ over varType (subst th)
 
 -- TODO: rather than strictly disallowing some holefillings, we should use
 -- weights to discourage them.
@@ -123,8 +123,8 @@ locals :: (MonadFail m, MonadPlus m,
   WithVariables s m, WithTechnique s m, WithHoleCtxs s m) =>
   Hole -> m (HoleFilling, Set Concept)
 locals h = do
-  HoleCtx { local } <- getCtx h
-  i <- mfold local
+  ctx <- getCtx h
+  i <- mfold (view local ctx)
   xs <- use variables
   Variable x t n m <- mfold $ Map.lookup i xs
   -- Note variable occurrence

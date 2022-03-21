@@ -18,6 +18,8 @@ rec = fix
 
 data Bool = False | True
 
+-- TODO: false, true, elimBool and similar functions could be inlined to help
+-- visualization for students
 false :: Bool
 false = False
 

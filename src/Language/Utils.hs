@@ -16,6 +16,8 @@ number = traverse \x -> (,x) <$> fresh
 extract :: Ord b => Expr l (b, c) -> (Expr l b, Map b c)
 extract = over holes fst &&& Map.fromList . toListOf holes
 
+-- TODO: instantiation should also be able to introduce new type variables,
+-- e.g. by instantiating `id` to `forall a. List a -> List a`
 instantiate :: Map Var (Type Void) -> Poly -> Poly
 instantiate th (Poly fr ty) =
   Poly (filter (`notElem` Map.keys th) fr) (subst th ty)
@@ -33,14 +35,14 @@ etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
   ctxs <- use holeCtxs
   case Map.lookup i ctxs of
     Nothing -> return $ Hole i
-    Just HoleCtx { goal, local } -> do
+    Just ctx -> do
       -- Split the type in the arguments and the result type
-      let (ts, u) = splitArgs goal
+      let (ts, u) = splitArgs (view goal ctx)
       -- Couple each argument with a fresh name
       xs <- number ts
       let locals' = Map.fromList ((varId &&& id) . fst <$> xs)
       -- Update the hole context
-      modifying holeCtxs $ Map.insert i $ HoleCtx u (local <> locals')
+      modifying holeCtxs $ Map.insert i $ HoleCtx u (view local ctx <> locals')
       let vs = Map.fromList $ xs <&> \(x, t) -> (x, Variable (varId x) t 1 0)
       -- traceShowM vars
       modifying variables (vs <>)

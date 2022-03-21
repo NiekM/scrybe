@@ -83,8 +83,14 @@ foldrSketch = p "{ } :: (A -> B -> B) -> B -> List A -> B"
 
 foldrConcepts :: MultiSet Concept
 foldrConcepts = Map.fromList
-  [ (Func "rec", Just 1)
+  [ (Func "fix", Just 1)
   , (Func "elimList", Just 1)
+  ]
+
+foldrInsts :: Insts
+foldrInsts =
+  [ ("fix", [Map.singleton "a" (p "List A -> B")])
+  , ("elimList", [Map.fromList [("a", p "B"), ("b", p "A")]])
   ]
 
 fromModule :: Module -> Environment
@@ -120,7 +126,7 @@ runSyn file t c is dec = do
     Nothing -> logInfo "Something went wrong :("
     Just (x, g) -> do
       let syn = levels $ runGenT (genTree step x) m g
-      let xss = take 9 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
+      let xss = take 10 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)
         forM_ xs \(e, _s) -> do
@@ -146,5 +152,5 @@ run = do
   runSyn prelude EtaLong mapConcepts mapInsts mapSketch
   runSyn prelude EtaLong mapConcepts2 mapInsts2 mapSketch2
   runSyn prelude PointFree mapConcepts3 mapInsts3 mapSketch
-  -- runSyn prelude EtaLong foldrConcepts foldrSketch
+  -- runSyn prelude EtaLong foldrConcepts foldrInsts foldrSketch
   logInfo "Finished!"
