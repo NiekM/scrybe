@@ -184,8 +184,14 @@ coerceExpr = cata \case
 
 -- Lenses {{{
 
--- TODO: allow l to be changed in traversal
-holes' :: Traversal (Expr l b) (Expr l c) b (Expr l c)
+holes' ::
+  ( a ~ HasCtr l, a' ~ HasCtr l', a => a'
+  , b ~ HasVar l, b' ~ HasVar l', b => b'
+  , c ~ HasApp l, c' ~ HasApp l', c => c'
+  , d ~ HasLam l, d' ~ HasLam l', d => d'
+  , e ~ HasLet l, e' ~ HasLet l', e => e'
+  , f ~ HasCase l, f' ~ HasCase l', f => f'
+  ) => Traversal (Expr l x) (Expr l' y) x (Expr l' y)
 holes' g = cata \case
   Hole h -> g h
   Ctr c -> pure $ Ctr c
@@ -198,15 +204,16 @@ holes' g = cata \case
 holes :: Traversal (Expr l b) (Expr l c) b c
 holes = holes' . fmap (fmap Hole)
 
-free' :: NoBind l => Traversal (Expr l c) (Expr l c) (VAR l) (Expr l c)
+free' :: (a ~ HasCtr l, a' ~ HasCtr l', a => a', NoBind l)
+  => NoBind l => Traversal (Expr l c) (Expr l' c) (VAR l) (Expr l' c)
 free' g = cata \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
   Var v -> g v
   App f x -> App <$> f <*> x
 
--- TODO: VAR l -> VAR l'
-free :: (HasVar l, NoBind l) => Traversal (Expr l c) (Expr l c) (VAR l) (VAR l)
+free :: (a ~ HasCtr l, a' ~ HasCtr l', a => a', HasVar l', NoBind l)
+  => Traversal (Expr l c) (Expr l' c) (VAR l) (VAR l')
 free = free' . fmap (fmap Var)
 
 -- }}}
