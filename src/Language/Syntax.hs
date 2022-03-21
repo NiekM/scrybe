@@ -180,6 +180,16 @@ coerceExpr = cata \case
   Let a x y -> Let a x y
   Case x xs -> Case x xs
 
+fixExpr :: Base (Expr l b) l b -> Expr l b
+fixExpr = \case
+  Hole h -> Hole h
+  Ctr c -> Ctr c
+  Var v -> Var v
+  App f x -> App f x
+  Lam a x -> Lam a x
+  Let a x y -> Let a x y
+  Case x xs -> Case x xs
+
 -- }}}
 
 -- Lenses {{{
@@ -219,16 +229,6 @@ free = free' . fmap (fmap Var)
 -- }}}
 
 -- Substitution {{{
-
-fixExpr :: Base (Expr l b) l b -> Expr l b
-fixExpr = \case
-  Hole h -> Hole h
-  Ctr c -> Ctr c
-  Var v -> Var v
-  App f x -> App f x
-  Lam a x -> Lam a x
-  Let a x y -> Let a x y
-  Case x xs -> Case x xs
 
 subst :: (Ord (VAR l), expr ~ Expr l b) => Map (VAR l) expr -> expr -> expr
 subst th = cata \case
@@ -321,6 +321,8 @@ type FreshVarId m = MonadFresh VarId m
 type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
 type WithVariables s m = (MonadState s m, HasVariables s)
 
+-- Helper functions {{{
+
 -- TODO: replace with more general infix function
 arrs :: (Foldable f, HasArr l) => f (Expr l b) -> Expr l b
 arrs = foldr1 Arr
@@ -346,6 +348,8 @@ unLams :: Expr l b -> ([VAR l], Expr l b)
 unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
+
+-- }}}
 
 -- Pretty printing {{{
 

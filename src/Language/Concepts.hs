@@ -35,7 +35,7 @@ sub a b = (<> Map.difference a b) . Map.mapMaybe id
 
 -- | Concepts within our language, used to categorize hole fillings.
 data Concept
-  = CVar Var
+  = Func Var
   | CCtr Ctr
   {-
   | EtaExpansion
@@ -47,10 +47,10 @@ data Concept
   -- single arity and higher arity functions.
   deriving (Eq, Ord, Show, Read)
 
-type Environment = [(Term Void, Poly, Set Concept)]
+type Environment = Map Var (Poly, Set Concept)
 
 restrict :: Set Concept -> Environment -> Environment
-restrict cs = filter \(_, _, c) -> c `Set.isSubsetOf` cs
+restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 
 data Technique = PointFree | EtaLong
   deriving (Eq, Ord, Show, Read)

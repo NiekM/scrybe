@@ -18,6 +18,12 @@ rec = fix
 
 data Bool = False | True
 
+false :: Bool
+false = False
+
+true :: Bool
+true = True
+
 elimBool :: forall a. a -> a -> Bool -> a
 elimBool f t b = case b of False -> f; True -> t
 
@@ -26,10 +32,25 @@ not = elimBool True False
 
 data Ord = LT | EQ | GT
 
+lt :: Ord
+lt = LT
+
+eq :: Ord
+eq = EQ
+
+gt :: Ord
+gt = GT
+
 elimOrd :: forall a. a -> a -> a -> Ord -> a
 elimOrd l e g o = case o of LT -> l; EQ -> e; GT -> g
 
 data Nat = Zero | Succ Nat
+
+zero :: Nat
+zero = Zero
+
+succ :: Nat -> Nat
+succ = Succ
 
 elimNat :: forall a. a -> (Nat -> a) -> Nat -> a
 elimNat z s n = case n of Zero -> z; Succ m -> s m
@@ -65,6 +86,9 @@ map f = foldList [] (\x -> Cons (f x))
 
 data Pair a b = Pair a b
 
+pair :: forall a b. a -> b -> Pair a b
+pair = Pair
+
 fst :: forall a b. Pair a b -> a
 fst p = case p of Pair x y -> x
 
@@ -81,6 +105,12 @@ uncurry :: forall a b c. (a -> b -> c) -> Pair a b -> c
 uncurry f p = case p of Pair x y -> f x y
 
 data Either a b = Left a | Right b
+
+left :: forall a b. a -> Either a b
+left = Left
+
+right :: forall a b. b -> Either a b
+right = Right
 
 elimEither :: forall a b c. (a -> c) -> (b -> c) -> Either a b -> c
 elimEither l r e = case e of Left x -> l x; Right y -> r y

@@ -43,15 +43,13 @@ eval = \case
     y <- eval x
     modifying env $ Map.insert a y
     eval e
-  Case {} -> undefined
-  -- Case x xs -> do
-  --   y <- eval x
-  --   let ys = traverseOf _1 (`match` y) <$> xs
-  --   case msum ys of
-  --     Nothing -> return $ Case y xs
-  --     Just (m, e) -> do
-  --       modifying env (m <>)
-  --       eval e
+  Case x xs -> do
+    y <- eval x
+    case unApps y of
+      (Ctr c :| as) -> case lookup c xs of
+        Just e -> eval $ apps (e : as)
+        Nothing -> fail "Pattern match failure: non-exhaustive pattern"
+      _ -> fail "Pattern match failure: not a constructor"
 
 match :: Pattern Void -> Term a -> Maybe (Map Var (Term a))
 match p e = case p of

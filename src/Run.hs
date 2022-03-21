@@ -23,23 +23,53 @@ mapSketch2 = p "\\f -> foldr { } { } :: (A -> B) -> List A -> List B"
 
 mapConcepts :: MultiSet Concept
 mapConcepts = Map.fromList
-  [ (CCtr "Nil", Just 1)
-  , (CCtr "Cons", Just 1)
-  , (CVar "foldr", Just 1)
+  [ (Func "nil", Just 1)
+  , (Func "cons", Just 1)
+  , (Func "foldr", Just 1)
+  ]
+
+type Insts = [(Var, [Map Var (Type Void)])]
+
+mapInsts :: Insts
+mapInsts =
+  [ ("nil", [mempty])
+  , ("cons", [mempty])
+  , ("foldr", [mempty])
   ]
 
 mapConcepts2 :: MultiSet Concept
 mapConcepts2 = Map.fromList
-  [ (CCtr "Nil", Just 1)
-  , (CCtr "Cons", Just 1)
+  [ (Func "nil", Just 1)
+  , (Func "cons", Just 1)
+  ]
+
+mapInsts2 :: Insts
+mapInsts2 =
+  [ ("nil", [mempty])
+  , ("cons", [mempty])
   ]
 
 mapConcepts3 :: MultiSet Concept
 mapConcepts3 = Map.fromList
-  [ (CCtr "Nil", Just 1)
-  , (CCtr "Cons", Just 1)
-  , (CVar "foldr", Just 1)
-  , (CVar "compose", Just 1)
+  [ (Func "nil", Just 1)
+  , (Func "cons", Just 1)
+  , (Func "foldr", Just 1)
+  , (Func "compose", Just 1)
+  ]
+
+mapInsts3 :: Insts
+mapInsts3 =
+  [ ("nil", [mempty])
+  , ("cons", [mempty])
+  , ("foldr", [mempty])
+  -- NOTE: combinators such as `compose` blow up the search space, unless they
+  -- are instantiated to very specific types, in which case they might actually
+  -- speed up the synthesis in a pointfree setting.
+  , ("compose", [Map.fromList
+    [ ("a", p "A")
+    , ("b", p "B")
+    , ("c", p "List B -> List B")
+    ]])
   ]
 
 composeSketch :: Sketch
@@ -53,21 +83,31 @@ foldrSketch = p "{ } :: (A -> B -> B) -> B -> List A -> B"
 
 foldrConcepts :: MultiSet Concept
 foldrConcepts = Map.fromList
-  [ (CVar "rec", Just 1)
-  , (CVar "elimList", Just 1)
+  [ (Func "rec", Just 1)
+  , (Func "elimList", Just 1)
   ]
 
 fromModule :: Module -> Environment
-fromModule m = (Map.assocs (functions m) <&>
-  \(x, (_, t)) -> (Var x, t, Set.singleton $ CVar x))
-  ++ (Map.assocs (ctrs m) <&>
-  \(c, t) -> (Ctr c, t, Set.singleton $ CCtr c))
+fromModule m = flip Map.mapWithKey (functions m)
+  \x (_, t) -> (t, Set.singleton $ Func x)
 
-runSyn :: String -> Technique -> MultiSet Concept -> Sketch ->
+-- TODO: I guess different instantiations should be considered different
+-- 'concepts'
+instantiations :: Insts -> Environment -> Environment
+instantiations xs e = Map.fromList do
+  (x, as) <- xs
+  case Map.lookup x e of
+    Just (t, cs) -> do
+      a <- as
+      return (x, (instantiate a t, cs))
+    Nothing -> []
+
+runSyn :: String -> Technique -> MultiSet Concept -> Insts -> Sketch ->
   RIO Application ()
-runSyn file t c dec = do
+runSyn file t c is dec = do
   m <- p <$> readFileUtf8 file
-  let env' = restrict (Map.keysSet c) $ fromModule m
+  let env' = instantiations is . restrict (Map.keysSet c) $ fromModule m
+  -- let env' = restrict (Map.keysSet c) $ fromModule m
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ dec
@@ -101,10 +141,10 @@ run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  runSyn prelude EtaLong mempty composeSketch
-  runSyn prelude EtaLong mempty flipSketch
-  runSyn prelude EtaLong mapConcepts mapSketch
-  runSyn prelude EtaLong mapConcepts2 mapSketch2
-  runSyn prelude PointFree mapConcepts3 mapSketch
+  runSyn prelude EtaLong mempty [] composeSketch
+  runSyn prelude EtaLong mempty [] flipSketch
+  runSyn prelude EtaLong mapConcepts mapInsts mapSketch
+  runSyn prelude EtaLong mapConcepts2 mapInsts2 mapSketch2
+  runSyn prelude PointFree mapConcepts3 mapInsts3 mapSketch
   -- runSyn prelude EtaLong foldrConcepts foldrSketch
   logInfo "Finished!"

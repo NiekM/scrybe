@@ -5,7 +5,7 @@ import Language.Syntax
 import qualified RIO.Map as Map
 
 -- | Split a type into its arguments and the result type.
-splitArgs :: expr ~ Expr l b => expr -> ([expr], expr)
+splitArgs :: Expr l b -> ([Expr l b], Expr l b)
 splitArgs = unsnoc . unArrs
 
 -- | Uniquely number all holes in an expression.

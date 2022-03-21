@@ -114,9 +114,9 @@ applySubst th = do
 globals :: (MonadPlus m, FreshFree m, WithTechnique s m, WithEnvironment s m) =>
   m (HoleFilling, Set Concept)
 globals = do
-  (x, t, c) <- mfold =<< use environment
+  (x, (t, c)) <- mfold . Map.assocs =<< use environment
   u <- instantiateFresh t
-  (,c) <$> holeFillings (over holes absurd x) u
+  (,c) <$> holeFillings (Var x) u
 
 -- | Compute hole fillings from local variables.
 locals :: (MonadFail m, MonadPlus m,
