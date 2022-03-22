@@ -11,11 +11,7 @@ import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import Text.Megaparsec
 
-p :: Parse a => Text -> a
-p = parseUnsafe parser
-
 -- TODO: use polytypes and skolemnization
-
 fromModule :: Module Void -> Environment
 fromModule m = flip Map.mapWithKey (functions m)
   \x (_, t) -> (t, Set.singleton $ Func x)
