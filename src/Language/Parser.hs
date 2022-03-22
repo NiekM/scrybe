@@ -199,9 +199,6 @@ instance Parse Poly where
   parser = Poly <$ key "forall" <*> many parser <* op "." <*> parser
     <|> Poly [] <$> parser
 
-instance Parse Sketch where
-  parser = Sketch <$> parser <* op "::" <*> parser
-
 instance Parse Datatype where
   parser = MkDatatype <$ key "data" <*> parser <*> many parser <*> choice
     [ do
@@ -213,16 +210,27 @@ instance Parse Datatype where
     , mempty
     ]
 
-instance Parse Definition where
+instance Parse a => Parse (Definition a) where
   parser = choice
     [ Datatype <$> parser
     , do
       x <- parser
       choice
-        [ Signature x <$ op "::" <*> parser
-        , Binding x <$> (lams <$> many parser <* op "=" <*> parser)
+        [ Signature . MkSignature x <$ op "::" <*> parser
+        , Binding . MkBinding x <$> (lams <$> many parser <* op "=" <*> parser)
         ]
     ]
 
-instance Parse Module where
+instance Parse a => Parse (Module a) where
   parser = Module . catMaybes <$> alt (optional parser) (single Newline)
+
+instance Parse Sketch where
+  parser = do
+    ([MkSignature x s], [MkBinding y b], []) <- sepModule <$> parser
+    guard (x == y)
+    return $ Sketch x s b
+
+instance Parse Sigs where
+  parser = do
+    (ss, [], []) <- sepModule <$> (parser @(Module Void))
+    return $ Sigs ss

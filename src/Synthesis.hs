@@ -9,8 +9,9 @@ import TermGen
 -- TODO: does init make sense? Maybe we should just have a module as input
 -- and compute the GenState
 init :: Sketch -> GenT Maybe (Term Hole)
-init sketch = do
-  (expr, _, _, ctx) <- check sketch
+init (Sketch _ (Poly _ t) e) = do
+  -- TODO: instead of ignoring the type variables, skolemnize them
+  (expr, _, _, ctx) <- check e t
   assign holeCtxs ctx
   postProcess expr
 

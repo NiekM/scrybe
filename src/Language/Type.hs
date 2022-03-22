@@ -43,7 +43,7 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   return $ compose th1 th0
 
 -- TODO: move holeCtxs to Monad
-infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader Module m
+infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader (Module Void) m
          , WithVariables s m) =>
   Term Hole -> m (Type Void, Unify 'Type Void, Map Hole HoleCtx)
 infer expr = do
@@ -95,9 +95,9 @@ infer expr = do
 
 -- TODO: maybe this should return a sketch along with a type and unification
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
-  MonadReader Module m, WithVariables s m) =>
-  Sketch -> m (Term Hole, Type Void, Unify 'Type Void, Map Hole HoleCtx)
-check (Sketch e t) = do
+  MonadReader (Module Void) m, WithVariables s m) => Term Unit -> Type Void ->
+  m (Term Hole, Type Void, Unify 'Type Void, Map Hole HoleCtx)
+check e t = do
   e' <- traverseOf holes (const fresh) e
   (u, th1, ctx1) <- infer e'
   th2 <- unify t u

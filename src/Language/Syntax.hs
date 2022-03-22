@@ -250,9 +250,6 @@ data Poly = Poly [Var] (Type Void)
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
 
-data Sketch = Sketch (Term Unit) (Type Void)
-  deriving (Eq, Ord, Show)
-
 data HoleCtx = HoleCtx (Type Void) (Map Var VarId)
   deriving (Eq, Ord, Show)
 
@@ -277,40 +274,59 @@ varType = lens (\(Variable _ t _ _) -> t) \(Variable x _ i n) t ->
 class HasVariables a where
   variables :: Lens' a (Map VarId Variable)
 
--- Module {{{
+data Signature = MkSignature Var Poly
+  deriving (Eq, Ord, Show)
+
+data Binding a = MkBinding Var (Term a)
+  deriving (Eq, Ord, Show)
 
 data Datatype = MkDatatype Ctr [Var] [(Ctr, [Type Void])]
   deriving (Eq, Ord, Show)
+
+data Sketch = Sketch Var Poly (Term Unit)
+  deriving (Eq, Ord, Show)
+
+newtype Sigs = Sigs [Signature]
+  deriving (Eq, Ord, Show)
+
+-- Module {{{
 
 constructors :: Datatype -> [(Ctr, Poly)]
 constructors (MkDatatype d as cs) = cs <&> second \ts ->
   Poly as (arrs (ts ++ [apps (Ctr d :| fmap Var as)]))
 
-data Definition
-  = Signature Var Poly
-  | Binding Var (Term Void)
+data Definition a
+  = Signature Signature
+  | Binding (Binding a)
   | Datatype Datatype
   deriving (Eq, Ord, Show)
 
-newtype Module = Module [Definition]
+newtype Module a = Module [Definition a]
   deriving (Eq, Ord, Show)
 
-ctrs :: Module -> Map Ctr Poly
+sepModule :: Module a -> ([Signature], [Binding a], [Datatype])
+sepModule (Module ds) = foldr go mempty ds where
+  go = \case
+    Signature s -> over _1 (s:)
+    Binding   b -> over _2 (b:)
+    Datatype  d -> over _3 (d:)
+
+ctrs :: Module a -> Map Ctr Poly
 ctrs (Module xs) = Map.fromList $ xs >>= \case
   Datatype d -> constructors d
   _ -> []
 
-sigs :: Module -> Map Var Poly
+sigs :: Module a -> Map Var Poly
 sigs (Module xs) = Map.fromList $ xs >>= \case
-  Signature x t -> [(x, t)]
+  Signature (MkSignature x t) -> [(x, t)]
   _ -> []
 
-binds :: Module -> Map Var (Term Void)
+binds :: Module a -> Map Var (Term a)
 binds (Module xs) = Map.fromList $ xs >>= \case
-  Binding x t -> [(x, t)]
+  Binding (MkBinding x t) -> [(x, t)]
   _ -> []
 
-functions :: Module -> Map Var (Term Void, Poly)
+functions :: Module a -> Map Var (Term a, Poly)
 functions m = Map.intersectionWith (,) (binds m) (sigs m)
 
 -- }}}
@@ -373,9 +389,6 @@ prettyParens p t
 instance Pretty Unit where
   pretty _ = space
 
-instance Pretty Sketch where
-  pretty (Sketch def sig) = pretty def <+> "::" <+> pretty sig
-
 instance Pretty Poly where
   pretty = \case
     Poly [] t -> pretty t
@@ -407,16 +420,25 @@ instance Pretty Datatype where
       $ cs <&> \(c, xs) -> pretty (apps (Ctr c :| xs))
       )
 
-instance Pretty Definition where
+instance Pretty Signature where
+  pretty (MkSignature x t) = pretty x <+> "::" <+> pretty t
+
+instance Pretty a => Pretty (Binding a) where
+  pretty (MkBinding x e) = sep (pretty x : fmap pretty as) <+> "=" <+> pretty b
+    where (as, b) = unLams e
+
+instance Pretty Sketch where
+  pretty (Sketch x s b) = vsep
+    [pretty x <+> "::" <+> pretty s, pretty x <+> "=" <+> pretty b]
+
+instance Pretty a => Pretty (Definition a) where
   pretty = \case
-    Signature x t -> pretty x <+> "::" <+> pretty t
-    Binding x e ->
-      let (as, b) = unLams e
-      in sep (pretty x : fmap pretty as) <+> "=" <+> pretty b
+    Signature s -> pretty s
+    Binding b -> pretty b
     Datatype d -> pretty d
 
-instance Pretty Module where
-  pretty (Module cs) = vsep . fmap pretty $ cs
+instance Pretty a => Pretty (Module a) where
+  pretty (Module cs) = vsep $ fmap pretty cs
 
 -- }}}
 

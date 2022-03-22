@@ -35,10 +35,10 @@ instance HasConcepts GenState where
 mkGenState :: Environment -> Technique -> MultiSet Concept -> GenState
 mkGenState e t c = GenState mempty e mempty t c 0 0 0
 
-newtype GenT m a = GenT (RWST Module () GenState m a)
+newtype GenT m a = GenT (RWST (Module Void) () GenState m a)
   deriving newtype (Functor, Applicative, Monad, Alternative)
   deriving newtype (MonadFail, MonadPlus)
-  deriving newtype (MonadState GenState, MonadReader Module)
+  deriving newtype (MonadState GenState, MonadReader (Module Void))
 
 instance Monad m => MonadFresh Hole (GenT m) where
   fresh = GenT . state $ \g@GenState { freshHole } ->
@@ -52,13 +52,13 @@ instance Monad m => MonadFresh VarId (GenT m) where
   fresh = GenT . state $ \g@GenState { freshVarId } ->
     (freshVarId, g { freshVarId = 1 + freshVarId })
 
-runGenT :: Monad m => GenT m a -> Module -> GenState -> m (a, GenState)
+runGenT :: Monad m => GenT m a -> Module Void -> GenState -> m (a, GenState)
 runGenT (GenT m) pre s = do
   (x, s', _) <- runRWST m pre s
   return (x, s')
 
-evalGenT :: Monad m => GenT m a -> Module -> GenState -> m a
+evalGenT :: Monad m => GenT m a -> Module Void -> GenState -> m a
 evalGenT m pre s = fst <$> runGenT m pre s
 
 genTree :: forall a. (a -> GenT [] a) -> a -> GenT Tree a
-genTree = coerce (search @a @Module @() @GenState)
+genTree = coerce (search @a @(Module Void) @() @GenState)
