@@ -66,4 +66,9 @@ run = do
   runSyn "prelude" "flip" "combinator" EtaLong
   runSyn "prelude" "map_eta" "map_eta" EtaLong
   runSyn "prelude" "map_pointfree" "map_pointfree" PointFree
+  -- TODO: allow Nil to be used twice for stutter
+  -- TODO: add simple testing to differentiate stutter from idList
+  runSyn "prelude" "stutter" "stutter" EtaLong
+  -- TODO: allow ignoring variables
+  runSyn "prelude" "length" "length" EtaLong
   logInfo "Finished!"
