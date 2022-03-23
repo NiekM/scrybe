@@ -51,7 +51,7 @@ etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
 
 -- | All subexpressions, including the expression itself.
 dissect :: Expr l b -> [Expr l b]
-dissect = para \e -> (e:) . \case
+dissect = paraExpr \e -> (e:) . \case
   Hole _ -> mempty
   Var _ -> mempty
   Ctr _ -> mempty

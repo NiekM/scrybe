@@ -98,12 +98,13 @@ type NoBind l =
   , HasLet' l ~ 'False
   )
 
-data Func a = Fix | Base a
+data Func a = Fix | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
 
 type family Rec (f :: Func Kind.Type) (l :: Level) b where
   Rec 'Fix l b = Expr' 'Fix l b
   Rec ('Base c) _ _ = c
+  Rec ('Ann a) l b = Annot (Expr' ('Ann a) l b) a
 
 type family VAR (l :: Level) where
   VAR _ = Var
@@ -122,6 +123,7 @@ data Expr' (r :: Func Kind.Type) (l :: Level) b where
 
 type Expr = Expr' 'Fix
 type Base a = Expr' ('Base a)
+type Ann a l b = Rec ('Ann a) l b
 
 deriving instance (Eq b, Eq (Rec r l b)) => Eq (Expr' r l b)
 deriving instance (Ord b, Ord (Rec r l b)) => Ord (Expr' r l b)
@@ -151,17 +153,17 @@ traverseExpr go = \case
 mapExpr :: (Rec r l b -> Rec r' l b) -> Expr' r l b -> Expr' r' l b
 mapExpr go = runIdentity . traverseExpr (Identity . go)
 
-para :: (Expr l b -> Base c l b -> c) -> Expr l b -> c
-para g e = g e (mapExpr (para g) e)
+paraExpr :: (Expr l b -> Base c l b -> c) -> Expr l b -> c
+paraExpr g e = g e (mapExpr (paraExpr g) e)
 
-cata :: (Base c l b -> c) -> Expr l b -> c
-cata = para . const
+cataExpr :: (Base c l b -> c) -> Expr l b -> c
+cataExpr = paraExpr . const
 
-apo :: (c -> Either (Expr l b) (Base c l b)) -> c -> Expr l b
-apo g e = either id (mapExpr (apo g)) (g e)
+apoExpr :: (c -> Either (Expr l b) (Base c l b)) -> c -> Expr l b
+apoExpr g e = either id (mapExpr (apoExpr g)) (g e)
 
-ana :: (c -> Base c l b) -> c -> Expr l b
-ana = apo . (return .)
+anaExpr :: (c -> Base c l b) -> c -> Expr l b
+anaExpr = apoExpr . (return .)
 
 coerceExpr ::
   ( a ~ HasCtr l, a' ~ HasCtr l', a => a'
@@ -171,7 +173,7 @@ coerceExpr ::
   , e ~ HasLet l, e' ~ HasLet l', e => e'
   , f ~ HasCase l, f' ~ HasCase l', f => f'
   ) => Expr l y -> Expr l' y
-coerceExpr = cata \case
+coerceExpr = cataExpr \case
   Hole h -> Hole h
   Ctr c -> Ctr c
   Var v -> Var v
@@ -190,9 +192,28 @@ fixExpr = \case
   Let a x y -> Let a x y
   Case x xs -> Case x xs
 
+mapAnn :: (a -> b) -> Ann a l c -> Ann b l c
+mapAnn f (Annot e a) = Annot (mapExpr (mapAnn f) e) (f a)
+
+paraAnn :: (Ann a l b -> Base c l b -> c) -> Ann a l b -> c
+paraAnn g (Annot e a) = g (Annot e a) (mapExpr (paraAnn g) e)
+
+cataAnn :: (a -> Base c l b -> c) -> Ann a l b -> c
+cataAnn = paraAnn . (. view ann)
+
 -- }}}
 
 -- Lenses {{{
+
+rec :: Traversal' (Base c l b) c
+rec g = \case
+  Hole h -> pure $ Hole h
+  Ctr c -> pure $ Ctr c
+  Var v -> pure $ Var v
+  App f x -> App <$> g f <*> g x
+  Lam a x -> Lam a <$> g x
+  Let a x y -> Let a <$> g x <*> g y
+  Case x xs -> Case <$> g x <*> traverse (traverse g) xs
 
 holes' ::
   ( a ~ HasCtr l, a' ~ HasCtr l', a => a'
@@ -202,7 +223,7 @@ holes' ::
   , e ~ HasLet l, e' ~ HasLet l', e => e'
   , f ~ HasCase l, f' ~ HasCase l', f => f'
   ) => Traversal (Expr l x) (Expr l' y) x (Expr l' y)
-holes' g = cata \case
+holes' g = cataExpr \case
   Hole h -> g h
   Ctr c -> pure $ Ctr c
   Var v -> pure $ Var v
@@ -216,7 +237,7 @@ holes = holes' . fmap (fmap Hole)
 
 free' :: (a ~ HasCtr l, a' ~ HasCtr l', a => a', NoBind l)
   => NoBind l => Traversal (Expr l c) (Expr l' c) (VAR l) (Expr l' c)
-free' g = cata \case
+free' g = cataExpr \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
   Var v -> g v
@@ -231,18 +252,24 @@ free = free' . fmap (fmap Var)
 -- Substitution {{{
 
 subst :: (Ord (VAR l), expr ~ Expr l b) => Map (VAR l) expr -> expr -> expr
-subst th = cata \case
+subst th = cataExpr \case
   Var v | Just x <- Map.lookup v th -> x
   e -> fixExpr e
 
 fill :: (Ord b, expr ~ Expr l b) => Map b expr -> expr -> expr
-fill th = cata \case
+fill th = cataExpr \case
   Hole h | Just x <- Map.lookup h th -> x
   e -> fixExpr e
 
 -- }}}
 
 -- TODO: maybe move these definitions somewhere else
+
+data Annot x a = Annot x a
+  deriving (Eq, Ord, Show)
+
+ann :: Lens' (Annot x a) a
+ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
 
 data Poly = Poly [Var] (Type Void)
   deriving (Eq, Ord, Show)
@@ -365,6 +392,12 @@ unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
 
+strip :: Ann a l b -> Expr l b
+strip = cataAnn (const fixExpr)
+
+collect :: Ann a l b -> [Annot (Expr l b) a]
+collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
+
 -- }}}
 
 -- Pretty printing {{{
@@ -393,6 +426,21 @@ instance Pretty Poly where
   pretty = \case
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
+
+instance (Pretty a, Pretty b) => Pretty (Annot a b) where
+  pretty (Annot x t) = pretty x <+> "::" <+> pretty t
+
+instance (Pretty a, Pretty b) => Pretty (Expr' ('Ann a) 'Term b) where
+  pretty = \case
+    Hole i -> braces $ pretty i
+    Var x -> pretty x
+    Ctr c -> pretty c
+    App f x -> parens (pretty f) <+> parens (pretty x)
+    Lam a x -> parens $ "\\" <> pretty a <+> "->" <+> parens (pretty x)
+    Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e
+    Case x xs -> "case" <+> pretty x <+> "of" <+>
+      mconcat (intersperse "; " $ xs <&> \(p, a) ->
+        pretty p <+> "->" <+> pretty a)
 
 instance Pretty b => Pretty (Expr l b) where
   pretty = \case

@@ -43,9 +43,11 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   return $ compose th1 th0
 
 -- TODO: move holeCtxs to Monad
+-- TODO: apply substitutions to annotations. Does this have to be done at every
+-- step, or is it enough to have a prepass?
 infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader (Module Void) m
-         , WithVariables s m) =>
-  Term Hole -> m (Type Void, Unify 'Type Void, Map Hole HoleCtx)
+  , WithVariables s m) => Term Hole -> -- TODO: get Term Unit as input
+  m (Ann (Type Void) 'Term Hole, Unify 'Type Void, Map Hole HoleCtx)
 infer expr = do
   m <- ask
   let cs = ctrs m
@@ -57,41 +59,43 @@ infer expr = do
           modifying variables $ Map.mapWithKey \x -> \case
             Variable name t i n | x `elem` loc -> Variable name t (i + 1) n
             v -> v
-          return (g, Map.empty, Map.singleton h (HoleCtx g loc))
+          return
+            (Hole h `Annot` g, Map.empty, Map.singleton h (HoleCtx g loc))
         Ctr c -> do
           t <- failMaybe $ Map.lookup c cs
           u <- instantiateFresh t
-          return (u, Map.empty, Map.empty)
+          return (Annot (Ctr c) u, Map.empty, Map.empty)
         Var a | Just x <- Map.lookup a loc -> use variables >>= \vs ->
           case Map.lookup x vs of
             Nothing -> fail $ "Missing variable id " <> show x
             Just (Variable name t i n) -> do
               -- Note the variable occurrence
               modifying variables . Map.insert x $ Variable name t i (n + 1)
-              return (t, Map.empty, Map.empty)
+              return (Var a `Annot` t, Map.empty, Map.empty)
         Var a -> do
           (_, t) <- failMaybe $ Map.lookup a fs
           u <- instantiateFresh t
-          return (u, Map.empty, Map.empty)
+          return (Var a `Annot` u, Map.empty, Map.empty)
         App f x -> do
-          (a, th1, ctx1) <- go loc f
-          (b, th2, ctx2) <- go loc x
+          (f'@(Annot _ a), th1, ctx1) <- go loc f
+          (x'@(Annot _ b), th2, ctx2) <- go loc x
           t <- Var . freeId <$> fresh
           th3 <- unify (subst th2 a) (Arr b t)
           let th4 = th3 `compose` th2 `compose` th1
           let ctx3 = over goal (subst th4) <$> ctx1 <> ctx2
           modifying variables .fmap $ over varType (subst th4)
-          return (subst th4 t, th4, ctx3)
+          return (App f' x' `Annot` subst th4 t, th4, ctx3)
         Lam x e -> do
           t <- Var . freeId <$> fresh
           i <- fresh
-          (u, th, local') <- go (Map.insert x i loc) e
+          modifying variables $ Map.insert i (Variable x t 1 0)
+          (e'@(Annot _ u), th, local') <- go (Map.insert x i loc) e
           let t' = subst th t
-          modifying variables $ Map.insert i (Variable x t' 1 0)
-          return (Arr t' u, th, local')
+          return (Lam x e' `Annot` Arr t' u, th, local')
         Let {} -> undefined
         Case {} -> undefined
-  go Map.empty expr
+  (e, th, ctx) <- go Map.empty expr
+  return (mapAnn (subst th) e, th, ctx)
 
 -- TODO: maybe this should return a sketch along with a type and unification
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
@@ -99,7 +103,7 @@ check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
   m (Term Hole, Type Void, Unify 'Type Void, Map Hole HoleCtx)
 check e t = do
   e' <- traverseOf holes (const fresh) e
-  (u, th1, ctx1) <- infer e'
+  (Annot _ u, th1, ctx1) <- infer e'
   th2 <- unify t u
   let th3 = compose th2 th1
   let ctx2 = over goal (subst th3) <$> ctx1
