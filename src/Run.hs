@@ -7,8 +7,6 @@ import Language
 import Synthesis
 import Prettyprinter
 import Data.Tree
-import qualified RIO.Map as Map
-import qualified RIO.Set as Set
 
 syntax :: Parse a => Text -> RIO Application a
 syntax t = case lexParse parser t of
@@ -16,16 +14,16 @@ syntax t = case lexParse parser t of
   Just y -> return y
 
 runSyn :: String -> String -> String -> Technique -> RIO Application ()
-runSyn file sketch pre t = do
+runSyn file sketch model t = do
   m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
   sk <- syntax =<< readFileUtf8
     ("data/examples/sketch/" <> sketch <> ".hs")
-  Sigs ss <- syntax =<< readFileUtf8
-    ("data/examples/preludes/" <> pre <> ".hs")
-  let c = Map.fromList $ ss <&> \(MkSignature x _) -> (Func x, Just 1)
-  let env' = Map.fromList $ ss <&> \(MkSignature x u) ->
-        (x, (u, Set.singleton $ Func x))
-  -- let env' = instantiations is . restrict (Map.keysSet c) $ fromModule m
+  Sketch _ (Poly _ u) b <- syntax =<< readFileUtf8
+    ("data/examples/model/" <> model <> ".hs")
+  a <- case evalGenT (check b u) m (mkGenState (fromModule m) t mempty) of
+    Nothing -> logError "Model solution error" >> exitFailure
+    Just (x, _, _) -> return x
+  let (env', c) = fromSketch m a
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ sk
@@ -56,11 +54,10 @@ run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  runSyn "prelude" "compose" "combinator" EtaLong
-  runSyn "prelude" "flip" "combinator" EtaLong
+  runSyn "prelude" "compose" "compose" EtaLong
+  runSyn "prelude" "flip" "flip" EtaLong
   runSyn "prelude" "map_eta" "map_eta" EtaLong
   runSyn "prelude" "map_pointfree" "map_pointfree" PointFree
-  -- TODO: allow Nil to be used twice for stutter
   -- TODO: add simple testing to differentiate stutter from idList
   runSyn "prelude" "stutter" "stutter" EtaLong
   -- TODO: allow ignoring variables

@@ -1,2 +1,2 @@
 length :: List A -> Nat
-length = foldr (\x r -> Succ r) Zero
+length = foldr (\x r -> succ r) zero

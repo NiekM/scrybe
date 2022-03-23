@@ -17,6 +17,9 @@ type MultiSet a = Map a Occur
 fromSet :: Set a -> MultiSet a
 fromSet = Map.fromSet . const . Just $ 1
 
+fromList :: Ord a => [a] -> MultiSet a
+fromList = fmap Just . Map.fromListWith (+) . fmap (,1)
+
 reduce :: Occur -> Occur -> Maybe Occur
 reduce Nothing (Just _) = Just Nothing
 reduce (Just n) (Just k) | n > k = Just . Just $ n - k
@@ -56,6 +59,17 @@ fromModule m = flip Map.mapWithKey (functions m)
 
 restrict :: Set Concept -> Environment -> Environment
 restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
+
+-- TODO: take into account Poly variables
+-- TODO: actually gather concepts from variables/constructors/language
+-- constructs
+fromSketch :: Module Void -> Ann (Type Void) 'Term a ->
+  (Environment, MultiSet Concept)
+fromSketch m e = (Map.fromList xs, fromList $ Func . view _1 <$> xs) where
+  fs = Map.keys . functions $ m
+  xs = collect e >>= \(Annot x u) -> case x of
+    Var v | v `elem` fs -> [(v, (Poly [] u, Set.singleton $ Func v))]
+    _ -> []
 
 data Technique = PointFree | EtaLong
   deriving (Eq, Ord, Show, Read)
