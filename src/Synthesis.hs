@@ -11,9 +11,9 @@ import TermGen
 init :: Sketch -> GenT Maybe (Term Hole)
 init (Sketch _ (Poly _ t) e) = do
   -- TODO: instead of ignoring the type variables, skolemnize them
-  (expr, _, _, ctx) <- check e t
+  (expr, _, ctx) <- check e t
   assign holeCtxs ctx
-  postProcess expr
+  postProcess (strip expr)
 
 step :: Term Hole -> GenT [] (Term Hole)
 step expr = do

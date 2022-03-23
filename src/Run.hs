@@ -19,7 +19,7 @@ runSyn :: String -> String -> String -> Technique -> RIO Application ()
 runSyn file sketch pre t = do
   m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
   sk <- syntax =<< readFileUtf8
-    ("data/examples/sketches/" <> sketch <> ".hs")
+    ("data/examples/sketch/" <> sketch <> ".hs")
   Sigs ss <- syntax =<< readFileUtf8
     ("data/examples/preludes/" <> pre <> ".hs")
   let c = Map.fromList $ ss <&> \(MkSignature x _) -> (Func x, Just 1)

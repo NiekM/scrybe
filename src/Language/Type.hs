@@ -43,17 +43,16 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   return $ compose th1 th0
 
 -- TODO: move holeCtxs to Monad
--- TODO: apply substitutions to annotations. Does this have to be done at every
--- step, or is it enough to have a prepass?
-infer :: (FreshFree m, FreshVarId m, MonadFail m, MonadReader (Module Void) m
-  , WithVariables s m) => Term Hole -> -- TODO: get Term Unit as input
+infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
+  (MonadReader (Module Void) m, WithVariables s m) => Term Unit ->
   m (Ann (Type Void) 'Term Hole, Unify 'Type Void, Map Hole HoleCtx)
 infer expr = do
   m <- ask
   let cs = ctrs m
   let fs = functions m
   let go loc = \case
-        Hole h -> do
+        Hole _ -> do
+          h <- fresh
           g <- Var . freeId <$> fresh
           -- Note variable availability
           modifying variables $ Map.mapWithKey \x -> \case
@@ -83,7 +82,7 @@ infer expr = do
           th3 <- unify (subst th2 a) (Arr b t)
           let th4 = th3 `compose` th2 `compose` th1
           let ctx3 = over goal (subst th4) <$> ctx1 <> ctx2
-          modifying variables .fmap $ over varType (subst th4)
+          modifying variables . fmap $ over varType (subst th4)
           return (App f' x' `Annot` subst th4 t, th4, ctx3)
         Lam x e -> do
           t <- Var . freeId <$> fresh
@@ -100,12 +99,11 @@ infer expr = do
 -- TODO: maybe this should return a sketch along with a type and unification
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
   MonadReader (Module Void) m, WithVariables s m) => Term Unit -> Type Void ->
-  m (Term Hole, Type Void, Unify 'Type Void, Map Hole HoleCtx)
+  m (Ann (Type Void) 'Term Hole, Unify 'Type Void, Map Hole HoleCtx)
 check e t = do
-  e' <- traverseOf holes (const fresh) e
-  (Annot _ u, th1, ctx1) <- infer e'
+  (e'@(Annot _ u), th1, ctx1) <- infer e
   th2 <- unify t u
   let th3 = compose th2 th1
   let ctx2 = over goal (subst th3) <$> ctx1
   modifying variables . fmap $ over varType (subst th3)
-  return (e', subst th3 u, th3, ctx2)
+  return (mapAnn (subst th3) e', th3, ctx2)
