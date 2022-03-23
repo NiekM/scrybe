@@ -139,9 +139,8 @@ type Value = Expr 'Value Void
 
 -- Morphisms {{{
 
-traverseExpr :: Applicative f => (Rec r l b -> f (Rec r' l b)) ->
-  Expr' r l b -> f (Expr' r' l b)
-traverseExpr go = \case
+rec :: Traversal (Expr' r l b) (Expr' r' l b) (Rec r l b) (Rec r' l b)
+rec go = \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
   Var v -> pure $ Var v
@@ -150,17 +149,14 @@ traverseExpr go = \case
   Let a x y -> Let a <$> go x <*> go y
   Case x xs -> Case <$> go x <*> traverse (traverse go) xs
 
-mapExpr :: (Rec r l b -> Rec r' l b) -> Expr' r l b -> Expr' r' l b
-mapExpr go = runIdentity . traverseExpr (Identity . go)
-
 paraExpr :: (Expr l b -> Base c l b -> c) -> Expr l b -> c
-paraExpr g e = g e (mapExpr (paraExpr g) e)
+paraExpr g e = g e (over rec (paraExpr g) e)
 
 cataExpr :: (Base c l b -> c) -> Expr l b -> c
 cataExpr = paraExpr . const
 
 apoExpr :: (c -> Either (Expr l b) (Base c l b)) -> c -> Expr l b
-apoExpr g e = either id (mapExpr (apoExpr g)) (g e)
+apoExpr g e = either id (over rec (apoExpr g)) (g e)
 
 anaExpr :: (c -> Base c l b) -> c -> Expr l b
 anaExpr = apoExpr . (return .)
@@ -183,20 +179,13 @@ coerceExpr = cataExpr \case
   Case x xs -> Case x xs
 
 fixExpr :: Base (Expr l b) l b -> Expr l b
-fixExpr = \case
-  Hole h -> Hole h
-  Ctr c -> Ctr c
-  Var v -> Var v
-  App f x -> App f x
-  Lam a x -> Lam a x
-  Let a x y -> Let a x y
-  Case x xs -> Case x xs
+fixExpr = over rec id
 
 mapAnn :: (a -> b) -> Ann a l c -> Ann b l c
-mapAnn f (Annot e a) = Annot (mapExpr (mapAnn f) e) (f a)
+mapAnn f (Annot e a) = Annot (over rec (mapAnn f) e) (f a)
 
 paraAnn :: (Ann a l b -> Base c l b -> c) -> Ann a l b -> c
-paraAnn g (Annot e a) = g (Annot e a) (mapExpr (paraAnn g) e)
+paraAnn g (Annot e a) = g (Annot e a) (over rec (paraAnn g) e)
 
 cataAnn :: (a -> Base c l b -> c) -> Ann a l b -> c
 cataAnn = paraAnn . (. view ann)
@@ -204,16 +193,6 @@ cataAnn = paraAnn . (. view ann)
 -- }}}
 
 -- Lenses {{{
-
-rec :: Traversal' (Base c l b) c
-rec g = \case
-  Hole h -> pure $ Hole h
-  Ctr c -> pure $ Ctr c
-  Var v -> pure $ Var v
-  App f x -> App <$> g f <*> g x
-  Lam a x -> Lam a <$> g x
-  Let a x y -> Let a <$> g x <*> g y
-  Case x xs -> Case <$> g x <*> traverse (traverse g) xs
 
 holes' ::
   ( a ~ HasCtr l, a' ~ HasCtr l', a => a'
