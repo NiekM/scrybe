@@ -90,9 +90,8 @@ alt1 p q = (:|) <$> p <*> many (q *> p)
 class Parse a where
   parser :: Parser a
 
-parseUnsafe :: Parser a -> Text -> a
-parseUnsafe p = maybe undefined
-  (fromMaybe undefined . parseMaybe p) . parseMaybe lex
+lexParse :: Parser a -> Text -> Maybe a
+lexParse p t = parseMaybe lex t >>= parseMaybe p
 
 identifier :: Parser Text
 identifier = flip token Set.empty \case

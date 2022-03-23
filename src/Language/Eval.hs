@@ -149,9 +149,9 @@ visualize (xs, y) = pretty (as, b) where
 
 defs :: [Def]
 defs =
-  [ ("main", [], parseUnsafe parser "fix twice")
-  , ("twice", ["a"], parseUnsafe parser "Pair a a")
-  , ("fix", ["f"], parseUnsafe parser "f (fix f)")
+  [ ("main", [], fromMaybe undefined $ lexParse parser "fix twice")
+  , ("twice", ["a"], fromMaybe undefined $ lexParse parser "Pair a a")
+  , ("fix", ["f"], fromMaybe undefined $ lexParse parser "f (fix f)")
   ]
 
 steps :: GraphState -> ([GraphState], GraphState)

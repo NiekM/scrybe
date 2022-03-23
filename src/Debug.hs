@@ -7,11 +7,30 @@ module Debug where
 
 import Import
 import Language
-import Text.Megaparsec
+import TermGen
 import RIO.Text
+import System.IO.Unsafe
+import Prettyprinter
+import qualified RIO.Map as Map
 
-instance Parse a => IsString a where
- fromString t = fromMaybe (error "Parse failed") $
-   parseMaybe lex (pack t) >>= parseMaybe parser
+fromStr :: Parse a => String -> a
+fromStr = fromMaybe (error "Parse failed") . lexParse parser . pack
 
--- TODO: load in prelude and initial GenState for experimentation
+instance Parse (Expr l a) => IsString (Expr l a) where
+ fromString = fromStr
+
+prelude :: Module Void
+prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
+  case lexParse parser file of
+    Just x -> x
+    Nothing -> error "Could not parse prelude"
+
+genSt :: GenState
+genSt = mkGenState (fromModule prelude) EtaLong mempty
+
+instance (Pretty a, Pretty b) => Pretty (Map a b) where
+  pretty m = Prettyprinter.list $ Map.assocs m <&> \(k, x) ->
+    pretty k <> ":" <+> pretty x
+
+instance Pretty HoleCtx where
+  pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs

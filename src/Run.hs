@@ -9,24 +9,18 @@ import Prettyprinter
 import Data.Tree
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
-import Text.Megaparsec
 
--- TODO: use polytypes and skolemnization
-fromModule :: Module Void -> Environment
-fromModule m = flip Map.mapWithKey (functions m)
-  \x (_, t) -> (t, Set.singleton $ Func x)
-
-lexParse :: Parse a => Text -> RIO Application a
-lexParse t = case parseMaybe lex t >>= parseMaybe parser of
+syntax :: Parse a => Text -> RIO Application a
+syntax t = case lexParse parser t of
   Nothing -> logError "Parsing failed" >> exitFailure
   Just y -> return y
 
 runSyn :: String -> String -> String -> Technique -> RIO Application ()
 runSyn file sketch pre t = do
-  m <- lexParse =<< readFileUtf8 ("data/" <> file <> ".hs")
-  sk <- lexParse =<< readFileUtf8
+  m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
+  sk <- syntax =<< readFileUtf8
     ("data/examples/sketches/" <> sketch <> ".hs")
-  Sigs ss <- lexParse =<< readFileUtf8
+  Sigs ss <- syntax =<< readFileUtf8
     ("data/examples/preludes/" <> pre <> ".hs")
   let c = Map.fromList $ ss <&> \(MkSignature x _) -> (Func x, Just 1)
   let env' = Map.fromList $ ss <&> \(MkSignature x u) ->
