@@ -5,7 +5,7 @@ import Language.Syntax
 import qualified RIO.Map as Map
 
 -- | Split a type into its arguments and the result type.
-splitArgs :: Expr l b -> ([Expr l b], Expr l b)
+splitArgs :: Expr l v h -> ([Expr l v h], Expr l v h)
 splitArgs = unsnoc . unArrs
 
 -- | Uniquely number all holes in an expression.
@@ -13,24 +13,24 @@ number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
 
 -- | Extract extra information in an expression into a map.
-extract :: Ord b => Expr l (b, c) -> (Expr l b, Map b c)
+extract :: Ord h => Expr l v (h, c) -> (Expr l v h, Map h c)
 extract = over holes fst &&& Map.fromList . toListOf holes
 
 -- TODO: instantiation should also be able to introduce new type variables,
 -- e.g. by instantiating `id` to `forall a. List a -> List a`
-instantiate :: Map Var (Type Void) -> Poly -> Poly
+instantiate :: Map Var Type -> Poly -> Poly
 instantiate th (Poly fr ty) =
   Poly (filter (`notElem` Map.keys th) fr) (subst th ty)
 
 -- | Instantiate all quantified variables of a polytype with fresh variables.
-instantiateFresh :: FreshFree m => Poly -> m (Type Void)
+instantiateFresh :: FreshFree m => Poly -> m Type
 instantiateFresh (Poly xs t) = do
   th <- Map.fromList <$> forM xs \x -> (x,) . Var . freeId <$> fresh
   return $ subst th t
 
 -- | Eta expand all holes in a sketch.
 etaExpand :: (FreshVarId m, WithHoleCtxs s m, WithVariables s m) =>
-  Term Hole -> m (Term Hole)
+  Term Var Hole -> m (Term Var Hole)
 etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
   ctxs <- use holeCtxs
   case Map.lookup i ctxs of
@@ -50,7 +50,7 @@ etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
       return $ lams (varId . fst <$> xs) (Hole i)
 
 -- | All subexpressions, including the expression itself.
-dissect :: Expr l b -> [Expr l b]
+dissect :: Expr l v h -> [Expr l v h]
 dissect = paraExpr \e -> (e:) . \case
   Hole _ -> mempty
   Var _ -> mempty

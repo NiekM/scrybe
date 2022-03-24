@@ -44,8 +44,8 @@ freeId (MkFree n) = MkVar . fromString . ('t':) . show $ n
 
 -- Levels {{{
 
+-- TODO: do we need a Core language and a surface language?
 -- TODO: maybe add kinds?
--- TODO: term level might get extra parameters for e.g. type annotations
 -- TODO: maybe level should contain values (concrete evaluation results) as
 -- well as 'results' (as seen in Smyth)
 data Level = Type | Term | Pattern | Value | Lambda
@@ -101,45 +101,55 @@ type NoBind l =
 data Func a = Fix | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
 
-type family Rec (f :: Func Kind.Type) (l :: Level) b where
-  Rec 'Fix l b = Expr' 'Fix l b
-  Rec ('Base c) _ _ = c
-  Rec ('Ann a) l b = Annot (Expr' ('Ann a) l b) a
-
-type family VAR (l :: Level) where
-  VAR _ = Var
+type family Rec (f :: Func Kind.Type) (l :: Level) v h where
+  Rec 'Fix l v h = Expr' 'Fix l v h
+  Rec ('Base c) _ _ _ = c
+  Rec ('Ann a) l v h = Annot (Expr' ('Ann a) l v h) a
 
 -- }}}
 
--- TODO: do we need a Core language and a surface language?
-data Expr' (r :: Func Kind.Type) (l :: Level) b where
-  Hole :: b -> Expr' r l b
-  Ctr :: HasCtr l => Ctr -> Expr' r l b
-  Var :: HasVar l => VAR l -> Expr' r l b
-  App :: HasApp l => Rec r l b -> Rec r l b -> Expr' r l b
-  Lam :: HasLam l => VAR l -> Rec r l b -> Expr' r l b
-  Let :: HasLet l => VAR l -> Rec r l b -> Rec r l b -> Expr' r l b
-  Case :: HasCase l => Rec r l b -> [(Ctr, Rec r l b)] -> Expr' r l b
+-- | The type of expressions, generic in
+--
+-- r: the type of recursion, used to differentiate between base functors and
+-- their fixed point, as well as allowing recursive calls to be interleaved
+-- with annotations.
+--
+-- l: the level of the expression, containing both universe levels as well as
+-- different compiler stages. This parameter is used to determine which
+-- constructors are available.
+--
+-- v: the type of variables used in variable references as well as bindings.
+--
+-- h: the type of holes used in the expression.
+--
+data Expr' (r :: Func Kind.Type) (l :: Level) v h where
+  Hole :: h -> Expr' r l v h
+  Ctr :: HasCtr l => Ctr -> Expr' r l v h
+  Var :: HasVar l => v -> Expr' r l v h
+  App :: HasApp l => Rec r l v h -> Rec r l v h -> Expr' r l v h
+  Lam :: HasLam l => v -> Rec r l v h -> Expr' r l v h
+  Let :: HasLet l => v -> Rec r l v h -> Rec r l v h -> Expr' r l v h
+  Case :: HasCase l => Rec r l v h -> [(Ctr, Rec r l v h)] -> Expr' r l v h
 
 type Expr = Expr' 'Fix
 type Base a = Expr' ('Base a)
-type Ann a l b = Rec ('Ann a) l b
+type Ann a l v h = Rec ('Ann a) l v h
 
-deriving instance (Eq b, Eq (Rec r l b)) => Eq (Expr' r l b)
-deriving instance (Ord b, Ord (Rec r l b)) => Ord (Expr' r l b)
-deriving instance (Show b, Show (Rec r l b)) => Show (Expr' r l b)
+deriving instance (Eq v, Eq h, Eq (Rec r l v h)) => Eq (Expr' r l v h)
+deriving instance (Ord v, Ord h, Ord (Rec r l v h)) => Ord (Expr' r l v h)
+deriving instance (Show v, Show h, Show (Rec r l v h)) => Show (Expr' r l v h)
 
-pattern Arr :: () => HasArr l => Expr l b -> Expr l b -> Expr l b
+pattern Arr :: () => HasArr l => Expr l v h -> Expr l v h -> Expr l v h
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
-type Type = Expr 'Type
+type Type = Expr 'Type Var Void
 type Term = Expr 'Term
 type Pattern = Expr 'Pattern
 type Value = Expr 'Value Void
 
 -- Morphisms {{{
 
-rec :: Traversal (Expr' r l b) (Expr' r' l b) (Rec r l b) (Rec r' l b)
+rec :: Traversal (Expr' r l v h) (Expr' r' l v h) (Rec r l v h) (Rec r' l v h)
 rec go = \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
@@ -149,16 +159,16 @@ rec go = \case
   Let a x y -> Let a <$> go x <*> go y
   Case x xs -> Case <$> go x <*> traverse (traverse go) xs
 
-paraExpr :: (Expr l b -> Base c l b -> c) -> Expr l b -> c
+paraExpr :: (Expr l v h -> Base c l v h -> c) -> Expr l v h -> c
 paraExpr g e = g e (over rec (paraExpr g) e)
 
-cataExpr :: (Base c l b -> c) -> Expr l b -> c
+cataExpr :: (Base c l v h -> c) -> Expr l v h -> c
 cataExpr = paraExpr . const
 
-apoExpr :: (c -> Either (Expr l b) (Base c l b)) -> c -> Expr l b
+apoExpr :: (c -> Either (Expr l v h) (Base c l v h)) -> c -> Expr l v h
 apoExpr g e = either id (over rec (apoExpr g)) (g e)
 
-anaExpr :: (c -> Base c l b) -> c -> Expr l b
+anaExpr :: (c -> Base c l v h) -> c -> Expr l v h
 anaExpr = apoExpr . (return .)
 
 coerceExpr ::
@@ -168,7 +178,7 @@ coerceExpr ::
   , d ~ HasLam l, d' ~ HasLam l', d => d'
   , e ~ HasLet l, e' ~ HasLet l', e => e'
   , f ~ HasCase l, f' ~ HasCase l', f => f'
-  ) => Expr l y -> Expr l' y
+  ) => Expr l v h -> Expr l' v h
 coerceExpr = cataExpr \case
   Hole h -> Hole h
   Ctr c -> Ctr c
@@ -178,30 +188,23 @@ coerceExpr = cataExpr \case
   Let a x y -> Let a x y
   Case x xs -> Case x xs
 
-fixExpr :: Base (Expr l b) l b -> Expr l b
+fixExpr :: Base (Expr l v h) l v h -> Expr l v h
 fixExpr = over rec id
 
-mapAnn :: (a -> b) -> Ann a l c -> Ann b l c
+mapAnn :: (a -> b) -> Ann a l v h -> Ann b l v h
 mapAnn f (Annot e a) = Annot (over rec (mapAnn f) e) (f a)
 
-paraAnn :: (Ann a l b -> Base c l b -> c) -> Ann a l b -> c
+paraAnn :: (Ann a l v h -> Base c l v h -> c) -> Ann a l v h -> c
 paraAnn g (Annot e a) = g (Annot e a) (over rec (paraAnn g) e)
 
-cataAnn :: (a -> Base c l b -> c) -> Ann a l b -> c
+cataAnn :: (a -> Base c l v h -> c) -> Ann a l v h -> c
 cataAnn = paraAnn . (. view ann)
 
 -- }}}
 
 -- Lenses {{{
 
-holes' ::
-  ( a ~ HasCtr l, a' ~ HasCtr l', a => a'
-  , b ~ HasVar l, b' ~ HasVar l', b => b'
-  , c ~ HasApp l, c' ~ HasApp l', c => c'
-  , d ~ HasLam l, d' ~ HasLam l', d => d'
-  , e ~ HasLet l, e' ~ HasLet l', e => e'
-  , f ~ HasCase l, f' ~ HasCase l', f => f'
-  ) => Traversal (Expr l x) (Expr l' y) x (Expr l' y)
+holes' :: Traversal (Expr l v h) (Expr l v h') h (Expr l v h')
 holes' g = cataExpr \case
   Hole h -> g h
   Ctr c -> pure $ Ctr c
@@ -211,31 +214,29 @@ holes' g = cataExpr \case
   Let a x y -> Let a <$> x <*> y
   Case x xs -> Case <$> x <*> traverse sequenceA xs
 
-holes :: Traversal (Expr l b) (Expr l c) b c
+holes :: Traversal (Expr l v h) (Expr l v h') h h'
 holes = holes' . fmap (fmap Hole)
 
-free' :: (a ~ HasCtr l, a' ~ HasCtr l', a => a', NoBind l)
-  => NoBind l => Traversal (Expr l c) (Expr l' c) (VAR l) (Expr l' c)
+free' :: NoBind l => Traversal (Expr l v h) (Expr l v' h) v (Expr l v' h)
 free' g = cataExpr \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
   Var v -> g v
   App f x -> App <$> f <*> x
 
-free :: (a ~ HasCtr l, a' ~ HasCtr l', a => a', HasVar l', NoBind l)
-  => Traversal (Expr l c) (Expr l' c) (VAR l) (VAR l')
+free :: (NoBind l, HasVar l) => Traversal (Expr l v h) (Expr l v' h) v v'
 free = free' . fmap (fmap Var)
 
 -- }}}
 
 -- Substitution {{{
 
-subst :: (Ord (VAR l), expr ~ Expr l b) => Map (VAR l) expr -> expr -> expr
+subst :: (Ord v, expr ~ Expr l v h) => Map v expr -> expr -> expr
 subst th = cataExpr \case
   Var v | Just x <- Map.lookup v th -> x
   e -> fixExpr e
 
-fill :: (Ord b, expr ~ Expr l b) => Map b expr -> expr -> expr
+fill :: (Ord h, expr ~ Expr l v h) => Map h expr -> expr -> expr
 fill th = cataExpr \case
   Hole h | Just x <- Map.lookup h th -> x
   e -> fixExpr e
@@ -250,16 +251,16 @@ data Annot x a = Annot x a
 ann :: Lens' (Annot x a) a
 ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
 
-data Poly = Poly [Var] (Type Void)
+data Poly = Poly [Var] Type
   deriving (Eq, Ord, Show)
 
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
 
-data HoleCtx = HoleCtx (Type Void) (Map Var VarId)
+data HoleCtx = HoleCtx Type (Map Var VarId)
   deriving (Eq, Ord, Show)
 
-goal :: Lens' HoleCtx (Type Void)
+goal :: Lens' HoleCtx Type
 goal = lens (\(HoleCtx t _) -> t) \(HoleCtx _ vs) t -> HoleCtx t vs
 
 local :: Lens' HoleCtx (Map Var VarId)
@@ -270,10 +271,10 @@ class HasHoleCtxs a where
 
 -- TODO: what else do we need to track for local variables?
 -- Variable name, type, number of holes it appears in, number of occurrences
-data Variable = Variable Var (Type Void) Int Int
+data Variable = Variable Var Type Int Int
   deriving (Eq, Ord, Show)
 
-varType :: Lens' Variable (Type Void)
+varType :: Lens' Variable Type
 varType = lens (\(Variable _ t _ _) -> t) \(Variable x _ i n) t ->
   Variable x t i n
 
@@ -283,13 +284,13 @@ class HasVariables a where
 data Signature = MkSignature Var Poly
   deriving (Eq, Ord, Show)
 
-data Binding a = MkBinding Var (Term a)
+data Binding v h = MkBinding Var (Term v h)
   deriving (Eq, Ord, Show)
 
-data Datatype = MkDatatype Ctr [Var] [(Ctr, [Type Void])]
+data Datatype = MkDatatype Ctr [Var] [(Ctr, [Type])]
   deriving (Eq, Ord, Show)
 
-data Sketch = Sketch Var Poly (Term Unit)
+data Sketch = Sketch Var Poly (Term Var Unit)
   deriving (Eq, Ord, Show)
 
 newtype Sigs = Sigs [Signature]
@@ -303,14 +304,14 @@ constructors (MkDatatype d as cs) = cs <&> second \ts ->
 
 data Definition a
   = Signature Signature
-  | Binding (Binding a)
+  | Binding (Binding Var a)
   | Datatype Datatype
   deriving (Eq, Ord, Show)
 
 newtype Module a = Module [Definition a]
   deriving (Eq, Ord, Show)
 
-sepModule :: Module a -> ([Signature], [Binding a], [Datatype])
+sepModule :: Module a -> ([Signature], [Binding Var a], [Datatype])
 sepModule (Module ds) = foldr go mempty ds where
   go = \case
     Signature s -> over _1 (s:)
@@ -327,12 +328,12 @@ sigs (Module xs) = Map.fromList $ xs >>= \case
   Signature (MkSignature x t) -> [(x, t)]
   _ -> []
 
-binds :: Module a -> Map Var (Term a)
+binds :: Module a -> Map Var (Term Var a)
 binds (Module xs) = Map.fromList $ xs >>= \case
   Binding (MkBinding x t) -> [(x, t)]
   _ -> []
 
-functions :: Module a -> Map Var (Term a, Poly)
+functions :: Module a -> Map Var (Term Var a, Poly)
 functions m = Map.intersectionWith (,) (binds m) (sigs m)
 
 -- }}}
@@ -346,50 +347,50 @@ type WithVariables s m = (MonadState s m, HasVariables s)
 -- Helper functions {{{
 
 -- TODO: replace with more general infix function
-arrs :: (Foldable f, HasArr l) => f (Expr l b) -> Expr l b
+arrs :: (Foldable f, HasArr l) => f (Expr l v h) -> Expr l v h
 arrs = foldr1 Arr
 
-unArrs :: Expr l b -> NonEmpty (Expr l b)
+unArrs :: Expr l v h -> NonEmpty (Expr l v h)
 unArrs = \case
   Arr t u -> t `cons` unArrs u
   t -> pure t
 
-apps :: (Foldable f, HasApp l) => f (Expr l b) -> Expr l b
+apps :: (Foldable f, HasApp l) => f (Expr l v h) -> Expr l v h
 apps = foldl1 App
 
-unApps :: Expr l b -> NonEmpty (Expr l b)
+unApps :: Expr l v h -> NonEmpty (Expr l v h)
 unApps = reverse . go where
   go = \case
     App f x -> x `cons` go f
     e -> pure e
 
-lams :: (Foldable f, HasLam l) => f (VAR l) -> Expr l b -> Expr l b
+lams :: (Foldable f, HasLam l) => f v -> Expr l v h -> Expr l v h
 lams = flip (foldr Lam)
 
-unLams :: Expr l b -> ([VAR l], Expr l b)
+unLams :: Expr l v h -> ([v], Expr l v h)
 unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
 
-strip :: Ann a l b -> Expr l b
+strip :: Ann a l v h -> Expr l v h
 strip = cataAnn (const fixExpr)
 
-collect :: Ann a l b -> [Annot (Expr l b) a]
+collect :: Ann a l v h -> [Annot (Expr l v h) a]
 collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
 
 -- }}}
 
 -- Pretty printing {{{
 
-isArr :: Expr l b -> Bool
+isArr :: Expr l v h -> Bool
 isArr Arr {} = True
 isArr _ = False
 
-isLam :: Expr l b -> Bool
+isLam :: Expr l v h -> Bool
 isLam Lam {} = True
 isLam _ = False
 
-isApp :: Expr l b -> Bool
+isApp :: Expr l v h -> Bool
 isApp App {} = True
 isApp _ = False
 
@@ -409,7 +410,8 @@ instance Pretty Poly where
 instance (Pretty a, Pretty b) => Pretty (Annot a b) where
   pretty (Annot x t) = pretty x <+> "::" <+> pretty t
 
-instance (Pretty a, Pretty b) => Pretty (Expr' ('Ann a) 'Term b) where
+instance (Pretty a, Pretty v, Pretty h)
+  => Pretty (Expr' ('Ann a) 'Term v h) where
   pretty = \case
     Hole i -> braces $ pretty i
     Var x -> pretty x
@@ -421,7 +423,7 @@ instance (Pretty a, Pretty b) => Pretty (Expr' ('Ann a) 'Term b) where
       mconcat (intersperse "; " $ xs <&> \(p, a) ->
         pretty p <+> "->" <+> pretty a)
 
-instance Pretty b => Pretty (Expr l b) where
+instance (Pretty v, Pretty h) => Pretty (Expr l v h) where
   pretty = \case
     Hole i -> braces $ pretty i
     Var x -> pretty x
@@ -450,7 +452,7 @@ instance Pretty Datatype where
 instance Pretty Signature where
   pretty (MkSignature x t) = pretty x <+> "::" <+> pretty t
 
-instance Pretty a => Pretty (Binding a) where
+instance (Pretty v, Pretty h) => Pretty (Binding v h) where
   pretty (MkBinding x e) = sep (pretty x : fmap pretty as) <+> "=" <+> pretty b
     where (as, b) = unLams e
 

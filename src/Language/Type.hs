@@ -6,14 +6,14 @@ import Language.Syntax
 import Language.Utils
 import qualified RIO.Map as Map
 
-type Unify l a = Map Var (Expr l a)
+type Unify l v h = Map Var (Expr l v h)
 
 -- TODO: Add unit tests to test type unification, inference and checking
 
 -- | Unify two expressions, by checking if their holes can be filled such that
 -- they are equivalent.
-unify :: (Eq b, MonadFail m, HasVar l, NoBind l, expr ~ Expr l b) =>
-  expr -> expr -> m (Map (VAR l) expr)
+unify :: (Ord v, Eq h, MonadFail m, HasVar l, NoBind l, expr ~ Expr l v h) =>
+  expr -> expr -> m (Map v expr)
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
@@ -23,20 +23,20 @@ unify t u = case (t, u) of
   (_, Var a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
 
-occurs :: (Eq (VAR l), HasVar l, NoBind l) => VAR l -> Expr l b -> Bool
+occurs :: (Eq v, HasVar l, NoBind l) => v -> Expr l v h -> Bool
 occurs a tau = a `notElem` toListOf free tau
 
 -- NOTE: it seems that the left hand side of the composition should be the
 -- newer composition, in effect updating the old substitution according to the
 -- new ones
-compose :: (Ord (VAR l), th ~ Map (VAR l) (Expr l b)) => th -> th -> th
+compose :: (Ord v, th ~ Map v (Expr l v h)) => th -> th -> th
 compose sigma gamma = Map.unions
   [ subst sigma <$> gamma
   , Map.withoutKeys sigma (Map.keysSet gamma)
   ]
 
-unifies :: (Ord (VAR l), Eq b, MonadFail m, Foldable t, HasVar l, NoBind l) =>
-  expr ~ Expr l b => t (expr, expr) -> m (Map (VAR l) expr)
+unifies :: (Ord v, Eq h, MonadFail m, Foldable t, HasVar l, NoBind l) =>
+  expr ~ Expr l v h => t (expr, expr) -> m (Map v expr)
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)
@@ -44,8 +44,8 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
 
 -- TODO: move holeCtxs to Monad
 infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
-  (MonadReader (Module Void) m, WithVariables s m) => Term Unit ->
-  m (Ann (Type Void) 'Term Hole, Unify 'Type Void, Map Hole HoleCtx)
+  (MonadReader (Module Void) m, WithVariables s m) => Term Var Unit ->
+  m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
 infer expr = do
   m <- ask
   let cs = ctrs m
@@ -98,8 +98,8 @@ infer expr = do
 
 -- TODO: maybe this should return a sketch along with a type and unification
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
-  MonadReader (Module Void) m, WithVariables s m) => Term Unit -> Type Void ->
-  m (Ann (Type Void) 'Term Hole, Unify 'Type Void, Map Hole HoleCtx)
+  MonadReader (Module Void) m, WithVariables s m) => Term Var Unit -> Type ->
+  m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
 check e t = do
   (e'@(Annot _ u), th1, ctx1) <- infer e
   th2 <- unify t u

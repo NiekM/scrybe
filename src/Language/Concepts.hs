@@ -63,7 +63,7 @@ restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 -- TODO: take into account Poly variables
 -- TODO: actually gather concepts from variables/constructors/language
 -- constructs
-fromSketch :: Module Void -> Ann (Type Void) 'Term a ->
+fromSketch :: Module Void -> Ann Type 'Term Var a ->
   (Environment, MultiSet Concept)
 fromSketch m e = (Map.fromList xs, fromList $ Func . view _1 <$> xs) where
   fs = Map.keys . functions $ m

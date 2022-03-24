@@ -10,18 +10,19 @@ import Prettyprinter
 import Language.Parser
 
 class HasEnv a where
-  env :: Lens' a (Map Var (Term Void))
+  env :: Lens' a (Map Var (Term Var Void))
 
-instance HasEnv (Map Var (Term Void)) where
+instance HasEnv (Map Var (Term Var Void)) where
   env = id
 
-eval' :: Map Var (Term Void) -> Term Void -> Maybe (Term Void)
+eval' :: Map Var (Term Var Void) -> Term Var Void -> Maybe (Term Var Void)
 eval' m e = evalStateT (eval e) m
 
 -- | A simple evaluator/normalizer for expressions that leaves subexpressions
 -- as if when they cannot be evaluated further.
 -- TODO: add alpha renaming
-eval :: (MonadFail m, MonadState s m, HasEnv s) => Term Void -> m (Term Void)
+eval :: (MonadFail m, MonadState s m, HasEnv s) =>
+  Term Var Void -> m (Term Var Void)
 eval = \case
   Hole h -> return $ Hole h
   Var x -> do
@@ -51,7 +52,7 @@ eval = \case
         Nothing -> fail "Pattern match failure: non-exhaustive pattern"
       _ -> fail "Pattern match failure: not a constructor"
 
-match :: Pattern Void -> Term a -> Maybe (Map Var (Term a))
+match :: Pattern Var Void -> Term Var a -> Maybe (Map Var (Term Var a))
 match p e = case p of
   Hole h -> absurd h
   Var a -> return $ Map.singleton a e
@@ -61,9 +62,9 @@ match p e = case p of
   _ -> fail "Pattern match failed"
 
 type Address = Int
-type Body = Expr 'Term Void
+type Body = Expr 'Term Var Void
 
-type Node = Expr' ('Base Address) 'Term Void
+type Node = Expr' ('Base Address) 'Term Var Void
 
 type Stack = [Address]
 type Heap = Map Address Node
@@ -122,7 +123,7 @@ compile program = GraphState { stack, heap, global, funs } where
   stack = [Map.findWithDefault (error "Oh no") "main" global]
   (heap, global, funs) = initialHeap program
 
-fromAddress :: Heap -> Address -> Maybe (Term Void)
+fromAddress :: Heap -> Address -> Maybe (Term Var Void)
 fromAddress h i = Map.lookup i h >>= \case
   App x y -> App <$> fromAddress h x <*> fromAddress h y
   Var v -> return $ Var v
@@ -134,7 +135,7 @@ allocate (name, _, _) heap =
   (heap', Map.singleton name address)
     where (heap', address) = alloc heap (Var name)
 
-toExpr :: GraphState -> NonEmpty (Term Void)
+toExpr :: GraphState -> NonEmpty (Term Var Void)
 toExpr GraphState { stack, heap } =
   case stack <&> fromMaybe undefined . fromAddress heap of
     [] -> error "Mmm"
