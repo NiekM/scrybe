@@ -6,7 +6,7 @@ import Language.Syntax
 import Language.Utils
 import qualified RIO.Map as Map
 
-type Unify l v h = Map Var (Expr l v h)
+type Unify l v h = Map v (Expr l v h)
 
 -- TODO: Add unit tests to test type unification, inference and checking
 
@@ -29,12 +29,14 @@ occurs a tau = a `notElem` toListOf free tau
 -- NOTE: it seems that the left hand side of the composition should be the
 -- newer composition, in effect updating the old substitution according to the
 -- new ones
-compose :: (Ord v, th ~ Map v (Expr l v h)) => th -> th -> th
+-- | Compose two non-conflicting unifications.
+compose :: (Ord v, th ~ Unify l v h) => th -> th -> th
 compose sigma gamma = Map.unions
   [ subst sigma <$> gamma
   , Map.withoutKeys sigma (Map.keysSet gamma)
   ]
 
+-- | Unify multiple expressions.
 unifies :: (Ord v, Eq h, MonadFail m, Foldable t, HasVar l, NoBind l) =>
   expr ~ Expr l v h => t (expr, expr) -> m (Map v expr)
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do

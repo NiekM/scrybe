@@ -196,7 +196,7 @@ instance (Parse v, Parse h) => Parse (Expr 'Type v h) where
 
 instance Parse Poly where
   parser = Poly <$ key "forall" <*> many parser <* op "." <*> parser
-    <|> Poly [] <$> parser
+    <|> poly <$> parser
 
 instance Parse Datatype where
   parser = MkDatatype <$ key "data" <*> parser <*> many parser <*> choice

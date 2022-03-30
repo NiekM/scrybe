@@ -18,7 +18,7 @@ fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . pack
 
 instance Parse (Expr l v h) => IsString (Expr l v h) where
- fromString = fromStr
+  fromString = fromStr
 
 prelude :: Module Void
 prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
@@ -30,7 +30,7 @@ genSt :: GenState
 genSt = mkGenState (fromModule prelude) EtaLong mempty
 
 instance (Pretty a, Pretty b) => Pretty (Map a b) where
-  pretty m = Prettyprinter.list $ Map.assocs m <&> \(k, x) ->
+  pretty m = align . Prettyprinter.list $ Map.assocs m <&> \(k, x) ->
     pretty k <> ":" <+> pretty x
 
 instance Pretty a => Pretty (Set a) where

@@ -254,6 +254,10 @@ ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
 data Poly = Poly [Var] Type
   deriving (Eq, Ord, Show)
 
+-- | Turn a monotype into a polytype by quantifying all its free variables.
+poly :: Type -> Poly
+poly t = Poly (nubOrd $ toListOf free t) t
+
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
 
