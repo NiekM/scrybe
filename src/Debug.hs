@@ -38,3 +38,8 @@ instance Pretty a => Pretty (Set a) where
 
 instance Pretty HoleCtx where
   pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs
+
+instance Pretty Concept
+
+tryGen :: Monad m => GenT m a -> m a
+tryGen x = evalGenT x prelude genSt

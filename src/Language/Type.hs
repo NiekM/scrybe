@@ -44,6 +44,17 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th1 th0
 
+-- | Try to combine possibly conflicting unifications.
+combine :: (Ord v, Eq h, MonadFail m, HasVar l, NoBind l, th ~ Unify l v h) =>
+  th -> th -> m th
+combine th1 th2 = foldr (\y z -> z >>= go y)
+  (return $ subst th1 <$> th2) $ Map.assocs th1 where
+    go (x, t) th = case Map.lookup x th of
+      Nothing -> return $ Map.insert x t th
+      Just u -> do
+        th' <- unify t u
+        combine th' th
+
 -- TODO: move holeCtxs to Monad
 infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
   (MonadReader (Module Void) m, WithVariables s m) => Term Var Unit ->
