@@ -15,19 +15,22 @@ syntax t = case lexParse parser t of
   Nothing -> logError "Parsing failed" >> exitFailure
   Just y -> return y
 
-climb :: (a -> Doc ann) -> (a -> Doc ann) -> [Tree a] -> RIO Application [a]
-climb p q xs = do
+climb :: (a ~ (Hole, Ref, Term Var Hole, Refs)) =>
+  [Tree a] -> RIO Application [a]
+climb xs = do
   let n = (2+) . length . show $ length xs
-  for_ (zip [0 :: Int ..] xs) \(i, Node y _) ->
-    logInfo . display $ Prettyprinter.fill n (pretty i <> ":") <+> p y
+  for_ (zip [0 :: Int ..] xs) \(i, Node (h, Ref e th _, _, _) _) ->
+    logInfo . display $ Prettyprinter.fill n (pretty i <> ":") <+>
+      pretty h <+> "|->" <+> pretty e <> if null th then "" else " ---" <+>
+        tupled (Map.assocs th <&> \(k, x) -> pretty k <+> "|->" <> pretty x)
   l <- liftIO getLine
   case readMaybe l >>= \i -> preview (ix i) xs of
     Nothing -> logInfo "Done..." >> return []
     Just (Node y ys) -> do
       logInfo ""
-      logInfo . display $ q y
+      logInfo . display . pretty $ view _3 y
       logInfo ""
-      (y:) <$> climb p q ys
+      (y:) <$> climb ys
 
 interactive :: String -> String -> String -> Technique -> RIO Application ()
 interactive file sketch model t = do
@@ -46,13 +49,7 @@ interactive file sketch model t = do
   logInfo ""
   logInfo $ "Technique: " <> displayShow t
   let xs = runGenT (init' sk) m (mkGenState env' t c)
-  let syn = xs <&> \(x, g) -> fst <$> runGenT (genTree step' x) m g
-  _ <- climb
-    (\(h, Ref e th _, _, _) -> pretty h <+> "|->" <+> pretty e <>
-      if null th then "" else " ---" <+>
-        tupled (Map.assocs th <&> \(k, x) -> pretty k <+> "|->" <> pretty x))
-    (\(_, _, e, _) -> pretty e)
-    syn
+  _ <- climb $ xs <&> \(x, g) -> fst <$> runGenT (genTree step' x) m g
   logInfo ""
 
 runSyn :: String -> String -> String -> Technique -> RIO Application ()
