@@ -52,23 +52,21 @@ globals' = do
     let u = subst (Var <$> Map.fromList th) p
     return (x, Poly (snd <$> th) u, c)
 
-holeVars :: (WithVariables s m, WithHoleCtxs s m) =>
-  m (Map Hole (Type, Map Var Type))
-holeVars = do
+holeVars :: WithVariables s m =>
+  Map Hole HoleCtx -> m (Map Hole (Type, Map Var Type))
+holeVars ctxs = do
   vs <- use variables
-  ctxs <- use holeCtxs
-  for ctxs \(HoleCtx t ids) -> do
-    let vars = ids <&> \i -> case Map.lookup i vs of
-          Nothing -> error "Missing VarId: this should never happen"
-          Just (Variable _ u _ _) -> u
-    return (t, vars)
+  for ctxs \(HoleCtx t ids) ->
+    return . (t,) $ ids <&> \i -> case Map.lookup i vs of
+      Nothing -> error "Missing VarId: this should never happen"
+      Just (Variable _ u _ _) -> u
 
-refinements :: (FreshFree m, WithEnvironment s m, WithVariables s m) =>
- WithHoleCtxs s m => m Refs
-refinements = do
+refs :: (FreshFree m, WithEnvironment s m) =>
+  Type -> Map Var Type -> m [Ref]
+refs t vs = do
   gs <- globals'
-  holeVars <&> fmap \(t, vs) -> do
-    let ls = Map.assocs vs <&> \(a, u) -> (a, Poly [] u, Set.empty)
+  let ls = Map.assocs vs <&> \(a, u) -> (a, Poly [] u, Set.empty)
+  return do
     (x, Poly as u, cs) <- gs <> ls
     let (args, res) = splitArgs u
     case unify res t of
@@ -84,8 +82,8 @@ refinements = do
 
 pick' :: (FreshFree m, FreshHole m, FreshVarId m)
   => (WithEnvironment s m, WithVariables s m, WithHoleCtxs s m)
-  => Hole -> Ref -> m (Term Var Hole)
-pick' h (Ref e th _cs) = do
+  => Hole -> Ref -> Refs -> m (Term Var Hole, Refs)
+pick' h (Ref e th _cs) rss = do
   -- Select the holeCtx and remove it from holeCtxs
   applySubst th
   ctxs <- use holeCtxs
@@ -94,24 +92,31 @@ pick' h (Ref e th _cs) = do
         Just x -> x
   modifying holeCtxs $ Map.delete h
   -- Process and etaExpand refinement
-  etaExpand =<< forOf holes e \u -> introduceHole (set goal u ctx)
+  x <- etaExpand =<< forOf holes e \u -> introduceHole (set goal u ctx)
+  let hs = Set.fromList $ toListOf holes x
+  ctxs' <- flip Map.restrictKeys hs <$> use holeCtxs
+  rss' <- traverse (uncurry refs) =<< holeVars ctxs'
+  let rss'' = mapMaybe (restrictRef th) <$> Map.delete h rss
+  return (x, rss' <> rss'')
 
-next' :: Term Var Hole -> GenT [] (Hole, Ref, Term Var Hole)
-next' e = do
-  (h', rs') <- mfold . Map.assocs =<< refinements
-  r' <- mfold rs'
-  x <- pick' h' r'
-  return (h', r', fill (Map.singleton h' x) e)
+next' :: Term Var Hole -> Refs
+  -> GenT [] (Hole, Ref, Term Var Hole, Refs)
+next' e rss = do
+  (h, rs) <- mfold . Map.assocs $ rss
+  r <- mfold rs
+  (x, rss') <- pick' h r rss
+  return (h, r, fill (Map.singleton h x) e, rss')
 
-init' :: Sketch -> GenT [] (Hole, Ref, Term Var Hole)
+init' :: Sketch -> GenT [] (Hole, Ref, Term Var Hole, Refs)
 init' (Sketch _ (Poly _ t) e) = do
   (expr, _, ctx) <- check e t
   assign holeCtxs ctx
   x <- postProcess (strip expr)
-  next' x
+  use holeCtxs >>= holeVars >>= traverse (uncurry refs) >>= next' x
 
-step' :: (Hole, Ref, Term Var Hole) -> GenT [] (Hole, Ref, Term Var Hole)
-step' (_, _, e) = next' e
+step' :: (Hole, Ref, Term Var Hole, Refs)
+  -> GenT [] (Hole, Ref, Term Var Hole, Refs)
+step' (_, _, e, rss) = next' e rss
 
 -- }}}
 

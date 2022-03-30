@@ -48,10 +48,10 @@ interactive file sketch model t = do
   let xs = runGenT (init' sk) m (mkGenState env' t c)
   let syn = xs <&> \(x, g) -> fst <$> runGenT (genTree step' x) m g
   _ <- climb
-    (\(h, Ref e th _, _) -> pretty h <+> "|->" <+> pretty e <>
+    (\(h, Ref e th _, _, _) -> pretty h <+> "|->" <+> pretty e <>
       if null th then "" else " ---" <+>
         tupled (Map.assocs th <&> \(k, x) -> pretty k <+> "|->" <> pretty x))
-    (\(_, _, e) -> pretty e)
+    (\(_, _, e, _) -> pretty e)
     syn
   logInfo ""
 
