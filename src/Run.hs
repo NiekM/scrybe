@@ -43,8 +43,6 @@ readFiles file sketch model = do
   case alphaEq t u of
     Nothing -> fail "Model and sketch signature do not match."
     Just _ -> return ()
-  -- TODO: typecheck the model solution against the sketches type rather than
-  -- the model solution type, but check that their types are alpha equivalent.
   -- TODO: allow calling check without requiring a technique and such.
   let g = mkGenState (fromModule m) EtaLong mempty
   (a, _, _) <- evalGenT (check b t) m g

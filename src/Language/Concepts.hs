@@ -52,7 +52,6 @@ data Concept
 
 type Environment = Map Var (Poly, Set Concept)
 
--- TODO: use polytypes and skolemnization
 fromModule :: Module Void -> Environment
 fromModule m = flip Map.mapWithKey (functions m)
   \x (_, t) -> (t, Set.singleton $ Func x)
@@ -60,7 +59,6 @@ fromModule m = flip Map.mapWithKey (functions m)
 restrict :: Set Concept -> Environment -> Environment
 restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 
--- TODO: take into account Poly variables
 -- TODO: actually gather concepts from variables/constructors/language
 -- constructs
 fromSketch :: Module Void -> Ann Type 'Term Var a ->

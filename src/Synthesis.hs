@@ -10,7 +10,6 @@ import TermGen
 -- and compute the GenState
 init :: Sketch -> GenT Maybe (Term Var Hole)
 init (Sketch _ t e) = do
-  -- TODO: instead of ignoring the type variables, skolemnize them
   (expr, _, ctx) <- check e t
   assign holeCtxs ctx
   postProcess (strip expr)
@@ -75,10 +74,6 @@ refs t vs = do
         let e = apps (Var x :| fmap (Hole . subst th) args)
         let th' = Map.withoutKeys th $ Set.fromList as
         [Ref e th' cs]
-
--- TODO: update Refs instead of recomputing:
--- - generate possible refinements for new holes
--- - filter refinements based on concepts and type instantiations
 
 pick' :: (FreshFree m, FreshHole m, FreshVarId m)
   => (WithEnvironment s m, WithVariables s m, WithHoleCtxs s m)
