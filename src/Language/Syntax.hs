@@ -98,14 +98,6 @@ type NoBind l =
   , HasLet' l ~ 'False
   )
 
-data Func a = Fix | Base a | Ann a
-  deriving (Eq, Ord, Show, Read)
-
-type family Rec (f :: Func Kind.Type) (l :: Level) v h where
-  Rec 'Fix l v h = Expr' 'Fix l v h
-  Rec ('Base c) _ _ _ = c
-  Rec ('Ann a) l v h = Annot (Expr' ('Ann a) l v h) a
-
 -- }}}
 
 -- | The type of expressions, generic in
@@ -131,9 +123,23 @@ data Expr' (r :: Func Kind.Type) (l :: Level) v h where
   Let :: HasLet l => v -> Rec r l v h -> Rec r l v h -> Expr' r l v h
   Case :: HasCase l => Rec r l v h -> [(Ctr, Rec r l v h)] -> Expr' r l v h
 
+data Func a = Fix | Base a | Ann a
+  deriving (Eq, Ord, Show, Read)
+
+-- TODO: perhaps we should remove Fix and just have Ann, as it would make
+-- things much simpler with generalizing functions, but it would be slightly
+-- less efficient. For optional annotations, it might be better to have an
+-- actual Ann constructor in Expr', as well as some functions converting from
+-- `Ann a l v h -> Expr' ('Annotate l a) v h` and
+-- `Expr' ('Annotate l a) v h -> Ann (Maybe a) l v h`.
+type family Rec (f :: Func Kind.Type) (l :: Level) v h where
+  Rec 'Fix l v h = Expr l v h
+  Rec ('Base c) _ _ _ = c
+  Rec ('Ann a) l v h = Ann a l v h
+
 type Expr = Expr' 'Fix
 type Base a = Expr' ('Base a)
-type Ann a l v h = Rec ('Ann a) l v h
+type Ann a l v h = Annot (Expr' ('Ann a) l v h) a
 
 deriving instance (Eq v, Eq h, Eq (Rec r l v h)) => Eq (Expr' r l v h)
 deriving instance (Ord v, Ord h, Ord (Rec r l v h)) => Ord (Expr' r l v h)
@@ -411,10 +417,17 @@ instance Pretty Poly where
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
-instance (Pretty a, Pretty b) => Pretty (Annot a b) where
+instance (Pretty a, Pretty (Annot a b)) => Pretty (Annot a (Maybe b)) where
+  pretty (Annot x Nothing) = pretty x
+  pretty (Annot x (Just a)) = pretty $ Annot x a
+
+instance Pretty a => Pretty (Annot a Type) where
   pretty (Annot x t) = pretty x <+> "::" <+> pretty t
 
-instance (Pretty a, Pretty v, Pretty h)
+instance Pretty a => Pretty (Annot a Text) where
+  pretty (Annot x p) = "{-#" <+> pretty p <+> "#-}" <+> pretty x
+
+instance (Pretty (Ann a 'Term v h), Pretty v, Pretty h)
   => Pretty (Expr' ('Ann a) 'Term v h) where
   pretty = \case
     Hole i -> braces $ pretty i
@@ -462,7 +475,7 @@ instance (Pretty v, Pretty h) => Pretty (Binding v h) where
 
 instance Pretty Sketch where
   pretty (Sketch x s b) = vsep
-    [pretty x <+> "::" <+> pretty s, pretty x <+> "=" <+> pretty b]
+    [pretty $ MkSignature x s, pretty $ MkBinding x b]
 
 instance Pretty a => Pretty (Definition a) where
   pretty = \case

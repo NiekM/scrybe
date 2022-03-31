@@ -56,6 +56,7 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
         combine th' th
 
 -- TODO: move holeCtxs to Monad
+-- TODO: implement as a catamorphism?
 infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
   (MonadReader (Module Void) m, WithVariables s m) => Term Var Unit ->
   m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
@@ -109,7 +110,8 @@ infer expr = do
   (e, th, ctx) <- go Map.empty expr
   return (mapAnn (subst th) e, th, ctx)
 
--- TODO: maybe this should return a sketch along with a type and unification
+-- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
+-- partially annotated expressions.
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
   MonadReader (Module Void) m, WithVariables s m) => Term Var Unit -> Type ->
   m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)

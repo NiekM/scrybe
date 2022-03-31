@@ -86,6 +86,9 @@ foldr = flip foldList
 map :: (a -> b) -> List a -> List b
 map f = foldList [] (\x -> Cons (f x))
 
+length :: List a -> Nat
+length = foldList Zero \x r -> Succ r
+
 data Pair a b = Pair a b
 
 pair :: a -> b -> Pair a b

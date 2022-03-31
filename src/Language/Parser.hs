@@ -194,6 +194,9 @@ instance (Parse v, Parse h) => Parse (Expr 'Term v h) where
 instance (Parse v, Parse h) => Parse (Expr 'Type v h) where
   parser = arrs <$> alt1 (brackets Round parser <|> parseApps) (op "->")
 
+instance Parse a => Parse (Annot a Type) where
+  parser = Annot <$> parser <* op "::" <*> parser
+
 instance Parse Poly where
   parser = Poly <$ key "forall" <*> many parser <* op "." <*> parser
     <|> poly <$> parser

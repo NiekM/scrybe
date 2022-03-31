@@ -98,5 +98,6 @@ run = do
   runSyn "prelude" "stutter" "stutter" EtaLong
   -- TODO: allow ignoring variables
   runSyn "prelude" "length" "length" EtaLong
-  interactive "prelude" "map_eta" "map_eta" EtaLong
+  -- interactive "prelude" "map_eta" "map_eta" EtaLong
+  interactive "prelude" "length" "length" EtaLong
   -- logInfo "Finished!"
