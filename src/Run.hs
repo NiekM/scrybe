@@ -59,9 +59,7 @@ runSyn file sketch model t = do
     ("data/examples/sketch/" <> sketch <> ".hs")
   Sketch _ (Poly _ u) b <- syntax =<< readFileUtf8
     ("data/examples/model/" <> model <> ".hs")
-  a <- case evalGenT (check b u) m (mkGenState (fromModule m) t mempty) of
-    Nothing -> logError "Model solution error" >> exitFailure
-    Just (x, _, _) -> return x
+  (a, _, _) <- evalGenT (check b u) m (mkGenState (fromModule m) t mempty)
   let (env', c) = fromSketch m a
   logInfo "Sketch:"
   logInfo ""
@@ -86,18 +84,27 @@ runSyn file sketch model t = do
           --           <$> Map.assocs local)
   logInfo ""
 
+runSyn' :: Technique -> String -> RIO Application ()
+runSyn' t s = runSyn "prelude" s s t
+
 run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  runSyn "prelude" "compose" "compose" EtaLong
-  runSyn "prelude" "flip" "flip" EtaLong
-  runSyn "prelude" "map_eta" "map_eta" EtaLong
-  runSyn "prelude" "map_pointfree" "map_pointfree" PointFree
-  -- TODO: add simple testing to differentiate stutter from idList
-  runSyn "prelude" "stutter" "stutter" EtaLong
-  -- TODO: allow ignoring variables
-  runSyn "prelude" "length" "length" EtaLong
-  -- interactive "prelude" "map_eta" "map_eta" EtaLong
+  traverse_ (runSyn' EtaLong)
+    [ "compose"
+    , "flip"
+    , "map"
+    -- TODO: add simple testing to differentiate stutter from idList
+    , "stutter"
+    -- TODO: allow ignoring variables
+    , "length"
+    , "append"
+    , "replicate"
+    -- TODO: restrict search space more, e.g. by only allowing pattern matching
+    -- on variables
+    -- , "compareNat"
+    -- , "takeWhile"
+    ]
+  -- runSyn' "map_pointfree" PointFree
   interactive "prelude" "length" "length" EtaLong
-  -- logInfo "Finished!"

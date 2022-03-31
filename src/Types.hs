@@ -4,9 +4,10 @@ import RIO
 import RIO.Process
 
 -- | Command line arguments
-data Options = Options
-  { optionsVerbose :: !Bool
-  }
+newtype Options = Options { optionsVerbose :: Bool }
+-- data Options = Options
+--   { optionsVerbose :: !Bool
+--   }
 
 data Application = Application
   { appLogFunc :: !LogFunc
@@ -18,3 +19,5 @@ instance HasLogFunc Application where
   logFuncL = lens appLogFunc \x y -> x { appLogFunc = y }
 instance HasProcessContext Application where
   processContextL = lens appProcessContext \x y -> x { appProcessContext = y }
+instance MonadFail (RIO Application) where
+  fail s = logInfo (displayShow s) >> exitFailure
