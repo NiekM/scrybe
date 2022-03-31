@@ -1,2 +1,2 @@
-flip :: (A -> B -> C) -> B -> A -> C
+flip :: (a -> b -> c) -> b -> a -> c
 flip = { }

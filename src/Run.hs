@@ -12,7 +12,7 @@ import System.IO
 
 syntax :: Parse a => Text -> RIO Application a
 syntax t = case lexParse parser t of
-  Nothing -> logError "Parsing failed" >> exitFailure
+  Nothing -> fail "Parsing failed"
   Just y -> return y
 
 climb :: (a ~ (Hole, Ref, Term Var Hole, Refs)) =>
@@ -32,16 +32,27 @@ climb xs = do
       logInfo ""
       (y:) <$> climb ys
 
+readFiles :: String -> String -> String ->
+  RIO Application (Module Void, Sketch, Ann Type 'Term Var Hole)
+readFiles file sketch model = do
+  m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
+  sk@(Sketch _ t _) <- syntax =<< readFileUtf8
+    ("data/examples/sketch/" <> sketch <> ".hs")
+  Sketch _ u b <- syntax =<< readFileUtf8
+    ("data/examples/model/" <> model <> ".hs")
+  case alphaEq t u of
+    Nothing -> fail "Model and sketch signature do not match."
+    Just _ -> return ()
+  -- TODO: typecheck the model solution against the sketches type rather than
+  -- the model solution type, but check that their types are alpha equivalent.
+  -- TODO: allow calling check without requiring a technique and such.
+  let g = mkGenState (fromModule m) EtaLong mempty
+  (a, _, _) <- evalGenT (check b t) m g
+  return (m, sk, a)
+
 interactive :: String -> String -> String -> Technique -> RIO Application ()
 interactive file sketch model t = do
-  m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
-  sk <- syntax =<< readFileUtf8
-    ("data/examples/sketch/" <> sketch <> ".hs")
-  Sketch _ (Poly _ u) b <- syntax =<< readFileUtf8
-    ("data/examples/model/" <> model <> ".hs")
-  a <- case evalGenT (check b u) m (mkGenState (fromModule m) t mempty) of
-    Nothing -> logError "Model solution error" >> exitFailure
-    Just (x, _, _) -> return x
+  (m, sk, a) <- readFiles file sketch model
   let (env', c) = fromSketch m a
   logInfo "Sketch:"
   logInfo ""
@@ -54,12 +65,7 @@ interactive file sketch model t = do
 
 runSyn :: String -> String -> String -> Technique -> RIO Application ()
 runSyn file sketch model t = do
-  m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
-  sk <- syntax =<< readFileUtf8
-    ("data/examples/sketch/" <> sketch <> ".hs")
-  Sketch _ (Poly _ u) b <- syntax =<< readFileUtf8
-    ("data/examples/model/" <> model <> ".hs")
-  (a, _, _) <- evalGenT (check b u) m (mkGenState (fromModule m) t mempty)
+  (m, sk, a) <- readFiles file sketch model
   let (env', c) = fromSketch m a
   logInfo "Sketch:"
   logInfo ""

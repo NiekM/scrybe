@@ -1,2 +1,2 @@
-length :: List A -> Nat
+length :: List a -> Nat
 length = { }

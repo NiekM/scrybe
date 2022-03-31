@@ -1,2 +1,2 @@
-replicate :: Nat -> A -> List A
+replicate :: Nat -> b -> List b
 replicate = { }

@@ -113,11 +113,11 @@ infer expr = do
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
-  MonadReader (Module Void) m, WithVariables s m) => Term Var Unit -> Type ->
+  MonadReader (Module Void) m, WithVariables s m) => Term Var Unit -> Poly ->
   m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
-check e t = do
+check e p = do
   (e'@(Annot _ u), th1, ctx1) <- infer e
-  th2 <- unify t u
+  th2 <- unify (freeze p) u
   let th3 = compose th2 th1
   let ctx2 = over goal (subst th3) <$> ctx1
   modifying variables . fmap $ over varType (subst th3)

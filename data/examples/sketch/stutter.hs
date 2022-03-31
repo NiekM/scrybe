@@ -1,2 +1,2 @@
-stutter :: List A -> List A
+stutter :: List a -> List a
 stutter = { }

@@ -1,2 +1,2 @@
-takeWhile :: (A -> Bool) -> List A -> List A
+takeWhile :: (a -> Bool) -> List a -> List a
 takeWhile = { }

@@ -26,6 +26,9 @@ newtype VarId = MkVarId Int
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (Num, Pretty)
 
+-- NOTE: we assume that variables are always lowercase and constructors are
+-- always uppercase.
+
 newtype Var = MkVar Text
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (IsString, Pretty)
@@ -263,6 +266,21 @@ data Poly = Poly [Var] Type
 -- | Turn a monotype into a polytype by quantifying all its free variables.
 poly :: Type -> Poly
 poly t = Poly (nubOrd $ toListOf free t) t
+
+alphaEq :: Poly -> Poly -> Maybe (Map Var Var)
+alphaEq (Poly as t) (Poly bs u) = do
+  let cs = filter (`elem` as) . nubOrd $ toListOf free t
+  let th = Map.fromList $ zip bs cs
+  guard $ t == subst (Var <$> th) u
+  return th
+
+-- TODO: replace freezing with something more reasonable
+-- | Turn a polytype into a monotype by turning all quantified variables in
+-- constructors of the same name.
+freeze :: Poly -> Type
+freeze (Poly as t) = flip cataExpr t \case
+  Var v | v `elem` as, MkVar c <- v -> Ctr (MkCtr c)
+  e -> fixExpr e
 
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)

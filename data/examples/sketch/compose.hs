@@ -1,2 +1,2 @@
-compose :: (B -> C) -> (A -> B) -> (A -> C)
+compose :: (b -> c) -> (a -> b) -> (a -> c)
 compose = { }

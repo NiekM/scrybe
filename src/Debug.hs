@@ -17,8 +17,8 @@ import qualified RIO.Set as Set
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . pack
 
-instance Parse (Expr l v h) => IsString (Expr l v h) where
-  fromString = fromStr
+instance Parse (Expr l v h) => IsString (Expr l v h) where fromString = fromStr
+instance IsString Poly where fromString = fromStr
 
 prelude :: Module Void
 prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
