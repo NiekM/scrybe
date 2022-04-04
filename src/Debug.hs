@@ -31,15 +31,13 @@ genSt = mkGenState (fromModule prelude) EtaLong mempty
 
 instance (Pretty a, Pretty b) => Pretty (Map a b) where
   pretty m = align . Prettyprinter.list $ Map.assocs m <&> \(k, x) ->
-    pretty k <> ":" <+> pretty x
+    pretty k <> ":" <+> align (pretty x)
 
 instance Pretty a => Pretty (Set a) where
   pretty = pretty . Set.toList
 
 instance Pretty HoleCtx where
   pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs
-
-instance Pretty Concept
 
 tryGen :: Monad m => GenT m a -> m a
 tryGen x = evalGenT x prelude genSt

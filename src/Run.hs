@@ -103,8 +103,8 @@ run = do
     , "stutter"
     -- TODO: allow ignoring variables
     , "length"
-    , "append"
-    , "replicate"
+    -- , "append"
+    -- , "replicate"
     -- TODO: restrict search space more, e.g. by only allowing pattern matching
     -- on variables
     -- , "compareNat"

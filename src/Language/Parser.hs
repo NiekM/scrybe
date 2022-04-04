@@ -32,6 +32,9 @@ data Position = Open | Close
 sc :: Lexer ()
 sc = L.space hspace1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
 
+comment :: Lexer ()
+comment = L.skipLineComment "--" <|> L.skipBlockComment "{-" "-}"
+
 identChar :: Lexer Char
 identChar = alphaNumChar <|> char '_' <|> char '\''
 
@@ -64,7 +67,7 @@ literal :: Lexer Int
 literal = read <$> some digitChar
 
 lex :: Lexer [Lexeme]
-lex = many . choice . fmap (L.lexeme sc) $
+lex = (optional comment *>) . many . choice . fmap (L.lexeme sc) $
   [ identOrKeyword
   , Constructor <$> ident upperChar
   , Operator <$> operator

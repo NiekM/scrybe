@@ -1,11 +1,15 @@
+-- | Prelude
+
+-- || Combinators
+
 id :: a -> a
 id x = x
 
 const :: a -> b -> a
 const x y = x
 
-fix :: (a -> a) -> a
-fix = let go = \f -> f (go f) in go
+apply :: (a -> b) -> a -> b
+apply f x = f x
 
 flip :: (a -> b -> c) -> b -> a -> c
 flip f x y = f y x
@@ -13,8 +17,15 @@ flip f x y = f y x
 compose :: (b -> c) -> (a -> b) -> (a -> c)
 compose f g x = f (g x)
 
+-- || Recursion
+
+fix :: (a -> a) -> a
+fix = let go = \f -> f (go f) in go
+
 rec :: ((a -> b) -> (a -> b)) -> a -> b
 rec = fix
+
+-- || Booleans
 
 data Bool = False | True
 
@@ -32,6 +43,8 @@ elimBool f t b = case b of False -> f; True -> t
 not :: Bool -> Bool
 not = elimBool True False
 
+-- || Orderings
+
 data Ord = LT | EQ | GT
 
 lt :: Ord
@@ -45,6 +58,8 @@ gt = GT
 
 elimOrd :: a -> a -> a -> Ord -> a
 elimOrd l e g o = case o of LT -> l; EQ -> e; GT -> g
+
+-- || Naturals
 
 data Nat = Zero | Succ Nat
 
@@ -65,6 +80,8 @@ plus n = foldNat n Succ
 
 mult :: Nat -> Nat -> Nat
 mult = Mult -- TODO: make sure this works correctly
+
+-- || Lists
 
 data List a = Nil | Cons a (List a)
 
@@ -89,6 +106,8 @@ map f = foldList [] (\x -> Cons (f x))
 length :: List a -> Nat
 length = foldList Zero \x r -> Succ r
 
+-- || Products
+
 data Pair a b = Pair a b
 
 pair :: a -> b -> Pair a b
@@ -108,6 +127,8 @@ curry f x y = f (Pair x y)
 
 uncurry :: (a -> b -> c) -> Pair a b -> c
 uncurry f p = case p of Pair x y -> f x y
+
+-- || Coproducts
 
 data Either a b = Left a | Right b
 

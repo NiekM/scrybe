@@ -5,6 +5,7 @@ import Import
 import Language.Syntax
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
+import Prettyprinter
 
 -- TODO: keep everything in here abstract
 
@@ -36,25 +37,44 @@ sub a b = (<> Map.difference a b) . Map.mapMaybe id
 -- instantiated. how do we handle these related concepts in a way that is sound
 -- and makes sense?
 
+-- TODO: should the concepts of a function contain all the concepts in its
+-- body, or should we have an abstraction boundary, since e.g. foldr uses
+-- direct structural recursion internally, but should only have a recursion
+-- scheme concept.
+
 -- | Concepts within our language, used to categorize hole fillings.
 data Concept
   = Func Var
-  | CCtr Ctr
-  {-
-  | EtaExpansion
-  | PartialApplication -- TODO: is a function applied to no arguments considered partially applied?
-  -}
+  -- | Combinators that only use lambda abstractions and applications.
+  | Combinator
   -- Recursion etc.
   -- TODO: should we have hierarchies?
   -- TODO: is HigherArity a concept? Since there is a learning gap between
   -- single arity and higher arity functions.
   deriving (Eq, Ord, Show, Read)
 
+instance Pretty Concept where
+  pretty = viaShow
+
+-- TODO: should constructors be allowed? e.g. curry and uncurry are also
+-- combinators in some sense.
+-- | Check if an expression is a combinator using at most some set of
+-- variables.
+comb :: Term Var Void -> Set Var -> Bool
+comb = cataExpr \b as -> case b of
+  Var a -> a `elem` as
+  App f x -> f as && x as
+  Lam a x -> x (Set.insert a as)
+  _ -> False
+
 type Environment = Map Var (Poly, Set Concept)
 
 fromModule :: Module Void -> Environment
 fromModule m = flip Map.mapWithKey (functions m)
-  \x (_, t) -> (t, Set.singleton $ Func x)
+  \x (e, t) -> (t,) . Set.fromList . catMaybes $
+    [ Just (Func x)
+    , if comb e mempty then Just Combinator else Nothing
+    ]
 
 restrict :: Set Concept -> Environment -> Environment
 restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
@@ -68,10 +88,13 @@ restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 -- filtering out prohibited concepts such as combinators.
 fromSketch :: Module Void -> Ann Type 'Term Var a ->
   (Environment, MultiSet Concept)
-fromSketch m e = (Map.fromList xs, fromList $ Func . view _1 <$> xs) where
-  fs = Map.keys . functions $ m
+fromSketch m e =
+  ( Map.fromList xs
+  , fromList . concatMap (toList . snd . snd) . toList $ xs
+  ) where
+  fs = fromModule m
   xs = collect e >>= \(Annot x u) -> case x of
-    Var v | v `elem` fs -> [(v, (Poly [] u, Set.singleton $ Func v))]
+    Var v | Just (_, cs) <- Map.lookup v fs -> [(v, (Poly [] u, cs))]
     _ -> []
 
 data Technique = PointFree | EtaLong
