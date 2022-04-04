@@ -31,8 +31,12 @@ type SynMonad s m =
 
 -- Refinements {{{
 
--- TODO: should we use concepts here?
+-- TODO: implement weighted search over the search space using a priority
+-- queue. Perhaps weights should be adjustable, e.g. the weight of a function
+-- could be lowered after usage, depending on how often we still expect the
+-- function to appear.
 
+-- TODO: should we use concepts here?
 data Ref = Ref (Term Var Type) (Map Var Type) (Set Concept)
   deriving (Eq, Ord, Show)
 

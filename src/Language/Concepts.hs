@@ -59,8 +59,13 @@ fromModule m = flip Map.mapWithKey (functions m)
 restrict :: Set Concept -> Environment -> Environment
 restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 
+-- TODO: gather the concepts from the prelude, e.g. recognizing that id, const,
+-- flip and compose are combinators, so we should not allow them during
+-- synthesis, even if they are used in the model solution.
+
 -- TODO: actually gather concepts from variables/constructors/language
--- constructs
+-- constructs, by looking up the corresponding concepts in the prelude and
+-- filtering out prohibited concepts such as combinators.
 fromSketch :: Module Void -> Ann Type 'Term Var a ->
   (Environment, MultiSet Concept)
 fromSketch m e = (Map.fromList xs, fromList $ Func . view _1 <$> xs) where

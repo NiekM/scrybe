@@ -117,7 +117,7 @@ type NoBind l =
 --
 -- h: the type of holes used in the expression.
 --
-data Expr' (r :: Func Kind.Type) (l :: Level) v h where
+data Expr' (r :: Func) (l :: Level) v h where
   Hole :: h -> Expr' r l v h
   Ctr :: HasCtr l => Ctr -> Expr' r l v h
   Var :: HasVar l => v -> Expr' r l v h
@@ -126,8 +126,10 @@ data Expr' (r :: Func Kind.Type) (l :: Level) v h where
   Let :: HasLet l => v -> Rec r l v h -> Rec r l v h -> Expr' r l v h
   Case :: HasCase l => Rec r l v h -> [(Ctr, Rec r l v h)] -> Expr' r l v h
 
-data Func a = Fix | Base a | Ann a
+data Func' a = Fix | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
+
+type Func = Func' Kind.Type
 
 -- TODO: perhaps we should remove Fix and just have Ann, as it would make
 -- things much simpler with generalizing functions, but it would be slightly
@@ -135,7 +137,7 @@ data Func a = Fix | Base a | Ann a
 -- actual Ann constructor in Expr', as well as some functions converting from
 -- `Ann a l v h -> Expr' ('Annotate l a) v h` and
 -- `Expr' ('Annotate l a) v h -> Ann (Maybe a) l v h`.
-type family Rec (f :: Func Kind.Type) (l :: Level) v h where
+type family Rec (f :: Func) (l :: Level) v h where
   Rec 'Fix l v h = Expr l v h
   Rec ('Base c) _ _ _ = c
   Rec ('Ann a) l v h = Ann a l v h
