@@ -479,23 +479,6 @@ etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
 
 -- Pretty printing {{{
 
-isArr :: Expr l v h -> Bool
-isArr Arr {} = True
-isArr _ = False
-
-isLam :: Expr l v h -> Bool
-isLam Lam {} = True
-isLam _ = False
-
-isApp :: Expr l v h -> Bool
-isApp App {} = True
-isApp _ = False
-
-prettyParens :: Pretty a => (a -> Bool) -> a -> Doc ann
-prettyParens p t
-  | p t = parens (pretty t)
-  | otherwise = pretty t
-
 instance Pretty Unit where
   pretty _ = space
 
@@ -526,23 +509,29 @@ instance (Pretty (Ann a 'Term v h), Pretty v, Pretty h)
       mconcat (intersperse "; " $ xs <&> \(p, a) ->
         pretty p <+> "->" <+> pretty a)
 
+prettyParen :: Bool -> Doc ann -> Doc ann
+prettyParen b t
+  | b = parens t
+  | otherwise = t
+
+pp :: (Pretty v, Pretty h) => Int -> Expr l v h -> Doc ann
+pp i = \case
+  Hole h -> braces $ pretty h
+  Var x -> pretty x
+  Ctr c -> pretty c
+  Arr t u -> prettyParen (i > 1) $ sep [pp 2 t, "->", pp 1 u]
+  App f x -> prettyParen (i > 2) $ sep [pp 2 f, pp 3 x]
+  Lam a (Lams as x) -> prettyParen (i > 0) $
+    "\\" <> sep (pretty <$> a:as) <+> "->" <+> pp 0 x
+  Let a (Lams as x) e -> prettyParen (i > 0) $
+    "let" <+> pretty a <+> sep (pretty <$> as)
+    <+> "=" <+> pp 0 x <+> "in" <+> pp 0 e
+  Case x xs -> prettyParen (i > 0) $ "case" <+> pp 0 x <+> "of" <+>
+    mconcat (intersperse "; " $ xs <&> \(p, Lams as b) ->
+      sep (pretty p : fmap pretty as) <+> "->" <+> pp 0 b)
+
 instance (Pretty v, Pretty h) => Pretty (Expr l v h) where
-  pretty = \case
-    Hole i -> braces $ pretty i
-    Var x -> pretty x
-    Ctr c -> pretty c
-    Arr t u -> sep [prettyParens isArr t, "->", pretty u]
-    App f x -> sep
-      [ prettyParens isLam f
-      , prettyParens (\y -> isLam y || isApp y) x
-      ]
-    Lam a (Lams as x) ->
-      "\\" <> sep (pretty <$> a:as) <+> "->" <+> pretty x
-    Let a (Lams as x) e -> "let" <+> pretty a <+> sep (pretty <$> as)
-      <+> "=" <+> pretty x <+> "in" <+> pretty e
-    Case x xs -> "case" <+> pretty x <+> "of" <+>
-      mconcat (intersperse "; " $ xs <&> \(p, Lams as b) ->
-        sep (pretty p : fmap pretty as) <+> "->" <+> pretty b)
+  pretty = pp 0
 
 instance Pretty Datatype where
   pretty (MkDatatype d as cs) =

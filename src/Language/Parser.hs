@@ -170,7 +170,8 @@ instance ParseAtom 'Term where
   parseAtom = choice
     [ lams <$ op "\\" <*> some parser <* op "->" <*> parser
     , Case <$ key "case" <*> parser <* key "of" <*> alt parseBranch (sep ";")
-    , Let <$ key "let" <*> parser <* op "=" <*> parser <* key "in" <*> parser
+    , Let <$ key "let" <*> parser <*>
+      (lams <$> many parser <* op "=" <*> parser) <* key "in" <*> parser
     , Hole <$> brackets Curly parser
     , Var <$> parser
     , Ctr <$> parser
