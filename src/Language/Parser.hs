@@ -149,7 +149,7 @@ parseNat :: (HasCtr l, HasApp l) => Parser (Expr l v h)
 parseNat = nat <$> int
 
 list :: (Foldable f, HasCtr l, HasApp l) => f (Expr l v h) -> Expr l v h
-list = foldr (\x r -> apps [Ctr "Cons", x, r]) (Ctr "Nil")
+list = foldr (\x r -> apps (Ctr "Cons") [x, r]) (Ctr "Nil")
 
 parseList :: (HasCtr l, HasApp l) => Parser (Expr l v h) -> Parser (Expr l v h)
 parseList p = list <$> brackets Square (alt p (sep ","))
@@ -186,7 +186,8 @@ instance ParseAtom 'Type where
     ]
 
 parseApps :: (Parse v, Parse h, HasApp l, ParseAtom l) => Parser (Expr l v h)
-parseApps = apps <$> some (brackets Round parseApps <|> parseAtom)
+parseApps = apps <$> atom <*> many atom
+  where atom = brackets Round parseApps <|> parseAtom
 
 instance (Parse v, Parse h) => Parse (Expr 'Pattern v h) where
   parser = parseApps

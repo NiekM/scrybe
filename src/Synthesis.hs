@@ -70,12 +70,11 @@ refs t vs = do
   gs <- globals'
   let ls = Map.assocs vs <&> \(a, u) -> (a, Poly [] u, Set.empty)
   return do
-    (x, Poly as u, cs) <- gs <> ls
-    let (args, res) = splitArgs u
+    (x, Poly as (Args args res), cs) <- gs <> ls
     case unify res t of
       Nothing -> []
       Just th -> do
-        let e = apps (Var x :| fmap (Hole . subst th) args)
+        let e = apps (Var x) (Hole . subst th <$> args)
         let th' = Map.withoutKeys th $ Set.fromList as
         [Ref e th' cs]
 
@@ -238,7 +237,7 @@ holeFillings e t = use technique >>= \case
   PointFree -> expand (e, t)
 
 fullyApply :: HoleFilling -> HoleFilling
-fullyApply (e, t) = first (apps . (e :|) . fmap Hole) (splitArgs t)
+fullyApply (e, Args ts u) = (apps e (Hole <$> ts), u)
 
 -- TODO: expand does not return 'all' ways to add holes to an
 -- expression, since its return type might unify with a function type.

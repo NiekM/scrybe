@@ -30,7 +30,7 @@ occurs a tau = a `notElem` toListOf free tau
 -- newer composition, in effect updating the old substitution according to the
 -- new ones
 -- | Compose two non-conflicting unifications.
-compose :: (Ord v, th ~ Unify l v h) => th -> th -> th
+compose :: (Ord v, th ~ Unify l v h, NoBind l) => th -> th -> th
 compose sigma gamma = Map.unions
   [ subst sigma <$> gamma
   , Map.withoutKeys sigma (Map.keysSet gamma)

@@ -48,7 +48,7 @@ eval = \case
     y <- eval x
     case unApps y of
       (Ctr c :| as) -> case lookup c xs of
-        Just e -> eval $ apps (e : as)
+        Just e -> eval $ apps e as
         Nothing -> fail "Pattern match failure: non-exhaustive pattern"
       _ -> fail "Pattern match failure: not a constructor"
 
@@ -145,8 +145,8 @@ visualize :: ([GraphState], GraphState) -> Doc ann
 visualize (xs, y) = pretty (as, b) where
   as = xs <&> \x ->
     let e:|es = toExpr x
-    in apps (Hole e :| fmap (over holes absurd) es)
-  b = apps (toExpr y)
+    in apps (Hole e) (fmap (over holes absurd) es)
+  b = let e:|es = toExpr y in apps e es
 
 defs :: [Def]
 defs =

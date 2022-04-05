@@ -240,20 +240,6 @@ free = free' . fmap (fmap Var)
 
 -- }}}
 
--- Substitution {{{
-
-subst :: (Ord v, expr ~ Expr l v h) => Map v expr -> expr -> expr
-subst th = cataExpr \case
-  Var v | Just x <- Map.lookup v th -> x
-  e -> fixExpr e
-
-fill :: (Ord h, expr ~ Expr l v h) => Map h expr -> expr -> expr
-fill th = cataExpr \case
-  Hole h | Just x <- Map.lookup h th -> x
-  e -> fixExpr e
-
--- }}}
-
 -- TODO: maybe move these definitions somewhere else
 
 data Annot x a = Annot x a
@@ -261,6 +247,8 @@ data Annot x a = Annot x a
 
 ann :: Lens' (Annot x a) a
 ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
+
+-- Polytypes {{{
 
 data Poly = Poly [Var] Type
   deriving (Eq, Ord, Show)
@@ -283,6 +271,21 @@ freeze :: Poly -> Type
 freeze (Poly as t) = flip cataExpr t \case
   Var v | v `elem` as, MkVar c <- v -> Ctr (MkCtr c)
   e -> fixExpr e
+
+-- TODO: instantiation should also be able to introduce new type variables,
+-- e.g. by instantiating `id` to `forall a. List a -> List a`. Perhaps we
+-- should just substitute the monotype and recompute free quantified variables.
+instantiate :: Map Var Type -> Poly -> Poly
+instantiate th (Poly fr ty) =
+  Poly (filter (`notElem` Map.keys th) fr) (subst th ty)
+
+-- | Instantiate all quantified variables of a polytype with fresh variables.
+instantiateFresh :: FreshFree m => Poly -> m Type
+instantiateFresh (Poly xs t) = do
+  th <- Map.fromList <$> forM xs \x -> (x,) . Var . freeId <$> fresh
+  return $ subst th t
+
+-- }}}
 
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
@@ -311,6 +314,14 @@ varType = lens (\(Variable _ t _ _) -> t) \(Variable x _ i n) t ->
 class HasVariables a where
   variables :: Lens' a (Map VarId Variable)
 
+data Sketch = Sketch Var Poly (Term Var Unit)
+  deriving (Eq, Ord, Show)
+
+newtype Sigs = Sigs [Signature]
+  deriving (Eq, Ord, Show)
+
+-- Module {{{
+
 data Signature = MkSignature Var Poly
   deriving (Eq, Ord, Show)
 
@@ -320,17 +331,9 @@ data Binding v h = MkBinding Var (Term v h)
 data Datatype = MkDatatype Ctr [Var] [(Ctr, [Type])]
   deriving (Eq, Ord, Show)
 
-data Sketch = Sketch Var Poly (Term Var Unit)
-  deriving (Eq, Ord, Show)
-
-newtype Sigs = Sigs [Signature]
-  deriving (Eq, Ord, Show)
-
--- Module {{{
-
 constructors :: Datatype -> [(Ctr, Poly)]
 constructors (MkDatatype d as cs) = cs <&> second \ts ->
-  Poly as (arrs (ts ++ [apps (Ctr d :| fmap Var as)]))
+  Poly as (arrs (ts ++ [apps (Ctr d) (Var <$> as)]))
 
 data Definition a
   = Signature Signature
@@ -374,7 +377,7 @@ type FreshVarId m = MonadFresh VarId m
 type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
 type WithVariables s m = (MonadState s m, HasVariables s)
 
--- Helper functions {{{
+-- Smart constructors {{{
 
 -- TODO: replace with more general infix function
 arrs :: (Foldable f, HasArr l) => f (Expr l v h) -> Expr l v h
@@ -385,14 +388,26 @@ unArrs = \case
   Arr t u -> t `cons` unArrs u
   t -> pure t
 
-apps :: (Foldable f, HasApp l) => f (Expr l v h) -> Expr l v h
-apps = foldl1 App
+{-# COMPLETE Arrs #-}
+pattern Arrs :: Expr l v h -> [Expr l v h] -> Expr l v h
+pattern Arrs a bs <- (unArrs -> (a :| bs))
+
+{-# COMPLETE Args #-}
+pattern Args :: [Expr l v h] -> Expr l v h -> Expr l v h
+pattern Args as b <- (unsnoc . unArrs -> (as, b))
+
+apps :: (Foldable f, HasApp l) => Expr l v h -> f (Expr l v h) -> Expr l v h
+apps = foldl App
 
 unApps :: Expr l v h -> NonEmpty (Expr l v h)
 unApps = reverse . go where
   go = \case
     App f x -> x `cons` go f
     e -> pure e
+
+{-# COMPLETE Apps #-}
+pattern Apps :: Expr l v h -> [Expr l v h] -> Expr l v h
+pattern Apps f xs <- (unApps -> (f :| xs))
 
 lams :: (Foldable f, HasLam l) => f v -> Expr l v h -> Expr l v h
 lams = flip (foldr Lam)
@@ -402,11 +417,63 @@ unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
 
+{-# COMPLETE Lams #-}
+pattern Lams :: [v] -> Expr l v h -> Expr l v h
+pattern Lams as x <- (unLams -> (as, x))
+
+-- }}}
+
+-- Helper functions {{{
+
+-- | Substitute variables in an expression without variables bindings according
+-- to a map of variable substitutions.
+subst :: (Ord v, expr ~ Expr l v h, NoBind l) => Map v expr -> expr -> expr
+subst th = cataExpr \case
+  Var v | Just x <- Map.lookup v th -> x
+  e -> fixExpr e
+
+-- | Fill holes in an expression according to a map of hole fillings.
+fill :: (Ord h, expr ~ Expr l v h) => Map h expr -> expr -> expr
+fill th = cataExpr \case
+  Hole h | Just x <- Map.lookup h th -> x
+  e -> fixExpr e
+
+-- | All subexpressions, including the expression itself.
+dissect :: Expr l v h -> [Expr l v h]
+dissect = paraExpr \e -> (e:) . view rec
+
+-- | Remove all annotations from an expression.
 strip :: Ann a l v h -> Expr l v h
 strip = cataAnn (const fixExpr)
 
+-- | Gather all subexpressions along with their annotation.
 collect :: Ann a l v h -> [Annot (Expr l v h) a]
 collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
+
+-- | Uniquely number all holes in an expression.
+number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
+number = traverse \x -> (,x) <$> fresh
+
+-- | Eta expand all holes in a sketch.
+etaExpand :: (FreshVarId m, WithHoleCtxs s m, WithVariables s m) =>
+  Term Var Hole -> m (Term Var Hole)
+etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
+  ctxs <- use holeCtxs
+  case Map.lookup i ctxs of
+    Nothing -> return $ Hole i
+    Just ctx -> do
+      -- Split the type in the arguments and the result type
+      let Args ts u = view goal ctx
+      -- Couple each argument with a fresh name
+      xs <- number ts
+      let locals' = Map.fromList ((varId &&& id) . fst <$> xs)
+      -- Update the hole context
+      modifying holeCtxs $ Map.insert i $ HoleCtx u (view local ctx <> locals')
+      let vs = Map.fromList $ xs <&> \(x, t) -> (x, Variable (varId x) t 1 0)
+      -- traceShowM vars
+      modifying variables (vs <>)
+      -- Eta expand the hole
+      return $ lams (varId . fst <$> xs) (Hole i)
 
 -- }}}
 
@@ -438,8 +505,7 @@ instance Pretty Poly where
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
 instance (Pretty a, Pretty (Annot a b)) => Pretty (Annot a (Maybe b)) where
-  pretty (Annot x Nothing) = pretty x
-  pretty (Annot x (Just a)) = pretty $ Annot x a
+  pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a
 
 instance Pretty a => Pretty (Annot a Type) where
   pretty (Annot x t) = pretty x <+> "::" <+> pretty t
@@ -453,7 +519,7 @@ instance (Pretty (Ann a 'Term v h), Pretty v, Pretty h)
     Hole i -> braces $ pretty i
     Var x -> pretty x
     Ctr c -> pretty c
-    App f x -> parens (pretty f) <+> parens (pretty x)
+    App f x -> pretty f <+> pretty x
     Lam a x -> parens $ "\\" <> pretty a <+> "->" <+> parens (pretty x)
     Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e
     Case x xs -> "case" <+> pretty x <+> "of" <+>
@@ -470,20 +536,19 @@ instance (Pretty v, Pretty h) => Pretty (Expr l v h) where
       [ prettyParens isLam f
       , prettyParens (\y -> isLam y || isApp y) x
       ]
-    e@Lam {} ->
-      let (as, x) = unLams e
-      in "\\" <> sep (pretty <$> as) <+> "->" <+> pretty x
-    Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e
+    Lam a (Lams as x) ->
+      "\\" <> sep (pretty <$> a:as) <+> "->" <+> pretty x
+    Let a (Lams as x) e -> "let" <+> pretty a <+> sep (pretty <$> as)
+      <+> "=" <+> pretty x <+> "in" <+> pretty e
     Case x xs -> "case" <+> pretty x <+> "of" <+>
-      mconcat (intersperse "; " $ xs <&> \(p, a) ->
-        let (as, b) = unLams a
-        in sep (pretty p : fmap pretty as) <+> "->" <+> pretty b)
+      mconcat (intersperse "; " $ xs <&> \(p, Lams as b) ->
+        sep (pretty p : fmap pretty as) <+> "->" <+> pretty b)
 
 instance Pretty Datatype where
   pretty (MkDatatype d as cs) =
     "data" <+> sep (pretty d : fmap pretty as) <+>
       ( align . sep . zipWith (<+>) ("=" : repeat "|")
-      $ cs <&> \(c, xs) -> pretty (apps (Ctr c :| xs))
+      $ cs <&> \(c, xs) -> pretty (apps (Ctr c) xs)
       )
 
 instance Pretty Signature where
