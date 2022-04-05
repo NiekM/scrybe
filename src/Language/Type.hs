@@ -3,7 +3,6 @@ module Language.Type where
 
 import Import
 import Language.Syntax
-import Language.Utils
 import qualified RIO.Map as Map
 
 type Unify l v h = Map v (Expr l v h)

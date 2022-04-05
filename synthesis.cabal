@@ -33,7 +33,6 @@ library
       Language.Parser
       Language.Syntax
       Language.Type
-      Language.Utils
       Run
       Synthesis
       TermGen
