@@ -1,9 +1,49 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, MultiParamTypeClasses #-}
 module Language.Type where
 
 import Import
 import Language.Syntax
 import qualified RIO.Map as Map
+
+-- TODO: less duplication in GenState and TCState
+
+data TCState = TCState
+  { _lcls    :: Map VarId Variable
+  , frshHole  :: Hole
+  , frshFree  :: Free
+  , frshVarId :: VarId
+  }
+
+instance HasVariables TCState where
+  variables = lens _lcls \x y -> x { _lcls = y }
+
+emptyTC :: TCState
+emptyTC = TCState mempty 0 0 0
+
+newtype TCT m a = TCT (RWST (Module Void) () TCState m a)
+  deriving newtype (Functor, Applicative, Monad, Alternative)
+  deriving newtype (MonadFail, MonadPlus)
+  deriving newtype (MonadState TCState, MonadReader (Module Void))
+
+instance Monad m => MonadFresh Hole (TCT m) where
+  fresh = TCT . state $ \g@TCState { frshHole } ->
+    (frshHole, g { frshHole = 1 + frshHole })
+
+instance Monad m => MonadFresh Free (TCT m) where
+  fresh = TCT . state $ \g@TCState { frshFree } ->
+    (frshFree, g { frshFree = 1 + frshFree })
+
+instance Monad m => MonadFresh VarId (TCT m) where
+  fresh = TCT . state $ \g@TCState { frshVarId } ->
+    (frshVarId, g { frshVarId = 1 + frshVarId })
+
+runTCT :: Monad m => TCT m a -> Module Void -> TCState -> m (a, TCState)
+runTCT (TCT m) pre s = do
+  (x, s', _) <- runRWST m pre s
+  return (x, s')
+
+evalTCT :: Monad m => TCT m a -> Module Void -> TCState -> m a
+evalTCT m pre s = fst <$> runTCT m pre s
 
 type Unify l v h = Map v (Expr l v h)
 
