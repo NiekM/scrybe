@@ -105,14 +105,17 @@ infer expr = do
           let t' = subst th t
           return (Lam a x' `Annot` Arr t' u, th, local')
         Let a x y -> do
-          (x'@(Annot _ t), th1, ctx1) <- go loc x
+          t <- Var . freeId <$> fresh
           i <- fresh
           modifying variables $ Map.insert i (Variable a t 1 0)
-          (y'@(Annot _ u), th2, ctx2) <- go (Map.insert a i loc) y
+          (x'@(Annot _ t1), th1, ctx1) <- go (Map.insert a i loc) x
+          (y'@(Annot _ t2), th2, ctx2) <- go (Map.insert a i loc) y
           let th3 = th2 `compose` th1
-          let ctx3 = over goal (subst th3) <$> ctx1 <> ctx2
-          modifying variables . fmap $ over varType (subst th3)
-          return (Let a x' y' `Annot` subst th3 u, th3, ctx3)
+          th4 <- unify (subst th3 t) t1
+          let th5 = th4 `compose` th3
+          let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
+          modifying variables . fmap $ over varType (subst th5)
+          return (Let a x' y' `Annot` subst th5 t2, th5, ctx3)
         Case x xs -> do
           (x'@(Annot _ t), th, ctx) <- go loc x
           u <- Var . freeId <$> fresh

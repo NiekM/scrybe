@@ -79,7 +79,7 @@ plus :: Nat -> Nat -> Nat
 plus n = foldNat n Succ
 
 mult :: Nat -> Nat -> Nat
-mult = Mult -- TODO: make sure this works correctly
+mult n = foldNat Zero (plus n)
 
 -- || Lists
 
