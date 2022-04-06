@@ -317,9 +317,6 @@ class HasVariables a where
 data Sketch = Sketch Var Poly (Term Var Unit)
   deriving (Eq, Ord, Show)
 
-newtype Sigs = Sigs [Signature]
-  deriving (Eq, Ord, Show)
-
 -- Module {{{
 
 data Signature = MkSignature Var Poly
@@ -544,8 +541,8 @@ instance Pretty Signature where
   pretty (MkSignature x t) = pretty x <+> "::" <+> pretty t
 
 instance (Pretty v, Pretty h) => Pretty (Binding v h) where
-  pretty (MkBinding x e) = sep (pretty x : fmap pretty as) <+> "=" <+> pretty b
-    where (as, b) = unLams e
+  pretty (MkBinding x (Lams as e)) =
+    sep (pretty x : fmap pretty as) <+> "=" <+> pretty e
 
 instance Pretty Sketch where
   pretty (Sketch x s b) = vsep

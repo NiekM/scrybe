@@ -236,8 +236,3 @@ instance Parse Sketch where
     ([MkSignature x s], [MkBinding y b], []) <- sepModule <$> parser
     guard (x == y)
     return $ Sketch x s b
-
-instance Parse Sigs where
-  parser = do
-    (ss, [], []) <- sepModule <$> (parser @(Module Void))
-    return $ Sigs ss

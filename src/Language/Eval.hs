@@ -45,12 +45,10 @@ eval = \case
     modifying env $ Map.insert a y
     eval e
   Case x xs -> do
-    y <- eval x
-    case unApps y of
-      (Ctr c :| as) -> case lookup c xs of
-        Just e -> eval $ apps e as
-        Nothing -> fail "Pattern match failure: non-exhaustive pattern"
-      _ -> fail "Pattern match failure: not a constructor"
+    Apps (Ctr c) as <- eval x
+    case lookup c xs of
+      Just e -> eval $ apps e as
+      Nothing -> fail "Pattern match failure: non-exhaustive pattern"
 
 match :: Pattern Var Void -> Term Var a -> Maybe (Map Var (Term Var a))
 match p e = case p of
@@ -135,18 +133,18 @@ allocate (name, _, _) heap =
   (heap', Map.singleton name address)
     where (heap', address) = alloc heap (Var name)
 
-toExpr :: GraphState -> NonEmpty (Term Var Void)
+toExpr :: GraphState -> (Term Var Void, [Term Var Void])
 toExpr GraphState { stack, heap } =
   case stack <&> fromMaybe undefined . fromAddress heap of
     [] -> error "Mmm"
-    x:xs -> x :| xs
+    x:xs -> (x, xs)
 
 visualize :: ([GraphState], GraphState) -> Doc ann
 visualize (xs, y) = pretty (as, b) where
   as = xs <&> \x ->
-    let e:|es = toExpr x
+    let (e, es) = toExpr x
     in apps (Hole e) (fmap (over holes absurd) es)
-  b = let e:|es = toExpr y in apps e es
+  b = uncurry apps . toExpr $ y
 
 defs :: [Def]
 defs =

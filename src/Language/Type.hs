@@ -97,15 +97,41 @@ infer expr = do
           let ctx3 = over goal (subst th4) <$> ctx1 <> ctx2
           modifying variables . fmap $ over varType (subst th4)
           return (App f' x' `Annot` subst th4 t, th4, ctx3)
-        Lam x e -> do
+        Lam a x -> do
           t <- Var . freeId <$> fresh
           i <- fresh
-          modifying variables $ Map.insert i (Variable x t 1 0)
-          (e'@(Annot _ u), th, local') <- go (Map.insert x i loc) e
+          modifying variables $ Map.insert i (Variable a t 1 0)
+          (x'@(Annot _ u), th, local') <- go (Map.insert a i loc) x
           let t' = subst th t
-          return (Lam x e' `Annot` Arr t' u, th, local')
-        Let {} -> undefined
-        Case {} -> undefined
+          return (Lam a x' `Annot` Arr t' u, th, local')
+        Let a x y -> do
+          (x'@(Annot _ t), th1, ctx1) <- go loc x
+          i <- fresh
+          modifying variables $ Map.insert i (Variable a t 1 0)
+          (y'@(Annot _ u), th2, ctx2) <- go (Map.insert a i loc) y
+          let th3 = th2 `compose` th1
+          let ctx3 = over goal (subst th3) <$> ctx1 <> ctx2
+          modifying variables . fmap $ over varType (subst th3)
+          return (Let a x' y' `Annot` subst th3 u, th3, ctx3)
+        Case x xs -> do
+          (x'@(Annot _ t), th, ctx) <- go loc x
+          u <- Var . freeId <$> fresh
+          (ys, t', th', ctx') <- xs & flip foldr (return ([], u, th, ctx))
+            \(c, e) r -> do
+            (as, t1, th1, ctx1) <- r
+            d <- failMaybe $ Map.lookup c cs
+            Args args res <- instantiateFresh d
+            (e'@(Annot _ t2), th2, ctx2) <- go loc e
+            -- Check that the branch type matches the resulting type.
+            th3 <- unify (foldr Arr t1 args) t2
+            -- Check that the constructor type matches the scrutinee.
+            th4 <- unify res t
+            let th5 = th4 `compose` th3 `compose` th2 `compose` th1
+            let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
+            modifying variables . fmap $ over varType (subst th5)
+            return ((c, e'):as, subst th5 t1, th5, ctx3)
+          return (Annot (Case x' $ reverse ys) t', th', ctx')
+
   (e, th, ctx) <- go Map.empty expr
   return (mapAnn (subst th) e, th, ctx)
 
