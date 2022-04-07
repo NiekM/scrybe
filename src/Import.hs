@@ -1,4 +1,3 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Import
@@ -7,7 +6,6 @@ module Import
   , module Control.Monad.RWS
   , module Lens.Micro.Platform
   , Pretty(..)
-  , MonadFresh(..)
   , unsnoc
   , maximumDef
   , mfold
@@ -30,9 +28,6 @@ instance (Pretty a, Pretty b) => Pretty (Either a b) where
 
 instance Display (Doc ann) where
   textDisplay = fromString . show
-
-class Monad m => MonadFresh s m where
-  fresh :: m s
 
 unsnoc :: NonEmpty a -> ([a], a)
 unsnoc (x :| []) = ([], x)

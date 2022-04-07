@@ -2,7 +2,6 @@ module Run where
 
 import Types hiding (Options)
 import Import
-import TermGen
 import Language
 import Synthesis
 import Prettyprinter
@@ -43,9 +42,7 @@ readFiles file sketch model = do
   case alphaEq t u of
     Nothing -> fail "Model and sketch signature do not match."
     Just _ -> return ()
-  -- TODO: allow calling check without requiring a technique and such.
-  let g = mkGenState (fromModule m) EtaLong mempty
-  (a, _, _) <- evalGenT (check b t) m g
+  (a, _, _) <- evalTC (check b t) m
   return (m, sk, a)
 
 interactive :: String -> String -> String -> Technique -> RIO Application ()
@@ -57,12 +54,12 @@ interactive file sketch model t = do
   logInfo . display . indent 2 . pretty $ sk
   logInfo ""
   logInfo $ "Technique: " <> displayShow t
-  let xs = runGenT (init' sk) m (mkGenState env' t c)
-  _ <- climb $ xs <&> \(x, g) -> fst <$> runGenT (genTree step' x) m g
+  let xs = runSyn (init' sk) m (mkSynState env' t c)
+  _ <- climb $ xs <&> \(x, g) -> view _1 <$> runSyn (search step' x) m g
   logInfo ""
 
-runSyn :: String -> String -> String -> Technique -> RIO Application ()
-runSyn file sketch model t = do
+synth :: String -> String -> String -> Technique -> RIO Application ()
+synth file sketch model t = do
   (m, sk, a) <- readFiles file sketch model
   let (env', c) = fromSketch m a
   logInfo "Sketch:"
@@ -70,10 +67,10 @@ runSyn file sketch model t = do
   logInfo . display . indent 2 . pretty $ sk
   logInfo ""
   logInfo $ "Technique: " <> displayShow t
-  case runGenT (init sk) m (mkGenState env' t c) of
+  case runSyn (init sk) m (mkSynState env' t c) of
     Nothing -> logInfo "Something went wrong :("
     Just (y, g) -> do
-      let syn = levels $ runGenT (genTree step y) m g
+      let syn = levels $ runSyn (search step y) m g
       let xss = take 10 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
       forM_ xss \(i, xs) -> do
         logInfo $ "Step: " <> fromString (show i)
@@ -88,14 +85,14 @@ runSyn file sketch model t = do
           --           <$> Map.assocs local)
   logInfo ""
 
-runSyn' :: Technique -> String -> RIO Application ()
-runSyn' t s = runSyn "prelude" s s t
+synth' :: Technique -> String -> RIO Application ()
+synth' t s = synth "prelude" s s t
 
 run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  traverse_ (runSyn' EtaLong)
+  traverse_ (synth' EtaLong)
     [ "compose"
     , "flip"
     , "map"

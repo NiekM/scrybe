@@ -30,12 +30,12 @@ library
       Language
       Language.Concepts
       Language.Eval
+      Language.Identifiers
       Language.Parser
       Language.Syntax
       Language.Type
       Run
       Synthesis
-      TermGen
       Types
   other-modules:
       Paths_synthesis

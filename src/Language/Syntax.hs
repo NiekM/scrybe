@@ -2,48 +2,20 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
-module Language.Syntax where
+module Language.Syntax
+  ( module Language.Syntax
+  , module Language.Identifiers
+  )
+  where
 
 import Import hiding (reverse)
+import Language.Identifiers
 import qualified Data.Kind as Kind
 import Data.Foldable
 import RIO.List (intersperse, repeat)
 import RIO.NonEmpty (cons, reverse)
 import Prettyprinter
 import qualified RIO.Map as Map
-
--- Identifiers {{{
-
-newtype Hole = MkHole Int
-  deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (Num, Pretty)
-
-newtype Free = MkFree Int
-  deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (Num, Pretty)
-
-newtype VarId = MkVarId Int
-  deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (Num, Pretty)
-
--- NOTE: we assume that variables are always lowercase and constructors are
--- always uppercase.
-
-newtype Var = MkVar Text
-  deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (IsString, Pretty)
-
-newtype Ctr = MkCtr Text
-  deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (IsString, Pretty)
-
-varId :: VarId -> Var
-varId (MkVarId n) = MkVar . fromString . ('a':) . show $ n
-
-freeId :: Free -> Var
-freeId (MkFree n) = MkVar . fromString . ('t':) . show $ n
-
--- }}}
 
 -- Levels {{{
 
@@ -240,13 +212,51 @@ free = free' . fmap (fmap Var)
 
 -- }}}
 
--- TODO: maybe move these definitions somewhere else
+-- Smart constructors {{{
 
-data Annot x a = Annot x a
-  deriving (Eq, Ord, Show)
+-- TODO: replace with more general infix function
+arrs :: (Foldable f, HasArr l) => f (Expr l v h) -> Expr l v h
+arrs = foldr1 Arr
 
-ann :: Lens' (Annot x a) a
-ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
+unArrs :: Expr l v h -> NonEmpty (Expr l v h)
+unArrs = \case
+  Arr t u -> t `cons` unArrs u
+  t -> pure t
+
+{-# COMPLETE Arrs #-}
+pattern Arrs :: Expr l v h -> [Expr l v h] -> Expr l v h
+pattern Arrs a bs <- (unArrs -> (a :| bs))
+
+{-# COMPLETE Args #-}
+pattern Args :: [Expr l v h] -> Expr l v h -> Expr l v h
+pattern Args as b <- (unsnoc . unArrs -> (as, b))
+
+apps :: (Foldable f, HasApp l) => Expr l v h -> f (Expr l v h) -> Expr l v h
+apps = foldl App
+
+unApps :: Expr l v h -> NonEmpty (Expr l v h)
+unApps = reverse . go where
+  go = \case
+    App f x -> x `cons` go f
+    e -> pure e
+
+{-# COMPLETE Apps #-}
+pattern Apps :: Expr l v h -> [Expr l v h] -> Expr l v h
+pattern Apps f xs <- (unApps -> (f :| xs))
+
+lams :: (Foldable f, HasLam l) => f v -> Expr l v h -> Expr l v h
+lams = flip (foldr Lam)
+
+unLams :: Expr l v h -> ([v], Expr l v h)
+unLams = \case
+  Lam a x -> first (a:) $ unLams x
+  e -> ([], e)
+
+{-# COMPLETE Lams #-}
+pattern Lams :: [v] -> Expr l v h -> Expr l v h
+pattern Lams as x <- (unLams -> (as, x))
+
+-- }}}
 
 -- Polytypes {{{
 
@@ -286,6 +296,14 @@ instantiateFresh (Poly xs t) = do
   return $ subst th t
 
 -- }}}
+
+-- TODO: maybe move these definitions somewhere else
+
+data Annot x a = Annot x a
+  deriving (Eq, Ord, Show)
+
+ann :: Lens' (Annot x a) a
+ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
 
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
@@ -368,57 +386,8 @@ functions m = Map.intersectionWith (,) (binds m) (sigs m)
 
 -- }}}
 
-type FreshHole m = MonadFresh Hole m
-type FreshFree m = MonadFresh Free m
-type FreshVarId m = MonadFresh VarId m
 type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
 type WithVariables s m = (MonadState s m, HasVariables s)
-
--- Smart constructors {{{
-
--- TODO: replace with more general infix function
-arrs :: (Foldable f, HasArr l) => f (Expr l v h) -> Expr l v h
-arrs = foldr1 Arr
-
-unArrs :: Expr l v h -> NonEmpty (Expr l v h)
-unArrs = \case
-  Arr t u -> t `cons` unArrs u
-  t -> pure t
-
-{-# COMPLETE Arrs #-}
-pattern Arrs :: Expr l v h -> [Expr l v h] -> Expr l v h
-pattern Arrs a bs <- (unArrs -> (a :| bs))
-
-{-# COMPLETE Args #-}
-pattern Args :: [Expr l v h] -> Expr l v h -> Expr l v h
-pattern Args as b <- (unsnoc . unArrs -> (as, b))
-
-apps :: (Foldable f, HasApp l) => Expr l v h -> f (Expr l v h) -> Expr l v h
-apps = foldl App
-
-unApps :: Expr l v h -> NonEmpty (Expr l v h)
-unApps = reverse . go where
-  go = \case
-    App f x -> x `cons` go f
-    e -> pure e
-
-{-# COMPLETE Apps #-}
-pattern Apps :: Expr l v h -> [Expr l v h] -> Expr l v h
-pattern Apps f xs <- (unApps -> (f :| xs))
-
-lams :: (Foldable f, HasLam l) => f v -> Expr l v h -> Expr l v h
-lams = flip (foldr Lam)
-
-unLams :: Expr l v h -> ([v], Expr l v h)
-unLams = \case
-  Lam a x -> first (a:) $ unLams x
-  e -> ([], e)
-
-{-# COMPLETE Lams #-}
-pattern Lams :: [v] -> Expr l v h -> Expr l v h
-pattern Lams as x <- (unLams -> (as, x))
-
--- }}}
 
 -- Helper functions {{{
 
@@ -556,69 +525,5 @@ instance Pretty a => Pretty (Definition a) where
 
 instance Pretty a => Pretty (Module a) where
   pretty (Module cs) = vsep $ fmap pretty cs
-
--- }}}
-
--- QuickCheck {{{
--- TODO: replace these instances with more sensible ones, probably defined
--- using a naive synthesizer
-
--- sizedTyp :: Int -> Gen (Type Free)
--- sizedTyp 0 = Var <$> arbitrary
--- sizedTyp n = do
---   x <- choose (0, n - 1)
---   App <$> sizedTyp x <*> sizedTyp (n - x - 1)
-
--- instance Arbitrary (Expr 'Type Free) where
---   arbitrary = sized \n -> do
---     m <- choose (0, n)
---     sizedTyp m
-
--- instance Arbitrary Var where
---   arbitrary = fromString . return <$> elements ['a'..'z']
-
--- instance Arbitrary Ctr where
---   arbitrary = fromString . return <$> elements ['A'..'Z']
-
--- instance Arbitrary Hole where
---   arbitrary = fromIntegral <$> sized \n -> choose (0, n)
-
--- perms :: Int -> Int -> [[Int]]
--- perms _ 0 = [[]]
--- perms n 1 = [[n]]
--- perms n k = do
---   x <- [1..(n - k + 1)]
---   (x:) <$> perms (n - x) (k - 1)
-
--- sizedExp :: [Gen (Term a)] -> Int -> Gen (Term a)
--- sizedExp as 0 = oneof as
--- sizedExp as n = do
---   x <- choose (1, min n 5)
---   xs <- oneof . fmap pure $ perms n x
---   case map (subtract 1) xs of
---     [] -> error "unreachable"
---     ys@(z:zs) -> oneof
---       [ Case <$> _ <*> mapM (\i -> Branch <$> arbitrary <*> sizedExp as i) ys
---       , apps <$> mapM (sizedExp as) ys
---       -- TODO: don't throw away size parameter
---       , lams <$> mapM (const arbitrary) zs
---         <*> sizedExp as z
---       ]
-
--- arbExp :: Arbitrary a => Gen (Term a)
--- arbExp = sized \n -> do
---   m <- choose (0, n)
---   sizedExp [Var <$> arbitrary, Ctr <$> arbitrary, Hole <$> arbitrary] m
-
--- instance Arbitrary (Term Hole) where
---   arbitrary = arbExp
-
--- instance Arbitrary (Term (Type Free)) where
---   arbitrary = arbExp
-
--- instance Arbitrary (Term Void) where
---   arbitrary = sized \n -> do
---     m <- choose (0, n)
---     sizedExp [Var <$> arbitrary, Ctr <$> arbitrary] m
 
 -- }}}

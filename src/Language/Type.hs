@@ -5,45 +5,37 @@ import Import
 import Language.Syntax
 import qualified RIO.Map as Map
 
--- TODO: less duplication in GenState and TCState
+-- Type checking state {{{
 
 data TCState = TCState
-  { _lcls    :: Map VarId Variable
-  , frshHole  :: Hole
-  , frshFree  :: Free
-  , frshVarId :: VarId
+  { _locals     :: Map VarId Variable
+  , _freshState :: FreshState
   }
 
+class HasTCState a where
+  tcState :: Lens' a TCState
+
 instance HasVariables TCState where
-  variables = lens _lcls \x y -> x { _lcls = y }
+  variables = lens _locals \x y -> x { _locals = y }
 
-emptyTC :: TCState
-emptyTC = TCState mempty 0 0 0
+instance HasFreshState TCState where
+  freshState = lens _freshState \x y -> x { _freshState = y }
 
-newtype TCT m a = TCT (RWST (Module Void) () TCState m a)
-  deriving newtype (Functor, Applicative, Monad, Alternative)
-  deriving newtype (MonadFail, MonadPlus)
-  deriving newtype (MonadState TCState, MonadReader (Module Void))
+mkTCState :: TCState
+mkTCState = TCState mempty mkFreshState
 
-instance Monad m => MonadFresh Hole (TCT m) where
-  fresh = TCT . state $ \g@TCState { frshHole } ->
-    (frshHole, g { frshHole = 1 + frshHole })
+runTC :: Monad m => RWST (Module Void) () TCState m a ->
+  Module Void -> m (a, TCState)
+runTC tc m = do
+  (x, s, _) <- runRWST tc m mkTCState
+  return (x, s)
 
-instance Monad m => MonadFresh Free (TCT m) where
-  fresh = TCT . state $ \g@TCState { frshFree } ->
-    (frshFree, g { frshFree = 1 + frshFree })
+evalTC :: Monad m => RWST (Module Void) () TCState m a -> Module Void -> m a
+evalTC tc m = fst <$> runTC tc m
 
-instance Monad m => MonadFresh VarId (TCT m) where
-  fresh = TCT . state $ \g@TCState { frshVarId } ->
-    (frshVarId, g { frshVarId = 1 + frshVarId })
+-- }}}
 
-runTCT :: Monad m => TCT m a -> Module Void -> TCState -> m (a, TCState)
-runTCT (TCT m) pre s = do
-  (x, s', _) <- runRWST m pre s
-  return (x, s')
-
-evalTCT :: Monad m => TCT m a -> Module Void -> TCState -> m a
-evalTCT m pre s = fst <$> runTCT m pre s
+-- | Type unification & inference
 
 type Unify l v h = Map v (Expr l v h)
 
@@ -103,79 +95,76 @@ infer expr = do
   m <- ask
   let cs = ctrs m
   let fs = functions m
-  let go loc = \case
-        Hole _ -> do
-          h <- fresh
-          g <- Var . freeId <$> fresh
-          -- Note variable availability
-          modifying variables $ Map.mapWithKey \x -> \case
-            Variable name t i n | x `elem` loc -> Variable name t (i + 1) n
-            v -> v
-          return
-            (Hole h `Annot` g, Map.empty, Map.singleton h (HoleCtx g loc))
-        Ctr c -> do
-          t <- failMaybe $ Map.lookup c cs
-          u <- instantiateFresh t
-          return (Annot (Ctr c) u, Map.empty, Map.empty)
-        Var a | Just x <- Map.lookup a loc -> use variables >>= \vs ->
-          case Map.lookup x vs of
-            Nothing -> fail $ "Missing variable id " <> show x
-            Just (Variable name t i n) -> do
-              -- Note the variable occurrence
-              modifying variables . Map.insert x $ Variable name t i (n + 1)
-              return (Var a `Annot` t, Map.empty, Map.empty)
-        Var a -> do
-          (_, t) <- failMaybe $ Map.lookup a fs
-          u <- instantiateFresh t
-          return (Var a `Annot` u, Map.empty, Map.empty)
-        App f x -> do
-          (f'@(Annot _ a), th1, ctx1) <- go loc f
-          (x'@(Annot _ b), th2, ctx2) <- go loc x
-          t <- Var . freeId <$> fresh
-          th3 <- unify (subst th2 a) (Arr b t)
-          let th4 = th3 `compose` th2 `compose` th1
-          let ctx3 = over goal (subst th4) <$> ctx1 <> ctx2
-          modifying variables . fmap $ over varType (subst th4)
-          return (App f' x' `Annot` subst th4 t, th4, ctx3)
-        Lam a x -> do
-          t <- Var . freeId <$> fresh
-          i <- fresh
-          modifying variables $ Map.insert i (Variable a t 1 0)
-          (x'@(Annot _ u), th, local') <- go (Map.insert a i loc) x
-          let t' = subst th t
-          return (Lam a x' `Annot` Arr t' u, th, local')
-        Let a x y -> do
-          t <- Var . freeId <$> fresh
-          i <- fresh
-          modifying variables $ Map.insert i (Variable a t 1 0)
-          (x'@(Annot _ t1), th1, ctx1) <- go (Map.insert a i loc) x
-          (y'@(Annot _ t2), th2, ctx2) <- go (Map.insert a i loc) y
-          let th3 = th2 `compose` th1
-          th4 <- unify (subst th3 t) t1
-          let th5 = th4 `compose` th3
-          let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
-          modifying variables . fmap $ over varType (subst th5)
-          return (Let a x' y' `Annot` subst th5 t2, th5, ctx3)
-        Case x xs -> do
-          (x'@(Annot _ t), th, ctx) <- go loc x
-          u <- Var . freeId <$> fresh
-          (ys, t', th', ctx') <- xs & flip foldr (return ([], u, th, ctx))
-            \(c, e) r -> do
-            (as, t1, th1, ctx1) <- r
-            d <- failMaybe $ Map.lookup c cs
-            Args args res <- instantiateFresh d
-            (e'@(Annot _ t2), th2, ctx2) <- go loc e
-            -- Check that the branch type matches the resulting type.
-            th3 <- unify (foldr Arr t1 args) t2
-            -- Check that the constructor type matches the scrutinee.
-            th4 <- unify res t
-            let th5 = th4 `compose` th3 `compose` th2 `compose` th1
-            let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
-            modifying variables . fmap $ over varType (subst th5)
-            return ((c, e'):as, subst th5 t1, th5, ctx3)
-          return (Annot (Case x' $ reverse ys) t', th', ctx')
-
-  (e, th, ctx) <- go Map.empty expr
+  (e, th, ctx) <- (Map.empty &) $ expr & cataExpr \e loc -> case e of
+    Hole _ -> do
+      h <- fresh
+      g <- Var . freeId <$> fresh
+      -- Note variable availability
+      modifying variables $ Map.mapWithKey \x -> \case
+        Variable name t i n | x `elem` loc -> Variable name t (i + 1) n
+        v -> v
+      return (Hole h `Annot` g, Map.empty, Map.singleton h (HoleCtx g loc))
+    Ctr c -> do
+      t <- failMaybe $ Map.lookup c cs
+      u <- instantiateFresh t
+      return (Annot (Ctr c) u, Map.empty, Map.empty)
+    Var a | Just x <- Map.lookup a loc -> use variables >>= \vs ->
+      case Map.lookup x vs of
+        Nothing -> fail $ "Missing variable id " <> show x
+        Just (Variable name t i n) -> do
+          -- Note the variable occurrence
+          modifying variables . Map.insert x $ Variable name t i (n + 1)
+          return (Var a `Annot` t, Map.empty, Map.empty)
+    Var a -> do
+      (_, t) <- failMaybe $ Map.lookup a fs
+      u <- instantiateFresh t
+      return (Var a `Annot` u, Map.empty, Map.empty)
+    App f x -> do
+      (f'@(Annot _ a), th1, ctx1) <- f loc
+      (x'@(Annot _ b), th2, ctx2) <- x loc
+      t <- Var . freeId <$> fresh
+      th3 <- unify (subst th2 a) (Arr b t)
+      let th4 = th3 `compose` th2 `compose` th1
+      let ctx3 = over goal (subst th4) <$> ctx1 <> ctx2
+      modifying variables . fmap $ over varType (subst th4)
+      return (App f' x' `Annot` subst th4 t, th4, ctx3)
+    Lam a x -> do
+      t <- Var . freeId <$> fresh
+      i <- fresh
+      modifying variables $ Map.insert i (Variable a t 1 0)
+      (x'@(Annot _ u), th, local') <- x (Map.insert a i loc)
+      let t' = subst th t
+      return (Lam a x' `Annot` Arr t' u, th, local')
+    Let a x y -> do
+      t <- Var . freeId <$> fresh
+      i <- fresh
+      modifying variables $ Map.insert i (Variable a t 1 0)
+      (x'@(Annot _ t1), th1, ctx1) <- x (Map.insert a i loc)
+      (y'@(Annot _ t2), th2, ctx2) <- y (Map.insert a i loc)
+      let th3 = th2 `compose` th1
+      th4 <- unify (subst th3 t) t1
+      let th5 = th4 `compose` th3
+      let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
+      modifying variables . fmap $ over varType (subst th5)
+      return (Let a x' y' `Annot` subst th5 t2, th5, ctx3)
+    Case x xs -> do
+      (x'@(Annot _ t), th, ctx) <- x loc
+      u <- Var . freeId <$> fresh
+      (ys, t', th', ctx') <- xs & flip foldr (return ([], u, th, ctx))
+        \(c, y) r -> do
+        (as, t1, th1, ctx1) <- r
+        d <- failMaybe $ Map.lookup c cs
+        Args args res <- instantiateFresh d
+        (y'@(Annot _ t2), th2, ctx2) <- y loc
+        -- Check that the branch type matches the resulting type.
+        th3 <- unify (foldr Arr t1 args) t2
+        -- Check that the constructor type matches the scrutinee.
+        th4 <- unify res t
+        let th5 = th4 `compose` th3 `compose` th2 `compose` th1
+        let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
+        modifying variables . fmap $ over varType (subst th5)
+        return ((c, y'):as, subst th5 t1, th5, ctx3)
+      return (Annot (Case x' $ reverse ys) t', th', ctx')
   return (mapAnn (subst th) e, th, ctx)
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so

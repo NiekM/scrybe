@@ -4,17 +4,64 @@ import Import
 import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
-import TermGen
+
+-- Synthesis state {{{
+
+-- TODO: factor out EvalState
+
+data SynState = SynState
+  { _holeCtxs  :: Map Hole HoleCtx
+  , _env       :: Environment
+  , _technique :: Technique
+  , _concepts  :: MultiSet Concept
+  , _tcState   :: TCState
+  }
+
+instance HasHoleCtxs SynState where
+  holeCtxs = lens _holeCtxs \x y -> x { _holeCtxs = y }
+
+instance HasEnvironment SynState where
+  environment = lens _env \x y -> x { _env = y }
+
+instance HasTechnique SynState where
+  technique = lens _technique \x y -> x { _technique = y }
+
+instance HasConcepts SynState where
+  concepts = lens _concepts \x y -> x { _concepts = y }
+
+instance HasTCState SynState where
+  tcState = lens _tcState \x y -> x { _tcState = y }
+
+instance HasVariables SynState where
+  variables = tcState . variables
+
+instance HasFreshState SynState where
+  freshState = tcState . freshState
+
+mkSynState :: Environment -> Technique -> MultiSet Concept -> SynState
+mkSynState e t c = SynState mempty e t c mkTCState
+
+runSyn :: Monad m => RWST (Module Void) () SynState m a ->
+  Module Void -> SynState -> m (a, SynState)
+runSyn tc m g = do
+  (x, s, _) <- runRWST tc m g
+  return (x, s)
+
+evalSyn :: Monad m => RWST (Module Void) () SynState m a ->
+  Module Void -> SynState -> m a
+evalSyn tc m g = fst <$> runSyn tc m g
+
+-- }}}
 
 -- TODO: does init make sense? Maybe we should just have a module as input
 -- and compute the GenState
-init :: Sketch -> GenT Maybe (Term Var Hole)
+init :: SynMonad s m => Sketch -> m (Term Var Hole)
 init (Sketch _ t e) = do
   (expr, _, ctx) <- check e t
   assign holeCtxs ctx
   postProcess (strip expr)
 
-step :: Term Var Hole -> GenT [] (Term Var Hole)
+step :: SynMonad s m => Term Var Hole -> m (Term Var Hole)
 step expr = do
   i <- selectFirst
   hf <- pick i
@@ -27,6 +74,7 @@ type SynMonad s m =
   , FreshVarId m, FreshHole m, FreshFree m
   , MonadFail m
   , MonadPlus m
+  , MonadReader (Module Void) m
   )
 
 -- Refinements {{{
@@ -97,23 +145,23 @@ pick' h (Ref e th _cs) rss = do
   let rss'' = mapMaybe (restrictRef th) <$> Map.delete h rss
   return (x, rss' <> rss'')
 
-next' :: Term Var Hole -> Refs
-  -> GenT [] (Hole, Ref, Term Var Hole, Refs)
+next' :: SynMonad s m => Term Var Hole -> Refs ->
+  m (Hole, Ref, Term Var Hole, Refs)
 next' e rss = do
   (h, rs) <- mfold . Map.assocs $ rss
   r <- mfold rs
   (x, rss') <- pick' h r rss
   return (h, r, fill (Map.singleton h x) e, rss')
 
-init' :: Sketch -> GenT [] (Hole, Ref, Term Var Hole, Refs)
+init' :: SynMonad s m => Sketch -> m (Hole, Ref, Term Var Hole, Refs)
 init' (Sketch _ t e) = do
   (expr, _, ctx) <- check e t
   assign holeCtxs ctx
   x <- postProcess (strip expr)
   use holeCtxs >>= holeVars >>= traverse (uncurry refs) >>= next' x
 
-step' :: (Hole, Ref, Term Var Hole, Refs)
-  -> GenT [] (Hole, Ref, Term Var Hole, Refs)
+step' :: SynMonad s m => (Hole, Ref, Term Var Hole, Refs)
+  -> m (Hole, Ref, Term Var Hole, Refs)
 step' (_, _, e, rss) = next' e rss
 
 -- }}}

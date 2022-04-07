@@ -7,7 +7,7 @@ module Debug where
 
 import Import
 import Language
-import TermGen
+import Synthesis
 import RIO.Text
 import System.IO.Unsafe
 import Prettyprinter
@@ -26,8 +26,8 @@ prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
     Just x -> x
     Nothing -> error "Could not parse prelude"
 
-genSt :: GenState
-genSt = mkGenState (fromModule prelude) EtaLong mempty
+synSt :: SynState
+synSt = mkSynState (fromModule prelude) EtaLong mempty
 
 instance (Pretty a, Pretty b) => Pretty (Map a b) where
   pretty m = align . Prettyprinter.list $ Map.assocs m <&> \(k, x) ->
@@ -39,5 +39,8 @@ instance Pretty a => Pretty (Set a) where
 instance Pretty HoleCtx where
   pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs
 
-tryGen :: Monad m => GenT m a -> m a
-tryGen x = evalGenT x prelude genSt
+tryTC :: Monad m => RWST (Module Void) () TCState m a -> m a
+tryTC x = fst <$> runTC x prelude
+
+trySyn :: Monad m => RWST (Module Void) () SynState m a -> m a
+trySyn x = fst <$> runSyn x prelude synSt
