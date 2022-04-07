@@ -67,16 +67,16 @@ comb = cataExpr \b as -> case b of
   Lam a x -> x (Set.insert a as)
   _ -> False
 
-type Environment = Map Var (Poly, Set Concept)
+type Env = Map Var (Poly, Set Concept)
 
-fromModule :: Module Void -> Environment
+fromModule :: Module Void -> Env
 fromModule m = flip Map.mapWithKey (functions m)
   \x (e, t) -> (t,) . Set.fromList . catMaybes $
     [ Just (Func x)
     , if comb e mempty then Just Combinator else Nothing
     ]
 
-restrict :: Set Concept -> Environment -> Environment
+restrict :: Set Concept -> Env -> Env
 restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 
 -- TODO: gather the concepts from the prelude, e.g. recognizing that id, const,
@@ -87,7 +87,7 @@ restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 -- constructs, by looking up the corresponding concepts in the prelude and
 -- filtering out prohibited concepts such as combinators.
 fromSketch :: Module Void -> Ann Type 'Term Var a ->
-  (Environment, MultiSet Concept)
+  (Env, MultiSet Concept)
 fromSketch m e =
   ( Map.fromList xs
   , fromList . concatMap (toList . snd . snd) . toList $ xs
@@ -103,8 +103,8 @@ data Technique = PointFree | EtaLong
 class HasConcepts a where
   concepts :: Lens' a (MultiSet Concept)
 
-class HasTechnique a where
+class HasTech a where
   technique :: Lens' a Technique
 
-class HasEnvironment a where
-  environment :: Lens' a Environment
+class HasEnv a where
+  environment :: Lens' a Env

@@ -15,7 +15,7 @@ data TCState = TCState
 class HasTCState a where
   tcState :: Lens' a TCState
 
-instance HasVariables TCState where
+instance HasVars TCState where
   variables = lens _locals \x y -> x { _locals = y }
 
 instance HasFreshState TCState where
@@ -89,7 +89,7 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a catamorphism?
 infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
-  (MonadReader (Module Void) m, MonadState s m, HasVariables s) =>
+  (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
   Term Var Unit ->
   m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
 infer expr = do
@@ -171,7 +171,7 @@ infer expr = do
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m) =>
-  (MonadReader (Module Void) m, MonadState s m, HasVariables s) =>
+  (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
   Term Var Unit -> Poly ->
   m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
 check e p = do

@@ -9,11 +9,11 @@ import Control.Monad.State
 import Prettyprinter
 import Language.Parser
 
-class HasEnv a where
-  env :: Lens' a (Map Var (Term Var Void))
+class HasEnv' a where
+  env' :: Lens' a (Map Var (Term Var Void))
 
-instance HasEnv (Map Var (Term Var Void)) where
-  env = id
+instance HasEnv' (Map Var (Term Var Void)) where
+  env' = id
 
 eval' :: Map Var (Term Var Void) -> Term Var Void -> Maybe (Term Var Void)
 eval' m e = evalStateT (eval e) m
@@ -21,12 +21,12 @@ eval' m e = evalStateT (eval e) m
 -- | A simple evaluator/normalizer for expressions that leaves subexpressions
 -- as if when they cannot be evaluated further.
 -- TODO: add alpha renaming
-eval :: (MonadFail m, MonadState s m, HasEnv s) =>
+eval :: (MonadFail m, MonadState s m, HasEnv' s) =>
   Term Var Void -> m (Term Var Void)
 eval = \case
   Hole h -> return $ Hole h
   Var x -> do
-    m <- use env
+    m <- use env'
     case Map.lookup x m of
       Nothing -> fail $ "Unknown variable " <> show x
       Just e -> eval e
@@ -36,13 +36,13 @@ eval = \case
     y <- eval x
     case g of
       Lam a z -> do
-        modifying env $ Map.insert a y
+        modifying env' $ Map.insert a y
         eval z
       _ -> return $ App g y
   Lam a x -> return $ Lam a x
   Let a x e -> do
     y <- eval x
-    modifying env $ Map.insert a y
+    modifying env' $ Map.insert a y
     eval e
   Case x xs -> do
     Apps (Ctr c) as <- eval x

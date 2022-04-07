@@ -317,7 +317,7 @@ goal = lens (\(HoleCtx t _) -> t) \(HoleCtx _ vs) t -> HoleCtx t vs
 local :: Lens' HoleCtx (Map Var VarId)
 local = lens (\(HoleCtx _ vs) -> vs) \(HoleCtx t _) vs -> HoleCtx t vs
 
-class HasHoleCtxs a where
+class HasCtxs a where
   holeCtxs :: Lens' a (Map Hole HoleCtx)
 
 -- TODO: what else do we need to track for local variables?
@@ -329,7 +329,7 @@ varType :: Lens' Variable Type
 varType = lens (\(Variable _ t _ _) -> t) \(Variable x _ i n) t ->
   Variable x t i n
 
-class HasVariables a where
+class HasVars a where
   variables :: Lens' a (Map VarId Variable)
 
 data Sketch = Sketch Var Poly (Term Var Unit)
@@ -418,7 +418,7 @@ number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
 
 -- | Eta expand all holes in a sketch.
-etaExpand :: (FreshVarId m, MonadState s m, HasHoleCtxs s, HasVariables s) =>
+etaExpand :: (FreshVarId m, MonadState s m, HasCtxs s, HasVars s) =>
   Term Var Hole -> m (Term Var Hole)
 etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
   ctxs <- use holeCtxs
