@@ -108,7 +108,3 @@ class HasTechnique a where
 
 class HasEnvironment a where
   environment :: Lens' a Environment
-
-type WithConcepts s m = (MonadState s m, HasConcepts s)
-type WithTechnique s m = (MonadState s m, HasTechnique s)
-type WithEnvironment s m = (MonadState s m, HasEnvironment s)

@@ -89,7 +89,8 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a catamorphism?
 infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
-  (MonadReader (Module Void) m, WithVariables s m) => Term Var Unit ->
+  (MonadReader (Module Void) m, MonadState s m, HasVariables s) =>
+  Term Var Unit ->
   m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
 infer expr = do
   m <- ask
@@ -169,8 +170,9 @@ infer expr = do
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
-check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m,
-  MonadReader (Module Void) m, WithVariables s m) => Term Var Unit -> Poly ->
+check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m) =>
+  (MonadReader (Module Void) m, MonadState s m, HasVariables s) =>
+  Term Var Unit -> Poly ->
   m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
 check e p = do
   (e'@(Annot _ u), th1, ctx1) <- infer e

@@ -386,9 +386,6 @@ functions m = Map.intersectionWith (,) (binds m) (sigs m)
 
 -- }}}
 
-type WithHoleCtxs s m = (MonadState s m, HasHoleCtxs s)
-type WithVariables s m = (MonadState s m, HasVariables s)
-
 -- Helper functions {{{
 
 -- | Substitute variables in an expression without variables bindings according
@@ -421,7 +418,7 @@ number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
 
 -- | Eta expand all holes in a sketch.
-etaExpand :: (FreshVarId m, WithHoleCtxs s m, WithVariables s m) =>
+etaExpand :: (FreshVarId m, MonadState s m, HasHoleCtxs s, HasVariables s) =>
   Term Var Hole -> m (Term Var Hole)
 etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
   ctxs <- use holeCtxs

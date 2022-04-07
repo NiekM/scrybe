@@ -68,13 +68,12 @@ step expr = do
   return $ fill (Map.singleton i hf) expr
 
 type SynMonad s m =
-  ( WithEnvironment s m, WithConcepts s m
-  , WithTechnique s m, WithHoleCtxs s m
-  , WithVariables s m
+  ( MonadReader (Module Void) m, MonadState s m
+  , HasEnvironment s, HasConcepts s
+  , HasTechnique s, HasHoleCtxs s
+  , HasVariables s
   , FreshVarId m, FreshHole m, FreshFree m
-  , MonadFail m
-  , MonadPlus m
-  , MonadReader (Module Void) m
+  , MonadFail m , MonadPlus m
   )
 
 -- Refinements {{{
@@ -95,7 +94,8 @@ restrictRef th1 (Ref x th2 c) = do
   th3 <- combine th1 th2
   return $ Ref (over holes (subst th3) x) th3 c
 
-globals' :: (WithEnvironment s m, FreshFree m) => m [(Var, Poly, Set Concept)]
+globals' :: (MonadState s m, HasEnvironment s, FreshFree m) =>
+  m [(Var, Poly, Set Concept)]
 globals' = do
   xs <- Map.assocs <$> use environment
   for xs \(x, (Poly as p, c)) -> do
@@ -103,7 +103,7 @@ globals' = do
     let u = subst (Var <$> Map.fromList th) p
     return (x, Poly (snd <$> th) u, c)
 
-holeVars :: WithVariables s m =>
+holeVars :: (MonadState s m, HasVariables s) =>
   Map Hole HoleCtx -> m (Map Hole (Type, Map Var Type))
 holeVars ctxs = do
   vs <- use variables
@@ -112,7 +112,7 @@ holeVars ctxs = do
       Nothing -> error "Missing VarId: this should never happen"
       Just (Variable _ u _ _) -> u
 
-refs :: (FreshFree m, WithEnvironment s m) =>
+refs :: (FreshFree m, MonadState s m, HasEnvironment s) =>
   Type -> Map Var Type -> m [Ref]
 refs t vs = do
   gs <- globals'
@@ -126,8 +126,8 @@ refs t vs = do
         let th' = Map.withoutKeys th $ Set.fromList as
         [Ref e th' cs]
 
-pick' :: (FreshFree m, FreshHole m, FreshVarId m)
-  => (WithEnvironment s m, WithVariables s m, WithHoleCtxs s m)
+pick' :: (FreshFree m, FreshHole m, FreshVarId m, MonadState s m)
+  => (HasEnvironment s, HasVariables s, HasHoleCtxs s)
   => Hole -> Ref -> Refs -> m (Term Var Hole, Refs)
 pick' h (Ref e th _cs) rss = do
   -- Select the holeCtx and remove it from holeCtxs
@@ -169,7 +169,7 @@ step' (_, _, e, rss) = next' e rss
 type HoleFilling = (Term Var Type, Type)
 
 -- | Select the first hole to fill.
-selectFirst :: (MonadPlus m, WithHoleCtxs s m) => m Hole
+selectFirst :: (MonadPlus m, MonadState s m, HasHoleCtxs s) => m Hole
 selectFirst = use holeCtxs >>= fmap fst . mfold . Set.minView . Map.keysSet
 
 -- | Try to select a valid hole filling for a hole.
@@ -202,21 +202,21 @@ fillHole h (e, t) = do
   postProcess x
 
 -- | Process an expression.
-postProcess :: (WithTechnique s m, WithHoleCtxs s m,
-  WithVariables s m, FreshVarId m)
+postProcess :: (MonadState s m, HasTechnique s, HasHoleCtxs s,
+  HasVariables s, FreshVarId m)
   => Term Var Hole -> m (Term Var Hole)
 postProcess e = use technique >>= \case
   EtaLong -> etaExpand e
   _ -> return e
 
 -- | Retrieve the context of a hole.
-getCtx :: (MonadFail m, WithHoleCtxs s m) => Hole -> m HoleCtx
+getCtx :: (MonadFail m, MonadState s m, HasHoleCtxs s) => Hole -> m HoleCtx
 getCtx h = use holeCtxs >>=
   maybe (fail "Missing holeCtx") return . Map.lookup h
 
 -- | Introduce a new hole.
-introduceHole :: (FreshHole m, WithHoleCtxs s m, WithVariables s m) =>
-  HoleCtx -> m Hole
+introduceHole :: (FreshHole m, MonadState s m, HasHoleCtxs s, HasVariables s)
+  => HoleCtx -> m Hole
 introduceHole ctx = do
   h <- fresh
   modifying holeCtxs $ Map.insert h ctx
@@ -238,7 +238,8 @@ closeHole h = do
         modifying variables $ Map.insert i (Variable x t (n - 1) m)
 
 -- | Performs type substitutions in holes and local variables.
-applySubst :: (WithHoleCtxs s m, WithVariables s m) => Map Var Type -> m ()
+applySubst :: (MonadState s m, HasHoleCtxs s, HasVariables s) =>
+  Map Var Type -> m ()
 applySubst th = do
   modifying holeCtxs . fmap $ over goal (subst th)
   modifying variables . fmap $ over varType (subst th)
@@ -247,16 +248,16 @@ applySubst th = do
 -- weights to discourage them.
 
 -- | Compute hole fillings from global variables.
-globals :: (MonadPlus m, FreshFree m, WithTechnique s m, WithEnvironment s m) =>
-  m (HoleFilling, Set Concept)
+globals :: (MonadPlus m, FreshFree m, MonadState s m,
+  HasTechnique s, HasEnvironment s) => m (HoleFilling, Set Concept)
 globals = do
   (x, (t, c)) <- mfold . Map.assocs =<< use environment
   u <- instantiateFresh t
   (,c) <$> holeFillings (Var x) u
 
 -- | Compute hole fillings from local variables.
-locals :: (MonadFail m, MonadPlus m,
-  WithVariables s m, WithTechnique s m, WithHoleCtxs s m) =>
+locals :: (MonadFail m, MonadPlus m, MonadState s m,
+  HasVariables s, HasTechnique s, HasHoleCtxs s) =>
   Hole -> m (HoleFilling, Set Concept)
 locals h = do
   ctx <- getCtx h
@@ -278,7 +279,7 @@ constructs :: MonadPlus m => m (HoleFilling, Set Concept)
 constructs = mzero -- TODO
 
 -- | Compute the possible hole fillings from a function.
-holeFillings :: (MonadPlus m, WithTechnique s m) =>
+holeFillings :: (MonadPlus m, MonadState s m, HasTechnique s) =>
   Term Var Type -> Type -> m HoleFilling
 holeFillings e t = use technique >>= \case
   EtaLong   -> return $ fullyApply (e, t)
