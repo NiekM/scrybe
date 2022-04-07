@@ -89,31 +89,32 @@ step_ g@GraphState { stack, heap, global, funs } = case stack of
         , n <- length xs
         , (as, s') <- splitAt n s
         , length as == n ->
-          let (h, b) = inst e heap (Map.fromList (zip xs as) <> global)
+          let (b, h) = runState (inst (Map.fromList (zip xs as) <> global) e) heap
           in return $ GraphState (b:s') h global funs
         | otherwise -> Left g
       _ -> Left g
 
-alloc :: Heap -> Node -> (Heap, Address)
-alloc h n = (Map.insert i n h, i) where
-  i = case maximumMaybe (Map.keysSet h) of
-    Nothing -> 0
-    Just j -> j + 1
+alloc :: Node -> State Heap Address
+alloc n = do
+  h <- get
+  let i = maybe 0 (+1) $ maximumMaybe (Map.keysSet h)
+  put $ Map.insert i n h
+  return i
 
-inst :: Body -> Heap -> Global -> (Heap, Address)
-inst e h g = case e of
+inst :: Global -> Body -> State Heap Address
+inst g = cataExpr \case
   Hole i -> absurd i
-  App e1 e2 ->
-    let (h1, a1) = inst e1 h g
-        (h2, a2) = inst e2 h1 g
-    in alloc h2 (App a1 a2)
-  Var a -> (h, fromMaybe (error "Oh oh") $ Map.lookup a g)
-  Ctr c -> alloc h (Ctr c)
+  Ctr c -> alloc $ Ctr c
+  Var a -> maybe (error "Oh oh") return $ Map.lookup a g
+  App e1 e2 -> do
+    a1 <- e1
+    a2 <- e2
+    alloc $ App a1 a2
   _ -> undefined
 
 initialHeap :: [Def] -> (Heap, Global, Funs)
 initialHeap = foldr (\(x, as, b) (h, g, f) ->
-  let (h', g') = allocate (x, as, b) h
+  let (g', h') = runState (allocate (x, as, b)) h
   in (h', g', Map.singleton x (as, b)) <> (h, g, f)) mempty
 
 compile :: [Def] -> GraphState
@@ -128,10 +129,10 @@ fromAddress h i = Map.lookup i h >>= \case
   Ctr c -> return $ Ctr c
   _ -> Nothing
 
-allocate :: Def -> Heap -> (Heap, Global)
-allocate (name, _, _) heap =
-  (heap', Map.singleton name address)
-    where (heap', address) = alloc heap (Var name)
+allocate :: Def -> State Heap Global
+allocate (name, _, _) = do
+  address <- alloc $ Var name
+  return $ Map.singleton name address
 
 toExpr :: GraphState -> (Term Var Void, [Term Var Void])
 toExpr GraphState { stack, heap } =
