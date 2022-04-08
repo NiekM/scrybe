@@ -102,15 +102,10 @@ alloc n = do
   return i
 
 inst :: Global -> Body -> State Heap Address
-inst g = cataExpr \case
-  Hole i -> absurd i
-  Ctr c -> alloc $ Ctr c
+inst g = cataExprM \case
   Var a -> maybe (error "Oh oh") return $ Map.lookup a g
-  App e1 e2 -> do
-    a1 <- e1
-    a2 <- e2
-    alloc $ App a1 a2
-  _ -> undefined
+  Hole i -> absurd i
+  e -> alloc e
 
 initialHeap :: [Def] -> (Heap, Global, Funs)
 initialHeap = foldr (\(x, as, b) (h, g, f) ->
@@ -123,11 +118,7 @@ compile program = GraphState { stack, heap, global, funs } where
   (heap, global, funs) = initialHeap program
 
 fromAddress :: Heap -> Address -> Maybe (Term Var Void)
-fromAddress h i = Map.lookup i h >>= \case
-  App x y -> App <$> fromAddress h x <*> fromAddress h y
-  Var v -> return $ Var v
-  Ctr c -> return $ Ctr c
-  _ -> Nothing
+fromAddress = anaExprM . flip Map.lookup
 
 allocate :: Def -> State Heap Global
 allocate (name, _, _) = do
@@ -147,11 +138,14 @@ visualize (xs, y) = pretty (as, b) where
     in apps (Hole e) (fmap (over holes absurd) es)
   b = uncurry apps . toExpr $ y
 
+parseUnsafe :: Parse a => Text -> a
+parseUnsafe = fromMaybe undefined . lexParse parser
+
 defs :: [Def]
 defs =
-  [ ("main", [], fromMaybe undefined $ lexParse parser "fix twice")
-  , ("twice", ["a"], fromMaybe undefined $ lexParse parser "Pair a a")
-  , ("fix", ["f"], fromMaybe undefined $ lexParse parser "f (fix f)")
+  [ ("main", [], parseUnsafe "fix twice")
+  , ("twice", ["a"], parseUnsafe "Pair a a")
+  , ("fix", ["f"], parseUnsafe "f (fix f)")
   ]
 
 steps :: GraphState -> ([GraphState], GraphState)

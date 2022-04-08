@@ -96,10 +96,9 @@ globals' :: (MonadState s m, HasEnv s, FreshFree m) =>
   m [(Var, Poly, Set Concept)]
 globals' = do
   xs <- Map.assocs <$> use environment
-  for xs \(x, (Poly as p, c)) -> do
-    th <- for as \a -> (a,) . freeId <$> fresh
-    let u = subst (Var <$> Map.fromList th) p
-    return (x, Poly (snd <$> th) u, c)
+  for xs \(x, (p, c)) -> do
+    q <- refresh p
+    return (x, q, c)
 
 holeVars :: (MonadState s m, HasVars s) =>
   Map Hole HoleCtx -> m (Map Hole (Type, Map Var Type))
@@ -111,8 +110,8 @@ holeVars ctxs = do
       Just (Variable _ u _ _) -> u
 
 refs :: (FreshFree m, MonadState s m, HasEnv s) =>
-  Type -> Map Var Type -> m [Ref]
-refs t vs = do
+  (Type, Map Var Type) -> m [Ref]
+refs (t, vs) = do
   gs <- globals'
   let ls = Map.assocs vs <&> \(a, u) -> (a, Poly [] u, Set.empty)
   return do
@@ -128,18 +127,18 @@ pick' :: (FreshFree m, FreshHole m, FreshVarId m, MonadState s m)
   => (HasEnv s, HasVars s, HasCtxs s)
   => Hole -> Ref -> Refs -> m (Term Var Hole, Refs)
 pick' h (Ref e th _cs) rss = do
-  -- Select the holeCtx and remove it from holeCtxs
-  applySubst th
+  applySubst th -- TODO: is this needed?
+  -- Select and remove the holeCtx
   ctxs <- use holeCtxs
-  let ctx = case Map.lookup h ctxs of
-        Nothing -> error ("This should never happen: " <> show h)
-        Just x -> x
+  let ctx = fromMaybe (error "Missing hole") $ Map.lookup h ctxs
   modifying holeCtxs $ Map.delete h
   -- Process and etaExpand refinement
   x <- etaExpand =<< forOf holes e \u -> introduceHole (set goal u ctx)
   let hs = Set.fromList $ toListOf holes x
+  -- Select holeCtxs of the new holes
   ctxs' <- flip Map.restrictKeys hs <$> use holeCtxs
-  rss' <- traverse (uncurry refs) =<< holeVars ctxs'
+  -- Compute all new refinements and restrict previous refinements
+  rss' <- traverse refs =<< holeVars ctxs'
   let rss'' = mapMaybe (restrictRef th) <$> Map.delete h rss
   return (x, rss' <> rss'')
 
@@ -156,7 +155,7 @@ init' (Sketch _ t e) = do
   (expr, _, ctx) <- check e t
   assign holeCtxs ctx
   x <- postProcess (strip expr)
-  use holeCtxs >>= holeVars >>= traverse (uncurry refs) >>= next' x
+  use holeCtxs >>= holeVars >>= traverse refs >>= next' x
 
 step' :: SynMonad s m => (Hole, Ref, Term Var Hole, Refs)
   -> m (Hole, Ref, Term Var Hole, Refs)

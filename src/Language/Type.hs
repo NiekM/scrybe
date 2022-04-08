@@ -87,7 +87,7 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
         combine th' th
 
 -- TODO: move holeCtxs to Monad
--- TODO: implement as a catamorphism?
+-- TODO: implement as a cataExprM?
 infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
   (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
   Term Var Unit ->

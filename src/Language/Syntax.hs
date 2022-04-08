@@ -142,11 +142,24 @@ rec go = \case
   Let a x y -> Let a <$> go x <*> go y
   Case x xs -> Case <$> go x <*> traverse (traverse go) xs
 
+paraExprM :: Monad m => (Expr l v h -> Base c l v h -> m c) -> Expr l v h -> m c
+paraExprM g e = g e =<< forOf rec e (paraExprM g)
+
+cataExprM :: Monad m => (Base c l v h -> m c) -> Expr l v h -> m c
+cataExprM = paraExprM . const
+
 paraExpr :: (Expr l v h -> Base c l v h -> c) -> Expr l v h -> c
 paraExpr g e = g e (over rec (paraExpr g) e)
 
 cataExpr :: (Base c l v h -> c) -> Expr l v h -> c
 cataExpr = paraExpr . const
+
+apoExprM :: Monad m =>
+  (c -> m (Either (Expr l v h) (Base c l v h))) -> c -> m (Expr l v h)
+apoExprM g e = g e >>= either return \x -> forOf rec x (apoExprM g)
+
+anaExprM :: Monad m => (c -> m (Base c l v h)) -> c -> m (Expr l v h)
+anaExprM = apoExprM . (fmap return .)
 
 apoExpr :: (c -> Either (Expr l v h) (Base c l v h)) -> c -> Expr l v h
 apoExpr g e = either id (over rec (apoExpr g)) (g e)
@@ -170,6 +183,9 @@ coerceExpr = cataExpr \case
   Lam a x -> Lam a x
   Let a x y -> Let a x y
   Case x xs -> Case x xs
+
+fixExprM :: Monad m => Base (Expr l v h) l v h -> m (Expr l v h)
+fixExprM = flip (forOf rec) return
 
 fixExpr :: Base (Expr l v h) l v h -> Expr l v h
 fixExpr = over rec id
@@ -289,11 +305,17 @@ instantiate :: Map Var Type -> Poly -> Poly
 instantiate th (Poly fr ty) =
   Poly (filter (`notElem` Map.keys th) fr) (subst th ty)
 
+refresh :: FreshFree m => Poly -> m Poly
+refresh (Poly as t) = do
+  th <- for as \a -> (a,) . freeId <$> fresh
+  let u = subst (Var <$> Map.fromList th) t
+  return $ Poly (snd <$> th) u
+
 -- | Instantiate all quantified variables of a polytype with fresh variables.
 instantiateFresh :: FreshFree m => Poly -> m Type
-instantiateFresh (Poly xs t) = do
-  th <- Map.fromList <$> forM xs \x -> (x,) . Var . freeId <$> fresh
-  return $ subst th t
+instantiateFresh p = do
+  Poly _ t <- refresh p
+  return t
 
 -- }}}
 
@@ -420,23 +442,25 @@ number = traverse \x -> (,x) <$> fresh
 -- | Eta expand all holes in a sketch.
 etaExpand :: (FreshVarId m, MonadState s m, HasCtxs s, HasVars s) =>
   Term Var Hole -> m (Term Var Hole)
-etaExpand = fmap (over holes' id) . traverseOf holes \i -> do
-  ctxs <- use holeCtxs
-  case Map.lookup i ctxs of
-    Nothing -> return $ Hole i
-    Just ctx -> do
-      -- Split the type in the arguments and the result type
-      let Args ts u = view goal ctx
-      -- Couple each argument with a fresh name
-      xs <- number ts
-      let locals' = Map.fromList ((varId &&& id) . fst <$> xs)
-      -- Update the hole context
-      modifying holeCtxs $ Map.insert i $ HoleCtx u (view local ctx <> locals')
-      let vs = Map.fromList $ xs <&> \(x, t) -> (x, Variable (varId x) t 1 0)
-      -- traceShowM vars
-      modifying variables (vs <>)
-      -- Eta expand the hole
-      return $ lams (varId . fst <$> xs) (Hole i)
+etaExpand = cataExprM \case
+  Hole h -> do
+    ctxs <- use holeCtxs
+    case Map.lookup h ctxs of
+      Nothing -> return $ Hole h
+      Just ctx -> do
+        -- Split the type in the arguments and the result type
+        let Args ts u = view goal ctx
+        -- Couple each argument with a fresh name
+        xs <- number ts
+        let locals' = Map.fromList ((varId &&& id) . fst <$> xs)
+        -- Update the hole context
+        modifying holeCtxs $ Map.insert h $ HoleCtx u (view local ctx <> locals')
+        let vs = Map.fromList $ xs <&> \(x, t) -> (x, Variable (varId x) t 1 0)
+        -- traceShowM vars
+        modifying variables (vs <>)
+        -- Eta expand the hole
+        return $ lams (varId . fst <$> xs) (Hole h)
+  e -> fixExprM e
 
 -- }}}
 
