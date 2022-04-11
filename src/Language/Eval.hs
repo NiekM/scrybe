@@ -38,17 +38,18 @@ eval = \case
       Lam a z -> do
         modifying env' $ Map.insert a y
         eval z
+      Elim xs -> do
+        Apps (Ctr c) as <- eval x
+        case lookup c xs of
+          Just e -> eval $ apps e as
+          Nothing -> fail "Pattern match failure"
       _ -> return $ App g y
   Lam a x -> return $ Lam a x
   Let a x e -> do
     y <- eval x
     modifying env' $ Map.insert a y
     eval e
-  Case x xs -> do
-    Apps (Ctr c) as <- eval x
-    case lookup c xs of
-      Just e -> eval $ apps e as
-      Nothing -> fail "Pattern match failure: non-exhaustive pattern"
+  Elim xs -> return $ Elim xs
 
 type Address = Int
 type Body = Expr 'Term Var Void

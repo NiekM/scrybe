@@ -49,11 +49,11 @@ type family HasLam' (l :: Level) where
 
 type HasLam l = HasLam' l ~ 'True
 
-type family HasCase' (l :: Level) where
-  HasCase' 'Term = 'True
-  HasCase' _     = 'False
+type family HasElim' (l :: Level) where
+  HasElim' 'Term = 'True
+  HasElim' _     = 'False
 
-type HasCase l = HasCase' l ~ 'True
+type HasElim l = HasElim' l ~ 'True
 
 type family HasLet' (l :: Level) where
   HasLet' 'Term = 'True
@@ -71,7 +71,7 @@ type HasArr l = (HasCtr l, HasApp l)
 
 type NoBind l =
   ( HasLam' l ~ 'False
-  , HasCase' l ~ 'False
+  , HasElim' l ~ 'False
   , HasLet' l ~ 'False
   )
 
@@ -98,7 +98,7 @@ data Expr' (r :: Func) (l :: Level) v h where
   App :: HasApp l => Rec r l v h -> Rec r l v h -> Expr' r l v h
   Lam :: HasLam l => v -> Rec r l v h -> Expr' r l v h
   Let :: HasLet l => v -> Rec r l v h -> Rec r l v h -> Expr' r l v h
-  Case :: HasCase l => Rec r l v h -> [(Ctr, Rec r l v h)] -> Expr' r l v h
+  Elim :: HasElim l => [(Ctr, Rec r l v h)] -> Expr' r l v h
 
 data Func' a = Fix | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
@@ -127,6 +127,10 @@ deriving instance (Show v, Show h, Show (Rec r l v h)) => Show (Expr' r l v h)
 pattern Arr :: () => HasArr l => Expr l v h -> Expr l v h -> Expr l v h
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
+pattern Case :: () => (HasApp l, HasElim l) =>
+  Expr l v h -> [(Ctr, Expr l v h)] -> Expr l v h
+pattern Case x xs = App (Elim xs) x
+
 type Type = Expr 'Type Var Void
 type Term = Expr 'Term
 type Value = Expr 'Value Void
@@ -141,7 +145,7 @@ rec go = \case
   App f x -> App <$> go f <*> go x
   Lam a x -> Lam a <$> go x
   Let a x y -> Let a <$> go x <*> go y
-  Case x xs -> Case <$> go x <*> traverse (traverse go) xs
+  Elim xs -> Elim <$> traverse (traverse go) xs
 
 paraExprM :: Monad m => (Expr l v h -> Base c l v h -> m c) -> Expr l v h -> m c
 paraExprM g e = g e =<< forOf rec e (paraExprM g)
@@ -174,7 +178,7 @@ coerceExpr ::
   , c ~ HasApp l, c' ~ HasApp l', c => c'
   , d ~ HasLam l, d' ~ HasLam l', d => d'
   , e ~ HasLet l, e' ~ HasLet l', e => e'
-  , f ~ HasCase l, f' ~ HasCase l', f => f'
+  , f ~ HasElim l, f' ~ HasElim l', f => f'
   ) => Expr l v h -> Expr l' v h
 coerceExpr = cataExpr \case
   Hole h -> Hole h
@@ -183,7 +187,7 @@ coerceExpr = cataExpr \case
   App f x -> App f x
   Lam a x -> Lam a x
   Let a x y -> Let a x y
-  Case x xs -> Case x xs
+  Elim xs -> Elim xs
 
 fixExprM :: Monad m => Base (Expr l v h) l v h -> m (Expr l v h)
 fixExprM = flip (forOf rec) return
@@ -212,7 +216,7 @@ holes' g = cataExpr \case
   App f x -> App <$> f <*> x
   Lam a x -> Lam a <$> x
   Let a x y -> Let a <$> x <*> y
-  Case x xs -> Case <$> x <*> traverse sequenceA xs
+  Elim xs -> Elim <$> traverse sequenceA xs
 
 holes :: Traversal (Expr l v h) (Expr l v h') h h'
 holes = holes' . fmap (fmap Hole)
@@ -493,7 +497,7 @@ instance (Pretty (Ann a 'Term v h), Pretty v, Pretty h)
     App f x -> pretty f <+> pretty x
     Lam a x -> parens $ "\\" <> pretty a <+> "->" <+> parens (pretty x)
     Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e
-    Case x xs -> "case" <+> pretty x <+> "of" <+>
+    Elim xs -> "\\case" <+>
       mconcat (intersperse "; " $ xs <&> \(p, a) ->
         pretty p <+> "->" <+> pretty a)
 
@@ -508,15 +512,18 @@ pp i = \case
   Var x -> pretty x
   Ctr c -> pretty c
   Arr t u -> prettyParen (i > 1) $ sep [pp 2 t, "->", pp 1 u]
+  Case x xs -> prettyParen (i > 0) $ "case" <+> pp 0 x <+> "of" <+>
+    mconcat (intersperse "; " $ xs <&> \(p, Lams as b) ->
+      sep (pretty p : fmap pretty as) <+> "->" <+> pp 0 b)
   App f x -> prettyParen (i > 2) $ sep [pp 2 f, pp 3 x]
   Lam a (Lams as x) -> prettyParen (i > 0) $
     "\\" <> sep (pretty <$> a:as) <+> "->" <+> pp 0 x
   Let a (Lams as x) e -> prettyParen (i > 0) $
     "let" <+> pretty a <+> sep (pretty <$> as)
     <+> "=" <+> pp 0 x <+> "in" <+> pp 0 e
-  Case x xs -> prettyParen (i > 0) $ "case" <+> pp 0 x <+> "of" <+>
-    mconcat (intersperse "; " $ xs <&> \(p, Lams as b) ->
-      sep (pretty p : fmap pretty as) <+> "->" <+> pp 0 b)
+  Elim xs -> prettyParen (i > 0) $ "\\case" <+>
+    mconcat (intersperse "; " $ xs <&> \(p, a) ->
+      pretty p <+> "->" <+> pp 0 a)
 
 instance (Pretty v, Pretty h) => Pretty (Expr l v h) where
   pretty = pp 0

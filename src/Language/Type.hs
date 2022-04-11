@@ -148,24 +148,24 @@ infer expr = do
       let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
       modifying variables . fmap $ over varType (subst th5)
       return (Let a x' y' `Annot` subst th5 t2, th5, ctx3)
-    Case x xs -> do
-      (x'@(Annot _ t), th, ctx) <- x loc
+    Elim xs -> do
+      t <- Var . freeId <$> fresh
       u <- Var . freeId <$> fresh
-      (ys, t', th', ctx') <- xs & flip foldr (return ([], u, th, ctx))
-        \(c, y) r -> do
-        (as, t1, th1, ctx1) <- r
+      (ys, t', u', th', ctx') <-
+        xs & flip foldr (return ([], t, u, mempty, mempty)) \(c, y) r -> do
+        (as, t1, u1, th1, ctx1) <- r
         d <- failMaybe $ Map.lookup c cs
         Args args res <- instantiateFresh d
         (y'@(Annot _ t2), th2, ctx2) <- y loc
-        -- Check that the branch type matches the resulting type.
-        th3 <- unify (foldr Arr t1 args) t2
         -- Check that the constructor type matches the scrutinee.
-        th4 <- unify res t
+        th3 <- unify res t1
+        -- Check that the branch type matches the resulting type.
+        th4 <- unify (foldr Arr u1 args) t2
         let th5 = th4 `compose` th3 `compose` th2 `compose` th1
         let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
         modifying variables . fmap $ over varType (subst th5)
-        return ((c, y'):as, subst th5 t1, th5, ctx3)
-      return (Annot (Case x' $ reverse ys) t', th', ctx')
+        return ((c, y'):as, subst th5 t1, subst th5 u1, th5, ctx3)
+      return (Elim (reverse ys) `Annot` Arr t' u', th', ctx')
   return (mapAnn (subst th) e, th, ctx)
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
