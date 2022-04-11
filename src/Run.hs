@@ -95,6 +95,8 @@ run = do
   traverse_ (synth' EtaLong)
     [ "compose"
     , "flip"
+    -- TODO: map as unfold?
+    -- map f = unfoldr \case [] -> Nothing; x:xs -> Just (f x, xs)
     , "map"
     -- TODO: add simple testing to differentiate stutter from idList
     , "stutter"

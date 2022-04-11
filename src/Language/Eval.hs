@@ -50,15 +50,6 @@ eval = \case
       Just e -> eval $ apps e as
       Nothing -> fail "Pattern match failure: non-exhaustive pattern"
 
-match :: Pattern Var Void -> Term Var a -> Maybe (Map Var (Term Var a))
-match p e = case p of
-  Hole h -> absurd h
-  Var a -> return $ Map.singleton a e
-  Ctr c | Ctr d <- e, c == d -> return Map.empty
-  -- Note: pattern matching does not check for duplicate variables in a pattern
-  App f x | App g y <- e -> liftM2 (<>) (match f g) (match x y)
-  _ -> fail "Pattern match failed"
-
 type Address = Int
 type Body = Expr 'Term Var Void
 

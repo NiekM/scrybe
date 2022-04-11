@@ -154,15 +154,6 @@ list = foldr (\x r -> apps (Ctr "Cons") [x, r]) (Ctr "Nil")
 parseList :: (HasCtr l, HasApp l) => Parser (Expr l v h) -> Parser (Expr l v h)
 parseList p = list <$> brackets Square (alt p (sep ","))
 
-instance ParseAtom 'Pattern where
-  parseAtom = choice
-    [ Hole <$> brackets Curly parser
-    , Var <$> parser
-    , Ctr <$> parser
-    , parseNat
-    , parseList parser
-    ]
-
 parseBranch :: (Parse v, Parse h) => Parser (Ctr, Expr 'Term v h)
 parseBranch = (,) <$> parser <*> (lams <$> many parser <* op "->" <*> parser)
 
@@ -189,9 +180,6 @@ instance ParseAtom 'Type where
 parseApps :: (Parse v, Parse h, HasApp l, ParseAtom l) => Parser (Expr l v h)
 parseApps = apps <$> atom <*> many atom
   where atom = brackets Round parseApps <|> parseAtom
-
-instance (Parse v, Parse h) => Parse (Expr 'Pattern v h) where
-  parser = parseApps
 
 instance (Parse v, Parse h) => Parse (Expr 'Term v h) where
   parser = parseApps

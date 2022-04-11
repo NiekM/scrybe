@@ -23,7 +23,7 @@ import qualified RIO.Map as Map
 -- TODO: maybe add kinds?
 -- TODO: maybe level should contain values (concrete evaluation results) as
 -- well as 'results' (as seen in Smyth)
-data Level = Type | Term | Pattern | Value | Lambda
+data Level = Type | Term | Value | Lambda | Res
   deriving (Eq, Ord, Show, Read)
 
 type family HasCtr' (l :: Level) where
@@ -61,11 +61,13 @@ type family HasLet' (l :: Level) where
 
 type HasLet l = HasLet' l ~ 'True
 
-type HasArr l = (HasCtr l, HasApp l)
+type family HasRes' (l :: Level) where
+  HasRes' 'Res = 'True
+  HasRes' _    = 'False
 
-type family IsJust (t :: Maybe a) where
-  IsJust ('Just _) = 'True
-  IsJust 'Nothing  = 'False
+type HasRes l = HasRes' l ~ 'True
+
+type HasArr l = (HasCtr l, HasApp l)
 
 type NoBind l =
   ( HasLam' l ~ 'False
@@ -127,7 +129,6 @@ pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
 type Type = Expr 'Type Var Void
 type Term = Expr 'Term
-type Pattern = Expr 'Pattern
 type Value = Expr 'Value Void
 
 -- Morphisms {{{
