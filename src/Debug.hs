@@ -8,14 +8,14 @@ module Debug where
 import Import
 import Language
 import Synthesis
-import RIO.Text
+import qualified RIO.Text as T
 import System.IO.Unsafe
 import Prettyprinter
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 
 fromStr :: Parse a => String -> a
-fromStr = fromMaybe (error "Parse failed") . lexParse parser . pack
+fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
 
 instance Parse (Expr l v h) => IsString (Expr l v h) where fromString = fromStr
 instance IsString Poly where fromString = fromStr
@@ -44,3 +44,12 @@ tryTC x = fst <$> runTC x prelude
 
 trySyn :: Monad m => RWST (Module Void) () SynState m a -> m a
 trySyn x = fst <$> runSyn x prelude synSt
+
+preludeBinds :: [(Var, Term Var Hole)]
+preludeBinds = second (over holes' absurd . fst) <$> functions prelude
+
+liveEnv :: Map Var Result
+liveEnv = foldl' go mempty preludeBinds where
+  go m (v, e) = case live 10 m e of
+    Nothing -> undefined
+    Just r -> Map.insert v r m

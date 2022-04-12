@@ -19,9 +19,6 @@ compose f g x = f (g x)
 
 -- || Recursion
 
-fix :: (a -> a) -> a
-fix = let go f = f (go f) in go
-
 rec :: ((a -> b) -> (a -> b)) -> a -> b
 rec = fix
 
@@ -41,7 +38,7 @@ elimBool :: a -> a -> Bool -> a
 elimBool f t b = case b of False -> f; True -> t
 
 not :: Bool -> Bool
-not = elimBool True False
+not b = elimBool True False b
 
 -- || Orderings
 
@@ -73,7 +70,7 @@ elimNat :: a -> (Nat -> a) -> Nat -> a
 elimNat z s n = case n of Zero -> z; Succ m -> s m
 
 foldNat :: a -> (a -> a) -> Nat -> a
-foldNat z s = let go n = case n of Zero -> z; Succ m -> s (go m) in go
+foldNat z s = fix \go n -> case n of Zero -> z; Succ m -> s (go m)
 
 plus :: Nat -> Nat -> Nat
 plus n = foldNat n Succ
@@ -95,16 +92,16 @@ elimList :: a -> (b -> List b -> a) -> List b -> a
 elimList n c l = case l of Nil -> n; Cons h t -> c h t
 
 foldList :: b -> (a -> b -> b) -> List a -> b
-foldList n c = let go l = case l of Nil -> n; Cons h t -> c h (go t) in go
+foldList n c = fix \go l -> case l of Nil -> n; Cons h t -> c h (go t)
 
 foldr :: (a -> b -> b) -> b -> List a -> b
-foldr = flip foldList
+foldr f e = foldList e f
 
 map :: (a -> b) -> List a -> List b
 map f = foldList [] (\x -> Cons (f x))
 
 length :: List a -> Nat
-length = foldList Zero \x r -> Succ r
+length xs = foldList Zero (\x r -> Succ r) xs
 
 -- || Products
 

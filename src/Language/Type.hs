@@ -94,8 +94,8 @@ infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
   m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
 infer expr = do
   m <- ask
-  let cs = ctrs m
-  let fs = functions m
+  let cs = Map.fromList $ ctrs m
+  let fs = Map.fromList $ sigs m
   (e, th, ctx) <- (Map.empty &) $ expr & cataExpr \e loc -> case e of
     Hole _ -> do
       h <- fresh
@@ -117,7 +117,7 @@ infer expr = do
           modifying variables . Map.insert x $ Variable name t i (n + 1)
           return (Var a `Annot` t, Map.empty, Map.empty)
     Var a -> do
-      (_, t) <- failMaybe $ Map.lookup a fs
+      t <- failMaybe $ Map.lookup a fs
       u <- instantiateFresh t
       return (Var a `Annot` u, Map.empty, Map.empty)
     App f x -> do
@@ -140,7 +140,7 @@ infer expr = do
       t <- Var . freeId <$> fresh
       i <- fresh
       modifying variables $ Map.insert i (Variable a t 1 0)
-      (x'@(Annot _ t1), th1, ctx1) <- x (Map.insert a i loc)
+      (x'@(Annot _ t1), th1, ctx1) <- x loc
       (y'@(Annot _ t2), th2, ctx2) <- y (Map.insert a i loc)
       let th3 = th2 `compose` th1
       th4 <- unify (subst th3 t) t1
@@ -166,6 +166,10 @@ infer expr = do
         modifying variables . fmap $ over varType (subst th5)
         return ((c, y'):as, subst th5 t1, subst th5 u1, th5, ctx3)
       return (Elim (reverse ys) `Annot` Arr t' u', th', ctx')
+    Fix -> do
+      t <- Var . freeId <$> fresh
+      return (Fix `Annot` Arr (Arr t t) t, mempty, mempty)
+
   return (mapAnn (subst th) e, th, ctx)
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so

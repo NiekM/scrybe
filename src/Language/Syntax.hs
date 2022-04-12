@@ -67,6 +67,13 @@ type family HasElim' (l :: Level) where
 
 type HasElim l = HasElim' l ~ 'True
 
+type family HasFix' (l :: Level) where
+  HasFix' 'Term = 'True
+  HasFix' 'Det  = 'True
+  HasFix' _     = 'False
+
+type HasFix l = HasFix' l ~ 'True
+
 type family HasLet' (l :: Level) where
   HasLet' 'Term = 'True
   HasLet' _     = 'False
@@ -105,8 +112,9 @@ data Expr' (r :: Func) (l :: Level) v h where
   Lam :: HasLam l => v -> Rec r l v h -> Expr' r l v h
   Let :: HasLet l => v -> Rec r l v h -> Rec r l v h -> Expr' r l v h
   Elim :: HasElim l => [(Ctr, Rec r l v h)] -> Expr' r l v h
+  Fix :: HasFix l => Expr' r l v h
 
-data Func' a = Fix | Base a | Ann a | Opt a
+data Func' a = Fixed | Base a | Ann a | Opt a
   deriving (Eq, Ord, Show, Read)
 
 type Func = Func' Kind.Type
@@ -118,11 +126,11 @@ type Func = Func' Kind.Type
 -- `Ann a l v h -> Expr' ('Annotate l a) v h` and
 -- `Expr' ('Annotate l a) v h -> Ann (Maybe a) l v h`.
 type family Rec (f :: Func) (l :: Level) v h where
-  Rec 'Fix l v h = Expr l v h
+  Rec 'Fixed l v h = Expr l v h
   Rec ('Base c) _ _ _ = c
   Rec ('Ann a) l v h = Ann a l v h
 
-type Expr = Expr' 'Fix
+type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
 type Ann a l v h = Annot (Expr' ('Ann a) l v h) a
 
@@ -141,7 +149,7 @@ type Type  = Expr 'Type Var Void
 type Term  = Expr 'Term
 type Value = Expr 'Value Void
 
--- | Indetermine expressions are either a (pattern) lambda followed by a tern,
+-- | Indetermine expressions are either a (pattern) lambda followed by a term,
 -- or a hole.
 type Indet = Base (Term Var Hole) 'Indet Var Hole
 
@@ -163,6 +171,7 @@ rec go = \case
   Lam a x -> Lam a <$> go x
   Let a x y -> Let a <$> go x <*> go y
   Elim xs -> Elim <$> traverse (traverse go) xs
+  Fix -> pure Fix
 
 paraExprM :: Monad m => (Expr l v h -> Base c l v h -> m c) -> Expr l v h -> m c
 paraExprM g e = g e =<< forOf rec e (paraExprM g)
@@ -196,6 +205,7 @@ coerceExpr ::
   , d ~ HasLam l, d' ~ HasLam l', d => d'
   , e ~ HasLet l, e' ~ HasLet l', e => e'
   , f ~ HasElim l, f' ~ HasElim l', f => f'
+  , g ~ HasFix l, g' ~ HasFix l', g => g'
   ) => Expr l v h -> Expr l' v h
 coerceExpr = cataExpr \case
   Hole h -> Hole h
@@ -205,6 +215,7 @@ coerceExpr = cataExpr \case
   Lam a x -> Lam a x
   Let a x y -> Let a x y
   Elim xs -> Elim xs
+  Fix -> Fix
 
 fixExprM :: Monad m => Base (Expr l v h) l v h -> m (Expr l v h)
 fixExprM = flip (forOf rec) return
@@ -234,6 +245,7 @@ holes' g = cataExpr \case
   Lam a x -> Lam a <$> x
   Let a x y -> Let a <$> x <*> y
   Elim xs -> Elim <$> traverse sequenceA xs
+  Fix -> pure Fix
 
 holes :: Traversal (Expr l v h) (Expr l v h') h h'
 holes = holes' . fmap (fmap Hole)
@@ -244,6 +256,7 @@ free' g = cataExpr \case
   Ctr c -> pure $ Ctr c
   Var v -> g v
   App f x -> App <$> f <*> x
+  Fix -> pure Fix
 
 free :: (NoBind l, HasVar l) => Traversal (Expr l v h) (Expr l v' h) v v'
 free = free' . fmap (fmap Var)
@@ -411,23 +424,23 @@ sepModule (Module ds) = foldr go mempty ds where
     Binding   b -> over _2 (b:)
     Datatype  d -> over _3 (d:)
 
-ctrs :: Module a -> Map Ctr Poly
-ctrs (Module xs) = Map.fromList $ xs >>= \case
+ctrs :: Module a -> [(Ctr, Poly)]
+ctrs (Module xs) = xs >>= \case
   Datatype d -> constructors d
   _ -> []
 
-sigs :: Module a -> Map Var Poly
-sigs (Module xs) = Map.fromList $ xs >>= \case
+sigs :: Module a -> [(Var, Poly)]
+sigs (Module xs) = xs >>= \case
   Signature (MkSignature x t) -> [(x, t)]
   _ -> []
 
-binds :: Module a -> Map Var (Term Var a)
-binds (Module xs) = Map.fromList $ xs >>= \case
+binds :: Module a -> [(Var, Term Var a)]
+binds (Module xs) = xs >>= \case
   Binding (MkBinding x t) -> [(x, t)]
   _ -> []
 
-functions :: Module a -> Map Var (Term Var a, Poly)
-functions m = Map.intersectionWith (,) (binds m) (sigs m)
+functions :: Module a -> [(Var, (Term Var a, Poly))]
+functions m = mapMaybe (\(v, t) -> (v,) . (,t) <$> lookup v (binds m)) $ sigs m
 
 -- }}}
 
@@ -521,6 +534,7 @@ instance (Pretty (Ann a 'Term v h), Pretty v, Pretty h)
     Elim xs -> "\\case" <+>
       mconcat (intersperse "; " $ xs <&> \(p, a) ->
         pretty p <+> "->" <+> pretty a)
+    Fix -> "fix"
 
 prettyParen :: Bool -> Doc ann -> Doc ann
 prettyParen b t
@@ -537,6 +551,7 @@ instance (Pretty a, Pretty v, Pretty h) => Pretty (Base a l v h) where
     Let a x y -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty y
     Elim xs -> "\\case" <+> mconcat (intersperse "; " $ xs <&> \(p, a) ->
       pretty p <+> "->" <+> pretty a)
+    Fix -> "fix"
 
 pp :: (Pretty v, Pretty h) => Int -> Expr l v h -> Doc ann
 pp i = \case
@@ -556,6 +571,7 @@ pp i = \case
   Elim xs -> prettyParen (i > 0) $ "\\case" <+>
     mconcat (intersperse "; " $ xs <&> \(p, a) ->
       pretty p <+> "->" <+> pp 0 a)
+  Fix -> "fix"
 
 instance (Pretty v, Pretty h) => Pretty (Expr l v h) where
   pretty = pp 0

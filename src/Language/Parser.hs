@@ -39,7 +39,7 @@ identChar :: Lexer Char
 identChar = alphaNumChar <|> char '_' <|> char '\''
 
 keywords :: [Text]
-keywords = ["case", "of", "let", "in", "forall", "data"]
+keywords = ["case", "of", "let", "in", "forall", "data", "fix"]
 
 ident :: Lexer Char -> Lexer Text
 ident start = fmap fromString $ (:) <$> start <*> many identChar
@@ -166,6 +166,7 @@ instance ParseAtom 'Term where
     , Hole <$> brackets Curly parser
     , Var <$> parser
     , Ctr <$> parser
+    , Fix <$ key "fix"
     , parseNat
     , parseList parser
     ]

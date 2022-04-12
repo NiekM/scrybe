@@ -15,42 +15,6 @@ class HasEnv' a where
 instance HasEnv' (Map Var (Term Var Void)) where
   env' = id
 
-eval' :: Map Var (Term Var Void) -> Term Var Void -> Maybe (Term Var Void)
-eval' m e = evalStateT (eval e) m
-
--- | A simple evaluator/normalizer for expressions that leaves subexpressions
--- as if when they cannot be evaluated further.
--- TODO: add alpha renaming
-eval :: (MonadFail m, MonadState s m, HasEnv' s) =>
-  Term Var Void -> m (Term Var Void)
-eval = \case
-  Hole h -> return $ Hole h
-  Var x -> do
-    m <- use env'
-    case Map.lookup x m of
-      Nothing -> fail $ "Unknown variable " <> show x
-      Just e -> eval e
-  Ctr c -> return $ Ctr c
-  App f x -> do
-    g <- eval f
-    y <- eval x
-    case g of
-      Lam a z -> do
-        modifying env' $ Map.insert a y
-        eval z
-      Elim xs -> do
-        Apps (Ctr c) as <- eval x
-        case lookup c xs of
-          Just e -> eval $ apps e as
-          Nothing -> fail "Pattern match failure"
-      _ -> return $ App g y
-  Lam a x -> return $ Lam a x
-  Let a x e -> do
-    y <- eval x
-    modifying env' $ Map.insert a y
-    eval e
-  Elim xs -> return $ Elim xs
-
 type Address = Int
 type Body = Expr 'Term Var Void
 
