@@ -23,35 +23,47 @@ import qualified RIO.Map as Map
 -- TODO: maybe add kinds?
 -- TODO: maybe level should contain values (concrete evaluation results) as
 -- well as 'results' (as seen in Smyth)
-data Level = Type | Term | Value | Lambda | Res
+data Level
+  = Type   -- ^ Type level expressions
+  | Term   -- ^ Term level expressions
+  | Lambda -- ^ Lambda expressions
+  | Det    -- ^ Determinate results
+  | Indet  -- ^ Indeterminate results
+  | Value  -- ^ Concrete values
   deriving (Eq, Ord, Show, Read)
 
 type family HasCtr' (l :: Level) where
   HasCtr' 'Lambda = 'False
+  HasCtr' 'Indet  = 'False
   HasCtr' _       = 'True
 
 type HasCtr l = HasCtr' l ~ 'True
 
 type family HasVar' (l :: Level) where
   HasVar' 'Value = 'False
+  HasVar' 'Det   = 'False
+  HasVar' 'Indet = 'False
   HasVar' _      = 'True
 
 type HasVar l = HasVar' l ~ 'True
 
 type family HasApp' (l :: Level) where
-  HasApp' _ = 'True
+  HasApp' 'Indet = 'False
+  HasApp' _      = 'True
 
 type HasApp l = HasApp' l ~ 'True
 
 type family HasLam' (l :: Level) where
-  HasLam' 'Term = 'True
-  HasLam' _     = 'False
+  HasLam' 'Term  = 'True
+  HasLam' 'Indet = 'True
+  HasLam' _      = 'False
 
 type HasLam l = HasLam' l ~ 'True
 
 type family HasElim' (l :: Level) where
-  HasElim' 'Term = 'True
-  HasElim' _     = 'False
+  HasElim' 'Term  = 'True
+  HasElim' 'Indet = 'True
+  HasElim' _      = 'False
 
 type HasElim l = HasElim' l ~ 'True
 
@@ -60,12 +72,6 @@ type family HasLet' (l :: Level) where
   HasLet' _     = 'False
 
 type HasLet l = HasLet' l ~ 'True
-
-type family HasRes' (l :: Level) where
-  HasRes' 'Res = 'True
-  HasRes' _    = 'False
-
-type HasRes l = HasRes' l ~ 'True
 
 type HasArr l = (HasCtr l, HasApp l)
 
@@ -100,7 +106,7 @@ data Expr' (r :: Func) (l :: Level) v h where
   Let :: HasLet l => v -> Rec r l v h -> Rec r l v h -> Expr' r l v h
   Elim :: HasElim l => [(Ctr, Rec r l v h)] -> Expr' r l v h
 
-data Func' a = Fix | Base a | Ann a
+data Func' a = Fix | Base a | Ann a | Opt a
   deriving (Eq, Ord, Show, Read)
 
 type Func = Func' Kind.Type
@@ -131,9 +137,20 @@ pattern Case :: () => (HasApp l, HasElim l) =>
   Expr l v h -> [(Ctr, Expr l v h)] -> Expr l v h
 pattern Case x xs = App (Elim xs) x
 
-type Type = Expr 'Type Var Void
-type Term = Expr 'Term
+type Type  = Expr 'Type Var Void
+type Term  = Expr 'Term
 type Value = Expr 'Value Void
+
+-- | Indetermine expressions are either a (pattern) lambda followed by a tern,
+-- or a hole.
+type Indet = Base (Term Var Hole) 'Indet Var Hole
+
+-- | Results are determinate expressions whose holes are indeterminate
+-- expressions capturing the local scope.
+type Result = Expr 'Det Var (Annot Indet Scope)
+
+newtype Scope = Scope (Map Var Result)
+  deriving newtype (Eq, Ord, Show)
 
 -- Morphisms {{{
 
@@ -257,6 +274,7 @@ apps = foldl App
 
 unApps :: Expr l v h -> NonEmpty (Expr l v h)
 unApps = reverse . go where
+  go :: Expr l v h -> NonEmpty (Expr l v h)
   go = \case
     App f x -> x `cons` go f
     e -> pure e
@@ -482,6 +500,9 @@ instance Pretty Poly where
 instance (Pretty a, Pretty (Annot a b)) => Pretty (Annot a (Maybe b)) where
   pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a
 
+instance Pretty a => Pretty (Annot a Scope) where
+  pretty (Annot x _) = "[..]" <> pretty x
+
 instance Pretty a => Pretty (Annot a Type) where
   pretty (Annot x t) = pretty x <+> "::" <+> pretty t
 
@@ -505,6 +526,17 @@ prettyParen :: Bool -> Doc ann -> Doc ann
 prettyParen b t
   | b = parens t
   | otherwise = t
+
+instance (Pretty a, Pretty v, Pretty h) => Pretty (Base a l v h) where
+  pretty = \case
+    Hole h -> braces $ pretty h
+    Var x -> pretty x
+    Ctr c -> pretty c
+    App f x -> sep [pretty f, pretty x]
+    Lam a x -> "\\" <> pretty a <+> "->" <+> pretty x
+    Let a x y -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty y
+    Elim xs -> "\\case" <+> mconcat (intersperse "; " $ xs <&> \(p, a) ->
+      pretty p <+> "->" <+> pretty a)
 
 pp :: (Pretty v, Pretty h) => Int -> Expr l v h -> Doc ann
 pp i = \case

@@ -31,6 +31,7 @@ library
       Language.Concepts
       Language.Eval
       Language.Identifiers
+      Language.Live
       Language.Parser
       Language.Syntax
       Language.Type
