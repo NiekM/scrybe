@@ -14,7 +14,7 @@ import qualified Data.Kind as Kind
 import Data.Foldable
 import RIO.List (intersperse, repeat)
 import RIO.NonEmpty (cons, reverse)
-import Prettyprinter
+import Prettyprinter hiding (list)
 import qualified RIO.Map as Map
 
 -- Levels {{{
@@ -308,6 +308,31 @@ unLams = \case
 pattern Lams :: [v] -> Expr l v h -> Expr l v h
 pattern Lams as x <- (unLams -> (as, x))
 
+nat :: (HasCtr l, HasApp l) => Int -> Expr l v h
+nat 0 = Ctr "Zero"
+nat n = App (Ctr "Succ") (nat $ n - 1)
+
+unNat :: Expr l v h -> Maybe Int
+unNat = \case
+  Ctr "Zero" -> Just 0
+  App (Ctr "Succ") n -> (1+) <$> unNat n
+  _ -> Nothing
+
+pattern Nat :: Int -> Expr l v h
+pattern Nat n <- (unNat -> Just n)
+
+list :: (HasCtr l, HasApp l) => [Expr l v h] -> Expr l v h
+list = foldr (\x y -> apps (Ctr "Cons") [x, y]) (Ctr "Nil")
+
+unList :: Expr l v h -> Maybe [Expr l v h]
+unList = \case
+  Ctr "Nil" -> Just []
+  Apps (Ctr "Cons") [x, xs] -> (x:) <$> unList xs
+  _ -> Nothing
+
+pattern List :: [Expr l v h] -> Expr l v h
+pattern List xs <- (unList -> Just xs)
+
 -- }}}
 
 -- Polytypes {{{
@@ -558,6 +583,8 @@ pp i = \case
   Hole h -> braces $ pretty h
   Var x -> pretty x
   Ctr c -> pretty c
+  Nat n -> pretty n
+  List xs -> pretty xs
   Arr t u -> prettyParen (i > 1) $ sep [pp 2 t, "->", pp 1 u]
   Case x xs -> prettyParen (i > 0) $ "case" <+> pp 0 x <+> "of" <+>
     mconcat (intersperse "; " $ xs <&> \(p, Lams as b) ->

@@ -141,15 +141,8 @@ instance Parse Free where
 class ParseAtom l where
   parseAtom :: (Parse v, Parse h) => Parser (Expr l v h)
 
-nat :: (HasCtr l, HasApp l) => Int -> Expr l v h
-nat 0 = Ctr "Zero"
-nat n = App (Ctr "Succ") (nat $ n - 1)
-
 parseNat :: (HasCtr l, HasApp l) => Parser (Expr l v h)
 parseNat = nat <$> int
-
-list :: (Foldable f, HasCtr l, HasApp l) => f (Expr l v h) -> Expr l v h
-list = foldr (\x r -> apps (Ctr "Cons") [x, r]) (Ctr "Nil")
 
 parseList :: (HasCtr l, HasApp l) => Parser (Expr l v h) -> Parser (Expr l v h)
 parseList p = list <$> brackets Square (alt p (sep ","))
