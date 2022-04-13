@@ -50,6 +50,6 @@ preludeBinds = second (over holes' absurd . fst) <$> functions prelude
 
 liveEnv :: Map Var Result
 liveEnv = foldl' go mempty preludeBinds where
-  go m (v, e) = case live 10 m e of
-    Nothing -> undefined
+  go m (v, e) = case live m e of
+    Nothing -> error $ "Failed to evaluate " <> show v
     Just r -> Map.insert v r m
