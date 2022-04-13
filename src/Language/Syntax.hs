@@ -582,9 +582,9 @@ pp :: (Pretty v, Pretty h) => Int -> Expr l v h -> Doc ann
 pp i = \case
   Hole h -> braces $ pretty h
   Var x -> pretty x
-  Ctr c -> pretty c
   Nat n -> pretty n
   List xs -> pretty xs
+  Ctr c -> pretty c
   Arr t u -> prettyParen (i > 1) $ sep [pp 2 t, "->", pp 1 u]
   Case x xs -> prettyParen (i > 0) $ "case" <+> pp 0 x <+> "of" <+>
     mconcat (intersperse "; " $ xs <&> \(p, Lams as b) ->
