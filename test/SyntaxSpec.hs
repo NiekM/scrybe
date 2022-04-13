@@ -7,13 +7,13 @@ import Language.Parser
 import Language.Type
 import Prettyprinter
 import Prettyprinter.Render.Text
-import qualified RIO.Map as Map
 import qualified RIO.Text as Text
 
 roundtrip :: (Pretty a, Parse a, Eq a) => a -> Bool
 roundtrip x =
   let t = renderStrict . layoutPretty defaultLayoutOptions . pretty $ x
-  in case lexParse parser t of
+      u = Text.intercalate " " . Text.lines $ t
+  in case lexParse parser u of
     Just y -> x == y
     Nothing -> False
 
@@ -24,7 +24,7 @@ spec = do
     case lexParse parser f of
       Nothing -> it "parses" False
       Just x -> do
-        let y = Map.assocs $ first (over holes absurd) <$> functions x
+        let y = second (first (over holes absurd)) <$> functions x
         forM_ y \(MkVar v, (e, t)) -> describe (Text.unpack v) do
           it "type checks" . isJust $ evalTC (check e t) x
           it "type roundtrips" $ roundtrip t

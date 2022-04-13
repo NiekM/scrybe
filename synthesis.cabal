@@ -18,6 +18,7 @@ build-type:     Simple
 extra-source-files:
     README.md
     ChangeLog.md
+    data/prelude.hs
 
 source-repository head
   type: git

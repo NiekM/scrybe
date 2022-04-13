@@ -78,6 +78,9 @@ plus n = foldNat n Succ
 mult :: Nat -> Nat -> Nat
 mult n = foldNat Zero (plus n)
 
+compareNat :: Nat -> Nat -> Ord
+compareNat = foldNat (elimNat EQ (const LT)) \n -> elimNat GT \m -> n m
+
 -- || Lists
 
 data List a = Nil | Cons a (List a)
@@ -94,14 +97,29 @@ elimList n c l = case l of Nil -> n; Cons h t -> c h t
 foldList :: b -> (a -> b -> b) -> List a -> b
 foldList n c = fix \go l -> case l of Nil -> n; Cons h t -> c h (go t)
 
-foldr :: (a -> b -> b) -> b -> List a -> b
-foldr f e = foldList e f
+paraList :: b -> (a -> List a -> b -> b) -> List a -> b
+paraList n c = fix \go l -> case l of Nil -> n; Cons h t -> c h t (go t)
 
 map :: (a -> b) -> List a -> List b
 map f = foldList [] (\x -> Cons (f x))
 
+append :: List a -> List a -> List a
+append xs ys = foldList ys Cons xs
+
 length :: List a -> Nat
 length xs = foldList Zero (\x r -> Succ r) xs
+
+sum :: List Nat -> Nat
+sum = foldList 0 plus
+
+product :: List Nat -> Nat
+product = foldList 1 mult
+
+insert :: Nat -> List Nat -> List Nat
+insert n = paraList [n] \x xs r -> case compareNat n x of LT -> Cons n (Cons x xs); EQ -> Cons n (Cons x xs); GT -> Cons x r
+
+sort :: List Nat -> List Nat
+sort = foldList [] insert
 
 -- || Products
 
@@ -124,6 +142,12 @@ curry f x y = f (Pair x y)
 
 uncurry :: (a -> b -> c) -> Pair a b -> c
 uncurry f p = case p of Pair x y -> f x y
+
+zip :: List a -> List b -> List (Pair a b)
+zip = foldList (const []) \x r -> elimList [] \y ys -> Cons (Pair x y) (r ys)
+
+zipWith :: (a -> b -> c) -> List a -> List b -> List c
+zipWith f xs ys = map (uncurry f) (zip xs ys)
 
 -- || Coproducts
 
