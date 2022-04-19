@@ -48,7 +48,6 @@ unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
   (Ctr  a, Ctr  b) | a == b -> return Map.empty
-  (Hole a, Hole b) | a == b -> return Map.empty
   (Var a, _) | occurs a u -> return $ Map.singleton a u
   (_, Var a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
@@ -87,7 +86,7 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
 -- TODO: implement as a cataExprM?
 infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
   (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
-  Term Unit -> m (Ann Type 'Term Hole, Unify, Map Hole HoleCtx)
+  Term Unit -> m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 infer expr = do
   m <- ask
   let cs = Map.fromList $ ctrs m
@@ -173,7 +172,7 @@ infer expr = do
 -- partially annotated expressions.
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m) =>
   (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
-  Term Unit -> Poly -> m (Ann Type 'Term Hole, Unify, Map Hole HoleCtx)
+  Term Unit -> Poly -> m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 check e p = do
   (e'@(Annot _ u), th1, ctx1) <- infer e
   th2 <- unify (freeze p) u

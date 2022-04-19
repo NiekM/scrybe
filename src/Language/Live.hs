@@ -6,7 +6,7 @@ import RIO.List
 import qualified RIO.Map as Map
 
 {-# COMPLETE Scoped, App, Ctr, Fix #-}
-pattern Scoped :: Map Var Result -> x -> Expr' r 'Det (Annot x Scope)
+pattern Scoped :: Map Var Result -> Indet -> Expr' r 'Det
 pattern Scoped m e = Hole (Annot e (Scope m))
 
 pattern Top :: Example
@@ -61,7 +61,6 @@ resume hf = cataExpr \case
 
 upcast :: Value -> Result
 upcast = cataExpr \case
-  Hole h -> absurd h
   Ctr c -> Ctr c
   App f x -> App f x
 

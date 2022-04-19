@@ -139,19 +139,19 @@ instance Parse Free where
   parser = MkFree <$> int
 
 class ParseAtom l where
-  parseAtom :: (HasVar l v, Parse v, Parse h) => Parser (Expr l h)
+  parseAtom :: (HasVar l v, Parse v) => Parser (Expr l)
 
-parseNat :: (HasCtr l Ctr, HasApp l) => Parser (Expr l h)
+parseNat :: (HasCtr l Ctr, HasApp l) => Parser (Expr l)
 parseNat = nat <$> int
 
 parseList :: (HasCtr l Ctr, HasApp l) =>
-  Parser (Expr l h) -> Parser (Expr l h)
+  Parser (Expr l) -> Parser (Expr l)
 parseList p = list <$> brackets Square (alt p (sep ","))
 
 parseBranch :: Parse h => Parser (Ctr, Term h)
 parseBranch = (,) <$> parser <*> (lams <$> many parser <* op "->" <*> parser)
 
-instance ParseAtom 'Term where
+instance Parse h => ParseAtom ('Term h) where
   parseAtom = choice
     [ lams <$ op "\\" <*> some parser <* op "->" <*> parser
     , Case <$ key "case" <*> parser <* key "of" <*> alt parseBranch (sep ";")
@@ -167,12 +167,12 @@ instance ParseAtom 'Term where
 
 instance ParseAtom 'Type where
   parseAtom = choice
-    [ Hole <$> brackets Curly parser
-    , Var <$> parser
+    [ Var <$> parser
     , Ctr <$> parser
     ]
 
-parseApps :: (HasVar l v, Parse v, Parse h, HasApp l, ParseAtom l) => Parser (Expr l h)
+parseApps :: (HasVar l v, Parse v, May Parse (Hole' l), HasApp l, ParseAtom l)
+  => Parser (Expr l)
 parseApps = apps <$> atom <*> many atom
   where atom = brackets Round parseApps <|> parseAtom
 

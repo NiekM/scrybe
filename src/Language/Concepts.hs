@@ -86,7 +86,7 @@ restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 -- TODO: actually gather concepts from variables/constructors/language
 -- constructs, by looking up the corresponding concepts in the prelude and
 -- filtering out prohibited concepts such as combinators.
-fromSketch :: Module Void -> Ann Type 'Term a -> (Env, MultiSet Concept)
+fromSketch :: Module Void -> Ann Type ('Term a) -> (Env, MultiSet Concept)
 fromSketch m e =
   ( Map.fromList xs
   , fromList . concatMap (toList . snd . snd) . toList $ xs

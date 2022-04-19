@@ -142,8 +142,7 @@ pick' h (Ref e th _cs) rss = do
   let rss'' = mapMaybe (restrictRef th) <$> Map.delete h rss
   return (x, rss' <> rss'')
 
-next' :: SynMonad s m => Term Hole -> Refs ->
-  m (Hole, Ref, Term Hole, Refs)
+next' :: SynMonad s m => Term Hole -> Refs -> m (Hole, Ref, Term Hole, Refs)
 next' e rss = do
   (h, rs) <- mfold . Map.assocs $ rss
   r <- mfold rs
@@ -234,8 +233,7 @@ closeHole h = do
         modifying variables $ Map.insert i (Variable x t (n - 1) m)
 
 -- | Performs type substitutions in holes and local variables.
-applySubst :: (MonadState s m, HasCtxs s, HasVars s) =>
-  Map Var Type -> m ()
+applySubst :: (MonadState s m, HasCtxs s, HasVars s) => Map Var Type -> m ()
 applySubst th = do
   modifying holeCtxs . fmap $ over goal (subst th)
   modifying variables . fmap $ over varType (subst th)

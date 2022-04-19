@@ -1,5 +1,4 @@
 {-# LANGUAGE RankNTypes, PolyKinds, UndecidableInstances #-}
-{-# LANGUAGE QuantifiedConstraints #-}
 
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 module Language.Syntax
@@ -31,15 +30,26 @@ type family IsJust x where
 -- TODO: maybe add kinds?
 -- TODO: maybe level should contain values (concrete evaluation results) as
 -- well as 'results' (as seen in Smyth)
-data Level
+data Level' a
   = Type    -- ^ Type level expressions
-  | Term    -- ^ Term level expressions
+  | Term a  -- ^ Term level expressions
   | Lambda  -- ^ Lambda expressions
   | Det     -- ^ Determinate results
   | Ind     -- ^ Indeterminate results
   | Value   -- ^ Concrete values
   | Example -- ^ Input-output examples
   deriving (Eq, Ord, Show, Read)
+
+type Level = Level' Kind.Type
+
+type family Hole' (l :: Level) where
+  Hole' ('Term t) = 'Just t
+  Hole' 'Ind      = 'Just Hole
+  Hole' 'Det      = 'Just (Annot Indet Scope)
+  Hole' 'Example  = 'Just Unit
+  Hole' _         = 'Nothing
+
+type HasHole l h = Hole' l ~ 'Just h
 
 -- TODO: perhaps each of Ctr, Elim and Prj should have their own constructor
 -- type, which should usually match, but does not have to. Similarly for
@@ -73,24 +83,24 @@ type family HasApp' (l :: Level) where
 type HasApp l = HasApp' l ~ 'True
 
 type family HasLam' (l :: Level) where
-  HasLam' 'Term    = 'True
-  HasLam' 'Ind     = 'True
-  HasLam' 'Example = 'True
-  HasLam' _        = 'False
+  HasLam' ('Term _) = 'True
+  HasLam' 'Ind      = 'True
+  HasLam' 'Example  = 'True
+  HasLam' _         = 'False
 
 type HasLam l v = (HasLam' l ~ 'True, Var' l ~ 'Just v)
 
 type family HasElim' (l :: Level) where
-  HasElim' 'Term = 'True
-  HasElim' 'Ind  = 'True
-  HasElim' _     = 'False
+  HasElim' ('Term _) = 'True
+  HasElim' 'Ind      = 'True
+  HasElim' _         = 'False
 
 type HasElim l c = (HasElim' l ~ 'True, Ctr' l ~ 'Just c)
 
 type family HasFix' (l :: Level) where
-  HasFix' 'Term = 'True
-  HasFix' 'Det  = 'True
-  HasFix' _     = 'False
+  HasFix' ('Term _) = 'True
+  HasFix' 'Det      = 'True
+  HasFix' _         = 'False
 
 type HasFix l = HasFix' l ~ 'True
 
@@ -101,8 +111,8 @@ type family HasPrj' (l :: Level) where
 type HasPrj l c = (HasPrj' l ~ 'True, Ctr' l ~ 'Just c)
 
 type family HasLet' (l :: Level) where
-  HasLet' 'Term = 'True
-  HasLet' _     = 'False
+  HasLet' ('Term _) = 'True
+  HasLet' _         = 'False
 
 type HasLet l v = (HasLet' l ~ 'True, Var' l ~ 'Just v)
 
@@ -129,16 +139,16 @@ type NoBind l =
 --
 -- h: the type of holes used in the expression.
 --
-data Expr' (r :: Func) (l :: Level) h where
-  Hole :: h -> Expr' r l h
-  Ctr :: HasCtr l c => c -> Expr' r l h
-  Var :: HasVar l v => v -> Expr' r l h
-  App :: HasApp l => Rec r l h -> Rec r l h -> Expr' r l h
-  Lam :: HasLam l v => v -> Rec r l h -> Expr' r l h
-  Let :: HasLet l v => v -> Rec r l h -> Rec r l h -> Expr' r l h
-  Elim :: HasElim l c => [(Ctr, Rec r l h)] -> Expr' r l h
-  Fix :: HasFix l => Expr' r l h
-  Prj :: HasPrj l c => Ctr -> Int -> Expr' r l h
+data Expr' (r :: Func) (l :: Level) where
+  Hole :: HasHole l h => h -> Expr' r l
+  Ctr :: HasCtr l c => c -> Expr' r l
+  Var :: HasVar l v => v -> Expr' r l
+  App :: HasApp l => Rec r l -> Rec r l -> Expr' r l
+  Lam :: HasLam l v => v -> Rec r l -> Expr' r l
+  Let :: HasLet l v => v -> Rec r l -> Rec r l -> Expr' r l
+  Elim :: HasElim l c => [(Ctr, Rec r l)] -> Expr' r l
+  Fix :: HasFix l => Expr' r l
+  Prj :: HasPrj l c => Ctr -> Int -> Expr' r l
 
 data Func' a = Fixed | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
@@ -151,48 +161,57 @@ type Func = Func' Kind.Type
 -- actual Ann constructor in Expr', as well as some functions converting from
 -- `Ann a l v h -> Expr' ('Annotate l a) v h` and
 -- `Expr' ('Annotate l a) v h -> Ann (Maybe a) l v h`.
-type family Rec (f :: Func) (l :: Level) h where
-  Rec 'Fixed l h = Expr l h
-  Rec ('Base c) _ _ = c
-  Rec ('Ann a) l h = Ann a l h
+type family Rec (f :: Func) (l :: Level) where
+  Rec 'Fixed l = Expr l
+  Rec ('Base c) _ = c
+  Rec ('Ann a) l = Ann a l
 
 type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
-type Ann a l h = Annot (Expr' ('Ann a) l h) a
+type Ann a l = Annot (Expr' ('Ann a) l) a
 
-deriving instance (c ~ Ctr' l, v ~ Var' l, May Eq v, Eq h, May Eq c
-  , Eq (Rec r l h)) => Eq (Expr' r l h)
-deriving instance (c ~ Ctr' l, v ~ Var' l, May Eq v, May Ord v, Ord h
-  , May Eq c, May Ord c, Ord (Rec r l h)) => Ord (Expr' r l h)
-deriving instance (c ~ Ctr' l, v ~ Var' l, May Show v, Show h, May Show c
-  , Show (Rec r l h)) => Show (Expr' r l h)
+deriving instance
+  ( h ~ Hole' l, May Eq h
+  , c ~ Ctr' l, May Eq c
+  , v ~ Var' l, May Eq v
+  , Eq (Rec r l)) => Eq (Expr' r l)
+deriving instance
+  ( h ~ Hole' l, May Eq h, May Ord h
+  , c ~ Ctr' l, May Eq c, May Ord c
+  , v ~ Var' l, May Eq v, May Ord v
+  , Ord (Rec r l)) => Ord (Expr' r l)
+deriving instance
+  ( h ~ Hole' l, May Show h
+  , c ~ Ctr' l, May Show c
+  , v ~ Var' l, May Show v
+  , Show (Rec r l)) => Show (Expr' r l)
 
-pattern Arr :: HasCtr l Ctr => HasArr l => Expr l h -> Expr l h -> Expr l h
+pattern Arr :: HasCtr l Ctr => HasArr l => Expr l -> Expr l -> Expr l
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
 pattern Case :: () => (HasApp l, HasElim l c) =>
-  Expr l h -> [(Ctr, Expr l h)] -> Expr l h
+  Expr l -> [(Ctr, Expr l)] -> Expr l
 pattern Case x xs = App (Elim xs) x
 
-type Type    = Expr 'Type Void
-type Term    = Expr 'Term
-type Value   = Expr 'Value Void
-type Example = Expr 'Example Unit
+type Type    = Expr 'Type
+type Term h  = Expr ('Term h)
+type Value   = Expr 'Value
+type Example = Expr 'Example
 
 -- | Indetermine expressions are either a (pattern) lambda followed by a term,
 -- or a hole.
-type Indet = Base (Term Hole) 'Ind Hole
+type Indet = Base (Term Hole) 'Ind
 
 -- | Results are determinate expressions whose holes are indeterminate
 -- expressions capturing the local scope.
-type Result = Expr 'Det (Annot Indet Scope)
+type Result = Expr 'Det
 
 newtype Scope = Scope (Map Var Result)
   deriving newtype (Eq, Ord, Show)
 
 -- Morphisms {{{
 
-rec :: Traversal (Expr' r l h) (Expr' r' l h) (Rec r l h) (Rec r' l h)
+rec :: Traversal (Expr' r l) (Expr' r' l) (Rec r l) (Rec r' l)
 rec go = \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
@@ -204,51 +223,50 @@ rec go = \case
   Fix -> pure Fix
   Prj c i -> pure $ Prj c i
 
-paraExprM :: Monad m => (Expr l h -> Base c l h -> m c) -> Expr l h -> m c
+paraExprM :: Monad m => (Expr l -> Base c l -> m c) -> Expr l -> m c
 paraExprM g e = g e =<< forOf rec e (paraExprM g)
 
-cataExprM :: Monad m => (Base c l h -> m c) -> Expr l h -> m c
+cataExprM :: Monad m => (Base c l -> m c) -> Expr l -> m c
 cataExprM = paraExprM . const
 
-paraExpr :: (Expr l h -> Base c l h -> c) -> Expr l h -> c
+paraExpr :: (Expr l -> Base c l -> c) -> Expr l -> c
 paraExpr g e = g e (over rec (paraExpr g) e)
 
-cataExpr :: (Base c l h -> c) -> Expr l h -> c
+cataExpr :: (Base c l -> c) -> Expr l -> c
 cataExpr = paraExpr . const
 
-apoExprM :: Monad m =>
-  (c -> m (Either (Expr l h) (Base c l h))) -> c -> m (Expr l h)
+apoExprM :: Monad m => (c -> m (Either (Expr l) (Base c l))) -> c -> m (Expr l)
 apoExprM g e = g e >>= either return \x -> forOf rec x (apoExprM g)
 
-anaExprM :: Monad m => (c -> m (Base c l h)) -> c -> m (Expr l h)
+anaExprM :: Monad m => (c -> m (Base c l)) -> c -> m (Expr l)
 anaExprM = apoExprM . (fmap return .)
 
-apoExpr :: (c -> Either (Expr l h) (Base c l h)) -> c -> Expr l h
+apoExpr :: (c -> Either (Expr l) (Base c l)) -> c -> Expr l
 apoExpr g e = either id (over rec (apoExpr g)) (g e)
 
-anaExpr :: (c -> Base c l h) -> c -> Expr l h
+anaExpr :: (c -> Base c l) -> c -> Expr l
 anaExpr = apoExpr . (return .)
 
-fixExprM :: Monad m => Base (Expr l h) l h -> m (Expr l h)
+fixExprM :: Monad m => Base (Expr l) l -> m (Expr l)
 fixExprM = flip (forOf rec) return
 
-fixExpr :: Base (Expr l h) l h -> Expr l h
+fixExpr :: Base (Expr l) l -> Expr l
 fixExpr = over rec id
 
-mapAnn :: (a -> b) -> Ann a l h -> Ann b l h
+mapAnn :: (a -> b) -> Ann a l -> Ann b l
 mapAnn f (Annot e a) = Annot (over rec (mapAnn f) e) (f a)
 
-paraAnn :: (Ann a l h -> Base c l h -> c) -> Ann a l h -> c
+paraAnn :: (Ann a l -> Base c l -> c) -> Ann a l -> c
 paraAnn g (Annot e a) = g (Annot e a) (over rec (paraAnn g) e)
 
-cataAnn :: (a -> Base c l h -> c) -> Ann a l h -> c
+cataAnn :: (a -> Base c l -> c) -> Ann a l -> c
 cataAnn = paraAnn . (. view ann)
 
 -- }}}
 
 -- Lenses {{{
 
-holes' :: Traversal (Expr l h) (Expr l h') h (Expr l h')
+holes' :: Traversal (Expr ('Term h)) (Expr ('Term h')) h (Expr ('Term h'))
 holes' g = cataExpr \case
   Hole h -> g h
   Ctr c -> pure $ Ctr c
@@ -258,14 +276,12 @@ holes' g = cataExpr \case
   Let a x y -> Let a <$> x <*> y
   Elim xs -> Elim <$> traverse sequenceA xs
   Fix -> pure Fix
-  Prj c i -> pure $ Prj c i
 
-holes :: Traversal (Expr l h) (Expr l h') h h'
+holes :: Traversal (Expr ('Term h)) (Expr ('Term h')) h h'
 holes = holes' . fmap (fmap Hole)
 
 free :: Traversal' Type Var
 free g = cataExpr \case
-  Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
   Var v -> Var <$> g v
   App f x -> App <$> f <*> x
@@ -274,72 +290,71 @@ free g = cataExpr \case
 
 -- Smart constructors {{{
 
--- TODO: replace with more general infix function
-arrs :: (Foldable f, HasArr l) => f (Expr l h) -> Expr l h
+arrs :: (Foldable f, HasArr l) => f (Expr l) -> Expr l
 arrs = foldr1 Arr
 
-unArrs :: HasCtr l Ctr => Expr l h -> NonEmpty (Expr l h)
+unArrs :: HasCtr l Ctr => Expr l -> NonEmpty (Expr l)
 unArrs = \case
   Arr t u -> t `cons` unArrs u
   t -> pure t
 
 {-# COMPLETE Arrs #-}
-pattern Arrs :: HasCtr l Ctr => Expr l h -> [Expr l h] -> Expr l h
+pattern Arrs :: HasCtr l Ctr => Expr l -> [Expr l] -> Expr l
 pattern Arrs a bs <- (unArrs -> (a :| bs))
 
 {-# COMPLETE Args #-}
-pattern Args :: HasCtr l Ctr => [Expr l h] -> Expr l h -> Expr l h
+pattern Args :: HasCtr l Ctr => [Expr l] -> Expr l -> Expr l
 pattern Args as b <- (unsnoc . unArrs -> (as, b))
 
-apps :: (Foldable f, HasApp l) => Expr l h -> f (Expr l h) -> Expr l h
+apps :: (Foldable f, HasApp l) => Expr l -> f (Expr l) -> Expr l
 apps = foldl App
 
-unApps :: Expr l h -> NonEmpty (Expr l h)
+unApps :: Expr l -> NonEmpty (Expr l)
 unApps = reverse . go where
-  go :: Expr l h -> NonEmpty (Expr l h)
+  go :: Expr l -> NonEmpty (Expr l)
   go = \case
     App f x -> x `cons` go f
     e -> pure e
 
 {-# COMPLETE Apps #-}
-pattern Apps :: Expr l h -> [Expr l h] -> Expr l h
+pattern Apps :: Expr l -> [Expr l] -> Expr l
 pattern Apps f xs <- (unApps -> (f :| xs))
 
-lams :: (Foldable f, HasLam l v) => f v -> Expr l h -> Expr l h
+lams :: (Foldable f, HasLam l v) => f v -> Expr l -> Expr l
 lams = flip (foldr Lam)
 
-unLams :: HasLam l v => Expr l h -> ([v], Expr l h)
+unLams :: HasLam l v => Expr l -> ([v], Expr l)
 unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
 
 {-# COMPLETE Lams #-}
-pattern Lams :: HasLam l v => [v] -> Expr l h -> Expr l h
+pattern Lams :: HasLam l v => [v] -> Expr l -> Expr l
 pattern Lams as x <- (unLams -> (as, x))
 
-nat :: (HasCtr l Ctr, HasApp l) => Int -> Expr l h
+nat :: (HasCtr l Ctr, HasApp l) => Int -> Expr l
 nat 0 = Ctr "Zero"
 nat n = App (Ctr "Succ") (nat $ n - 1)
 
-unNat :: HasCtr l Ctr => Expr l h -> Maybe Int
+unNat :: HasCtr l Ctr => Expr l -> Maybe Int
 unNat = \case
   Ctr "Zero" -> Just 0
   App (Ctr "Succ") n -> (1+) <$> unNat n
   _ -> Nothing
 
-pattern Nat :: HasCtr l Ctr => Int -> Expr l h
+pattern Nat :: HasCtr l Ctr => Int -> Expr l
 pattern Nat n <- (unNat -> Just n)
 
-list :: (HasCtr l Ctr, HasApp l) => [Expr l h] -> Expr l h
+list :: (HasCtr l Ctr, HasApp l) => [Expr l] -> Expr l
 list = foldr (\x y -> apps (Ctr "Cons") [x, y]) (Ctr "Nil")
 
-unList :: HasCtr l Ctr => Expr l h -> Maybe [Expr l h]
+unList :: HasCtr l Ctr => Expr l -> Maybe [Expr l]
 unList = \case
   Ctr "Nil" -> Just []
   Apps (Ctr "Cons") [x, xs] -> (x:) <$> unList xs
   _ -> Nothing
 
-pattern List :: HasCtr l Ctr => [Expr l h] -> Expr l h
+pattern List :: HasCtr l Ctr => [Expr l] -> Expr l
 pattern List xs <- (unList -> Just xs)
 
 -- }}}
@@ -487,28 +502,27 @@ arities m = Map.fromList (ctrs m) <&> \(Poly _ (Args as _)) -> length as
 
 -- | Substitute variables in an expression without variables bindings according
 -- to a map of variable substitutions.
-subst :: (HasVar l v, Ord v, expr ~ Expr l h, NoBind l) =>
-  Map v expr -> expr -> expr
+subst :: (HasVar l v, Ord v, NoBind l) => Map v (Expr l) -> Expr l -> Expr l
 subst th = cataExpr \case
   Var v | Just x <- Map.lookup v th -> x
   e -> fixExpr e
 
 -- | Fill holes in an expression according to a map of hole fillings.
-fill :: (Ord h, expr ~ Expr l h) => Map h expr -> expr -> expr
+fill :: (HasHole l h, Ord h) => Map h (Expr l) -> Expr l -> Expr l
 fill th = cataExpr \case
   Hole h | Just x <- Map.lookup h th -> x
   e -> fixExpr e
 
 -- | All subexpressions, including the expression itself.
-dissect :: Expr l h -> [Expr l h]
+dissect :: Expr l -> [Expr l]
 dissect = paraExpr \e -> (e:) . view rec
 
 -- | Remove all annotations from an expression.
-strip :: Ann a l h -> Expr l h
+strip :: Ann a l -> Expr l
 strip = cataAnn (const fixExpr)
 
 -- | Gather all subexpressions along with their annotation.
-collect :: Ann a l h -> [Annot (Expr l h) a]
+collect :: Ann a l -> [Annot (Expr l) a]
 collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
 
 -- | Uniquely number all holes in an expression.
@@ -530,7 +544,8 @@ etaExpand = cataExprM \case
         xs <- number ts
         let locals' = Map.fromList ((varId &&& id) . fst <$> xs)
         -- Update the hole context
-        modifying holeCtxs $ Map.insert h $ HoleCtx u (view local ctx <> locals')
+        modifying holeCtxs $
+          Map.insert h $ HoleCtx u (view local ctx <> locals')
         let vs = Map.fromList $ xs <&> \(x, t) -> (x, Variable (varId x) t 1 0)
         -- traceShowM vars
         modifying variables (vs <>)
@@ -562,8 +577,8 @@ instance Pretty a => Pretty (Annot a Type) where
 instance Pretty a => Pretty (Annot a Text) where
   pretty (Annot x p) = "{-#" <+> pretty p <+> "#-}" <+> pretty x
 
-instance (Pretty (Ann a 'Term h), Pretty h)
-  => Pretty (Expr' ('Ann a) 'Term h) where
+instance (Pretty (Ann a ('Term h)), Pretty h)
+  => Pretty (Expr' ('Ann a) ('Term h)) where
   pretty = \case
     Hole i -> braces $ pretty i
     Var x -> pretty x
@@ -581,8 +596,9 @@ prettyParen b t
   | b = parens t
   | otherwise = t
 
-instance (Pretty a, May Pretty (Var' l), Pretty h, May Pretty (Ctr' l))
-  => Pretty (Base a l h) where
+instance
+  (Pretty a, May Pretty (Var' l), May Pretty (Hole' l), May Pretty (Ctr' l))
+  => Pretty (Base a l) where
   pretty = \case
     Hole h -> braces $ pretty h
     Var x -> pretty x
@@ -619,7 +635,6 @@ pTerm i = \case
 
 pType :: Int -> Type -> Doc ann
 pType i = \case
-  Hole h -> braces $ pretty h
   Var x -> pretty x
   Nat n -> pretty n
   List xs -> pretty xs

@@ -17,7 +17,7 @@ import qualified RIO.Set as Set
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
 
-instance Parse (Expr l h) => IsString (Expr l h) where fromString = fromStr
+instance Parse (Expr l) => IsString (Expr l) where fromString = fromStr
 instance IsString Poly where fromString = fromStr
 
 prelude :: Module Void

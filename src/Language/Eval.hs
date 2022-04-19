@@ -18,7 +18,7 @@ instance HasEnv' (Map Var (Term Void)) where
 type Address = Int
 type Body = Term Void
 
-type Node = Expr' ('Base Address) 'Term Void
+type Node = Expr' ('Base Address) ('Term Void)
 
 type Stack = [Address]
 type Heap = Map Address Node
