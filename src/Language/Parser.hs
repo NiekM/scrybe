@@ -141,10 +141,11 @@ instance Parse Free where
 class ParseAtom l where
   parseAtom :: (Parse v, Parse h) => Parser (Expr l v h)
 
-parseNat :: (HasCtr l, HasApp l) => Parser (Expr l v h)
+parseNat :: (HasCtr l Ctr, HasApp l) => Parser (Expr l v h)
 parseNat = nat <$> int
 
-parseList :: (HasCtr l, HasApp l) => Parser (Expr l v h) -> Parser (Expr l v h)
+parseList :: (HasCtr l Ctr, HasApp l) =>
+  Parser (Expr l v h) -> Parser (Expr l v h)
 parseList p = list <$> brackets Square (alt p (sep ","))
 
 parseBranch :: (Parse v, Parse h) => Parser (Ctr, Expr 'Term v h)

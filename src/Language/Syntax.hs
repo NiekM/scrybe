@@ -19,6 +19,10 @@ import qualified RIO.Map as Map
 
 -- Levels {{{
 
+type family May (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint where
+  May c 'Nothing = ()
+  May c ('Just a) = c a
+
 -- TODO: do we need a Core language and a surface language?
 -- TODO: maybe add kinds?
 -- TODO: maybe level should contain values (concrete evaluation results) as
@@ -33,12 +37,12 @@ data Level
   | Example -- ^ Input-output examples
   deriving (Eq, Ord, Show, Read)
 
-type family HasCtr' (l :: Level) where
-  HasCtr' 'Lambda = 'False
-  HasCtr' 'Ind    = 'False
-  HasCtr' _       = 'True
+type family Ctr' (l :: Level) where
+  Ctr' 'Lambda = 'Nothing
+  Ctr' 'Ind    = 'Nothing
+  Ctr' _       = ('Just Ctr)
 
-type HasCtr l = HasCtr' l ~ 'True
+type HasCtr l c = Ctr' l ~ 'Just c
 
 type family HasVar' (l :: Level) where
   HasVar' 'Value   = 'False
@@ -89,7 +93,7 @@ type family HasLet' (l :: Level) where
 
 type HasLet l = HasLet' l ~ 'True
 
-type HasArr l = (HasCtr l, HasApp l)
+type HasArr l = (HasCtr l Ctr, HasApp l)
 
 type NoBind l =
   ( HasLam' l ~ 'False
@@ -115,7 +119,7 @@ type NoBind l =
 --
 data Expr' (r :: Func) (l :: Level) v h where
   Hole :: h -> Expr' r l v h
-  Ctr :: HasCtr l => Ctr -> Expr' r l v h
+  Ctr :: HasCtr l c => c -> Expr' r l v h
   Var :: HasVar l => v -> Expr' r l v h
   App :: HasApp l => Rec r l v h -> Rec r l v h -> Expr' r l v h
   Lam :: HasLam l => v -> Rec r l v h -> Expr' r l v h
@@ -144,11 +148,15 @@ type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
 type Ann a l v h = Annot (Expr' ('Ann a) l v h) a
 
-deriving instance (Eq v, Eq h, Eq (Rec r l v h)) => Eq (Expr' r l v h)
-deriving instance (Ord v, Ord h, Ord (Rec r l v h)) => Ord (Expr' r l v h)
-deriving instance (Show v, Show h, Show (Rec r l v h)) => Show (Expr' r l v h)
+deriving instance (c ~ Ctr' l, Eq v, Eq h, May Eq c, Eq (Rec r l v h))
+  => Eq (Expr' r l v h)
+deriving instance
+  (c ~ Ctr' l, Ord v, Ord h, May Eq c, May Ord c, Ord (Rec r l v h))
+  => Ord (Expr' r l v h)
+deriving instance (c ~ Ctr' l, Show v, Show h, May Show c, Show (Rec r l v h))
+  => Show (Expr' r l v h)
 
-pattern Arr :: () => HasArr l => Expr l v h -> Expr l v h -> Expr l v h
+pattern Arr :: HasCtr l Ctr => HasArr l => Expr l v h -> Expr l v h -> Expr l v h
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
 pattern Case :: () => (HasApp l, HasElim l) =>
@@ -210,27 +218,6 @@ apoExpr g e = either id (over rec (apoExpr g)) (g e)
 anaExpr :: (c -> Base c l v h) -> c -> Expr l v h
 anaExpr = apoExpr . (return .)
 
-coerceExpr ::
-  ( a ~ HasCtr l, a' ~ HasCtr l', a => a'
-  , b ~ HasVar l, b' ~ HasVar l', b => b'
-  , c ~ HasApp l, c' ~ HasApp l', c => c'
-  , d ~ HasLam l, d' ~ HasLam l', d => d'
-  , e ~ HasLet l, e' ~ HasLet l', e => e'
-  , f ~ HasElim l, f' ~ HasElim l', f => f'
-  , g ~ HasFix l, g' ~ HasFix l', g => g'
-  , h ~ HasPrj l, h' ~ HasPrj l', h => h'
-  ) => Expr l v i -> Expr l' v i
-coerceExpr = cataExpr \case
-  Hole h -> Hole h
-  Ctr c -> Ctr c
-  Var v -> Var v
-  App f x -> App f x
-  Lam a x -> Lam a x
-  Let a x y -> Let a x y
-  Elim xs -> Elim xs
-  Fix -> Fix
-  Prj c i -> Prj c i
-
 fixExprM :: Monad m => Base (Expr l v h) l v h -> m (Expr l v h)
 fixExprM = flip (forOf rec) return
 
@@ -285,17 +272,17 @@ free = free' . fmap (fmap Var)
 arrs :: (Foldable f, HasArr l) => f (Expr l v h) -> Expr l v h
 arrs = foldr1 Arr
 
-unArrs :: Expr l v h -> NonEmpty (Expr l v h)
+unArrs :: HasCtr l Ctr => Expr l v h -> NonEmpty (Expr l v h)
 unArrs = \case
   Arr t u -> t `cons` unArrs u
   t -> pure t
 
 {-# COMPLETE Arrs #-}
-pattern Arrs :: Expr l v h -> [Expr l v h] -> Expr l v h
+pattern Arrs :: HasCtr l Ctr => Expr l v h -> [Expr l v h] -> Expr l v h
 pattern Arrs a bs <- (unArrs -> (a :| bs))
 
 {-# COMPLETE Args #-}
-pattern Args :: [Expr l v h] -> Expr l v h -> Expr l v h
+pattern Args :: HasCtr l Ctr => [Expr l v h] -> Expr l v h -> Expr l v h
 pattern Args as b <- (unsnoc . unArrs -> (as, b))
 
 apps :: (Foldable f, HasApp l) => Expr l v h -> f (Expr l v h) -> Expr l v h
@@ -324,29 +311,29 @@ unLams = \case
 pattern Lams :: [v] -> Expr l v h -> Expr l v h
 pattern Lams as x <- (unLams -> (as, x))
 
-nat :: (HasCtr l, HasApp l) => Int -> Expr l v h
+nat :: (HasCtr l Ctr, HasApp l) => Int -> Expr l v h
 nat 0 = Ctr "Zero"
 nat n = App (Ctr "Succ") (nat $ n - 1)
 
-unNat :: Expr l v h -> Maybe Int
+unNat :: HasCtr l Ctr => Expr l v h -> Maybe Int
 unNat = \case
   Ctr "Zero" -> Just 0
   App (Ctr "Succ") n -> (1+) <$> unNat n
   _ -> Nothing
 
-pattern Nat :: Int -> Expr l v h
+pattern Nat :: HasCtr l Ctr => Int -> Expr l v h
 pattern Nat n <- (unNat -> Just n)
 
-list :: (HasCtr l, HasApp l) => [Expr l v h] -> Expr l v h
+list :: (HasCtr l Ctr, HasApp l) => [Expr l v h] -> Expr l v h
 list = foldr (\x y -> apps (Ctr "Cons") [x, y]) (Ctr "Nil")
 
-unList :: Expr l v h -> Maybe [Expr l v h]
+unList :: HasCtr l Ctr => Expr l v h -> Maybe [Expr l v h]
 unList = \case
   Ctr "Nil" -> Just []
   Apps (Ctr "Cons") [x, xs] -> (x:) <$> unList xs
   _ -> Nothing
 
-pattern List :: [Expr l v h] -> Expr l v h
+pattern List :: HasCtr l Ctr => [Expr l v h] -> Expr l v h
 pattern List xs <- (unList -> Just xs)
 
 -- }}}
@@ -435,6 +422,8 @@ data Sketch = Sketch Var Poly (Term Var Unit)
   deriving (Eq, Ord, Show)
 
 -- Module {{{
+
+-- TODO: move this to its own file
 
 data Signature = MkSignature Var Poly
   deriving (Eq, Ord, Show)
@@ -585,7 +574,8 @@ prettyParen b t
   | b = parens t
   | otherwise = t
 
-instance (Pretty a, Pretty v, Pretty h) => Pretty (Base a l v h) where
+instance (Pretty a, Pretty v, Pretty h, May Pretty (Ctr' l))
+  => Pretty (Base a l v h) where
   pretty = \case
     Hole h -> braces $ pretty h
     Var x -> pretty x
@@ -598,7 +588,7 @@ instance (Pretty a, Pretty v, Pretty h) => Pretty (Base a l v h) where
     Fix -> "fix"
     Prj c n -> pretty c <> "." <> pretty n
 
-pp :: (Pretty v, Pretty h) => Int -> Expr l v h -> Doc ann
+pp :: (Pretty v, Pretty h, HasCtr l Ctr) => Int -> Expr l v h -> Doc ann
 pp i = \case
   Hole h -> braces $ pretty h
   Var x -> pretty x
@@ -621,7 +611,7 @@ pp i = \case
   Fix -> "fix"
   Prj c n -> pretty c <> "." <> pretty n
 
-instance (Pretty v, Pretty h) => Pretty (Expr l v h) where
+instance (Pretty v, Pretty h, HasCtr l Ctr) => Pretty (Expr l v h) where
   pretty = pp 0
 
 instance Pretty Datatype where

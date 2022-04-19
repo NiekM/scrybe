@@ -37,14 +37,13 @@ evalTC tc m = fst <$> runTC tc m
 
 -- | Type unification & inference
 
-type Unify l v h = Map v (Expr l v h)
+type Unify = Map Var Type
 
 -- TODO: Add unit tests to test type unification, inference and checking
 
 -- | Unify two expressions, by checking if their holes can be filled such that
 -- they are equivalent.
-unify :: (Ord v, Eq h, MonadFail m, HasVar l, NoBind l, expr ~ Expr l v h) =>
-  expr -> expr -> m (Map v expr)
+unify :: MonadFail m => Type -> Type -> m (Map Var Type)
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
@@ -54,30 +53,28 @@ unify t u = case (t, u) of
   (_, Var a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
 
-occurs :: (Eq v, HasVar l, NoBind l) => v -> Expr l v h -> Bool
+occurs :: Var -> Type -> Bool
 occurs a tau = a `notElem` toListOf free tau
 
 -- NOTE: it seems that the left hand side of the composition should be the
 -- newer composition, in effect updating the old substitution according to the
 -- new ones
 -- | Compose two non-conflicting unifications.
-compose :: (Ord v, th ~ Unify l v h, NoBind l) => th -> th -> th
+compose :: Unify -> Unify -> Unify
 compose sigma gamma = Map.unions
   [ subst sigma <$> gamma
   , Map.withoutKeys sigma (Map.keysSet gamma)
   ]
 
 -- | Unify multiple expressions.
-unifies :: (Ord v, Eq h, MonadFail m, Foldable t, HasVar l, NoBind l) =>
-  expr ~ Expr l v h => t (expr, expr) -> m (Map v expr)
+unifies :: (MonadFail m, Foldable t) => t (Type, Type) -> m (Map Var Type)
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th1 th0
 
 -- | Try to combine possibly conflicting unifications.
-combine :: (Ord v, Eq h, MonadFail m, HasVar l, NoBind l, th ~ Unify l v h) =>
-  th -> th -> m th
+combine :: MonadFail m => Unify -> Unify -> m Unify
 combine th1 th2 = foldr (\y z -> z >>= go y)
   (return $ subst th1 <$> th2) $ Map.assocs th1 where
     go (x, t) th = case Map.lookup x th of
@@ -90,8 +87,7 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
 -- TODO: implement as a cataExprM?
 infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
   (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
-  Term Var Unit ->
-  m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
+  Term Var Unit -> m (Ann Type 'Term Var Hole, Unify, Map Hole HoleCtx)
 infer expr = do
   m <- ask
   let cs = Map.fromList $ ctrs m
@@ -176,8 +172,7 @@ infer expr = do
 -- partially annotated expressions.
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m) =>
   (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
-  Term Var Unit -> Poly ->
-  m (Ann Type 'Term Var Hole, Unify 'Type Var Void, Map Hole HoleCtx)
+  Term Var Unit -> Poly -> m (Ann Type 'Term Var Hole, Unify, Map Hole HoleCtx)
 check e p = do
   (e'@(Annot _ u), th1, ctx1) <- infer e
   th2 <- unify (freeze p) u
