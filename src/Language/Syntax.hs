@@ -146,9 +146,9 @@ data Expr' (r :: Func) (l :: Level) where
   App :: HasApp l => Rec r l -> Rec r l -> Expr' r l
   Lam :: HasLam l v => v -> Rec r l -> Expr' r l
   Let :: HasLet l v => v -> Rec r l -> Rec r l -> Expr' r l
-  Elim :: HasElim l c => [(Ctr, Rec r l)] -> Expr' r l
+  Elim :: HasElim l c => [(c, Rec r l)] -> Expr' r l
   Fix :: HasFix l => Expr' r l
-  Prj :: HasPrj l c => Ctr -> Int -> Expr' r l
+  Prj :: HasPrj l c => c -> Int -> Expr' r l
 
 data Func' a = Fixed | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
@@ -190,7 +190,7 @@ pattern Arr :: HasCtr l Ctr => HasArr l => Expr l -> Expr l -> Expr l
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
 pattern Case :: () => (HasApp l, HasElim l c) =>
-  Expr l -> [(Ctr, Expr l)] -> Expr l
+  Expr l -> [(c, Expr l)] -> Expr l
 pattern Case x xs = App (Elim xs) x
 
 type Type    = Expr 'Type
