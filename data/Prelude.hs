@@ -56,6 +56,19 @@ gt = GT
 elimOrd :: a -> a -> a -> Ord -> a
 elimOrd l e g o = case o of LT -> l; EQ -> e; GT -> g
 
+-- || Maybe
+
+data Maybe a = Nothing | Just a
+
+nothing :: Maybe a
+nothing = Nothing
+
+just :: a -> Maybe a
+just = Just
+
+elimMaybe :: b -> (a -> b) -> Maybe a -> b
+elimMaybe n j m = case m of Nothing -> n; Just x -> j x
+
 -- || Naturals
 
 data Nat = Zero | Succ Nat

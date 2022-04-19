@@ -12,10 +12,21 @@ pattern Scoped m e = Hole (Annot e (Scope m))
 pattern Top :: Example
 pattern Top = Hole (Unit ())
 
+indet :: Term Var Hole -> Maybe Indet
+indet = \case
+  Hole h  -> Just $ Hole h
+  Lam a x -> Just $ Lam a x
+  Elim xs -> Just $ Elim xs
+  _ -> Nothing
+
+{-# COMPLETE Indet, Var, App, Ctr, Fix, Let #-}
+pattern Indet :: Indet -> Term Var Hole
+pattern Indet i <- (indet -> Just i)
+
 evalApp :: Result -> Result -> Result
 evalApp f x = case f of
-  App Fix (Scoped m (Lam g (Lam y e))) ->
-    eval (Map.fromList [(g, f), (y, x)] <> m) e
+  App Fix (Scoped m (Lam g (Indet e))) ->
+    resume mempty (Scoped (Map.insert g f m) e)
   Scoped m (Lam a y) -> eval (Map.insert a x m) y
   Scoped m (Elim xs)
     | Apps (Ctr c) as <- x
@@ -31,9 +42,7 @@ eval m = \case
   Fix -> Fix
   Let _a _x _y -> undefined
   -- Indeterminate results
-  Hole h  -> Scoped m $ Hole h
-  Lam a x -> Scoped m $ Lam a x
-  Elim xs -> Scoped m $ Elim xs
+  Indet i -> Scoped m i
 
 -- TODO: Note that resumption loops forever if the hole fillings are (mutually)
 -- recursive. An alternative would be to only allow resumption of one hole at a
@@ -43,7 +52,7 @@ resume hf = cataExpr \case
   App f x -> evalApp f x
   Ctr c -> Ctr c
   Fix -> Fix
-  InvCtr c -> InvCtr c
+  Prj c n -> Prj c n
   -- Indeterminate results
   Scoped m (Hole h)
     | Just x <- Map.lookup h hf
@@ -105,32 +114,47 @@ mergeUnsolved = Map.unionsWith (++)
 merge :: [UC] -> Maybe UC
 merge cs = let (us, fs) = unzip cs in (mergeUnsolved us,) <$> mergeSolved fs
 
-checkLive :: Term Var Hole -> Constraint -> [UC]
-checkLive e = mapMaybe merge . mapM \(env, ex) -> uneval (eval env e) ex
+checkLive :: Map Ctr Int -> Term Var Hole -> Constraint -> [UC]
+checkLive cs e = mapMaybe merge . mapM \(env, ex) -> uneval cs (eval env e) ex
 
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
 -- the recursive argument to Nothing. This makes many things more messy
 -- unfortunately.
 
-uneval :: Result -> Example -> [UC]
-uneval = curry \case
+uneval :: Map Ctr Int -> Result -> Example -> [UC]
+uneval cs = curry \case
   -- Top always succeeds.
   (_, Top) -> [mempty]
   -- Constructors are handled as opaque functions and their unevaluation is
   -- extensional in the sense that only their arguments are compared.
   (Apps (Ctr c) xs, Lams ys (Apps (Ctr d) zs))
     | c == d, length xs + length ys == length zs
-    -> mapMaybe merge $ zipWithM uneval (xs ++ map upcast ys) zs
+    -> mapMaybe merge $ zipWithM (uneval cs) (xs ++ map upcast ys) zs
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
     [(Map.singleton h [(m, lams vs ex)], mempty)]
+  (App (Prj c n) r, ex) ->
+    let arity = fromMaybe (error "Oh oh") $ Map.lookup c cs
+    in uneval cs r $ apps (Ctr c) (replicate arity Top & ix (n - 1) .~ ex)
+  (App (Scoped m (Elim xs)) r, ex) -> do
+    (c, e) <- xs
+    let arity = fromMaybe (error "Oh oh") $ Map.lookup c cs
+    scrut <- uneval cs r (apps (Ctr c) (replicate arity Top))
+    let prjs = [App (Prj c n) r | n <- [1..arity]]
+    arm <- uneval cs (resume mempty (apps (eval m e) prjs)) ex
+    maybeToList $ merge [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
-  (Scoped m (Lam a x), Lam v y) -> checkLive x [(Map.insert a (upcast v) m, y)]
+  (Scoped m (Lam a x), Lam v y) ->
+    checkLive cs x [(Map.insert a (upcast v) m, y)]
   -- Fixed points additionally add their own definition to the environment.
+  -- TODO: Does this work/make sense? It's a bit weird that we add (f, r) to
+  -- the environment, because r contains the old environment, which it probably
+  -- shouldn't.
+  -- > (App Fix r@(Scoped m (Lam f (Indet e))), ex) ->
+  -- >  uneval (Scoped (Map.insert f r m) e) ex
   (App Fix r@(Scoped m (Lam f (Lam a x))), Lam v y) ->
-    checkLive x [(Map.fromList [(f, r), (a, upcast v)] <> m, y)]
-  -- (Scoped m (Elim xs), Lam v y) -> undefined -- TODO:
+    checkLive cs x [(Map.fromList [(f, r), (a, upcast v)] <> m, y)]
   _ -> []

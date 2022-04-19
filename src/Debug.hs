@@ -51,3 +51,9 @@ preludeBinds = second (over holes' absurd . fst) <$> functions prelude
 liveEnv :: Map Var Result
 liveEnv = foldl' go mempty preludeBinds where
   go m (v, e) = Map.insert v (eval m e) m
+
+eval' :: Term Var Hole -> Result
+eval' = eval liveEnv
+
+uneval' :: Result -> Example -> [UC]
+uneval' = uneval (arities prelude)
