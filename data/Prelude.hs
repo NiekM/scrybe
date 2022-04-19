@@ -110,6 +110,9 @@ elimList n c l = case l of Nil -> n; Cons h t -> c h t
 foldList :: b -> (a -> b -> b) -> List a -> b
 foldList n c = fix \go l -> case l of Nil -> n; Cons h t -> c h (go t)
 
+foldr :: (a -> b -> b) -> b -> List a -> b
+foldr f e = foldList e f
+
 paraList :: b -> (a -> List a -> b -> b) -> List a -> b
 paraList n c = fix \go l -> case l of Nil -> n; Cons h t -> c h t (go t)
 

@@ -10,15 +10,15 @@ import Prettyprinter
 import Language.Parser
 
 class HasEnv' a where
-  env' :: Lens' a (Map Var (Term Var Void))
+  env' :: Lens' a (Map Var (Term Void))
 
-instance HasEnv' (Map Var (Term Var Void)) where
+instance HasEnv' (Map Var (Term Void)) where
   env' = id
 
 type Address = Int
-type Body = Expr 'Term Var Void
+type Body = Term Void
 
-type Node = Expr' ('Base Address) 'Term Var Void
+type Node = Expr' ('Base Address) 'Term Void
 
 type Stack = [Address]
 type Heap = Map Address Node
@@ -73,7 +73,7 @@ compile program = GraphState { stack, heap, global, funs } where
   stack = [Map.findWithDefault (error "Oh no") "main" global]
   (heap, global, funs) = initialHeap program
 
-fromAddress :: Heap -> Address -> Maybe (Term Var Void)
+fromAddress :: Heap -> Address -> Maybe (Term Void)
 fromAddress = anaExprM . flip Map.lookup
 
 allocate :: Def -> State Heap Global
@@ -81,7 +81,7 @@ allocate (name, _, _) = do
   address <- alloc $ Var name
   return $ Map.singleton name address
 
-toExpr :: GraphState -> (Term Var Void, [Term Var Void])
+toExpr :: GraphState -> (Term Void, [Term Void])
 toExpr GraphState { stack, heap } =
   case stack <&> fromMaybe undefined . fromAddress heap of
     [] -> error "Mmm"

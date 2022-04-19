@@ -139,16 +139,16 @@ instance Parse Free where
   parser = MkFree <$> int
 
 class ParseAtom l where
-  parseAtom :: (Parse v, Parse h) => Parser (Expr l v h)
+  parseAtom :: (HasVar l v, Parse v, Parse h) => Parser (Expr l h)
 
-parseNat :: (HasCtr l Ctr, HasApp l) => Parser (Expr l v h)
+parseNat :: (HasCtr l Ctr, HasApp l) => Parser (Expr l h)
 parseNat = nat <$> int
 
 parseList :: (HasCtr l Ctr, HasApp l) =>
-  Parser (Expr l v h) -> Parser (Expr l v h)
+  Parser (Expr l h) -> Parser (Expr l h)
 parseList p = list <$> brackets Square (alt p (sep ","))
 
-parseBranch :: (Parse v, Parse h) => Parser (Ctr, Expr 'Term v h)
+parseBranch :: Parse h => Parser (Ctr, Term h)
 parseBranch = (,) <$> parser <*> (lams <$> many parser <* op "->" <*> parser)
 
 instance ParseAtom 'Term where
@@ -172,14 +172,14 @@ instance ParseAtom 'Type where
     , Ctr <$> parser
     ]
 
-parseApps :: (Parse v, Parse h, HasApp l, ParseAtom l) => Parser (Expr l v h)
+parseApps :: (HasVar l v, Parse v, Parse h, HasApp l, ParseAtom l) => Parser (Expr l h)
 parseApps = apps <$> atom <*> many atom
   where atom = brackets Round parseApps <|> parseAtom
 
-instance (Parse v, Parse h) => Parse (Expr 'Term v h) where
+instance Parse h => Parse (Term h) where
   parser = parseApps
 
-instance (Parse v, Parse h) => Parse (Expr 'Type v h) where
+instance Parse Type where
   parser = arrs <$> alt1 (brackets Round parser <|> parseApps) (op "->")
 
 instance Parse a => Parse (Annot a Type) where

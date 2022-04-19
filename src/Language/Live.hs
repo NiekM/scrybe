@@ -6,13 +6,13 @@ import RIO.List
 import qualified RIO.Map as Map
 
 {-# COMPLETE Scoped, App, Ctr, Fix #-}
-pattern Scoped :: Map Var Result -> x -> Expr' r 'Det v (Annot x Scope)
+pattern Scoped :: Map Var Result -> x -> Expr' r 'Det (Annot x Scope)
 pattern Scoped m e = Hole (Annot e (Scope m))
 
 pattern Top :: Example
 pattern Top = Hole (Unit ())
 
-indet :: Term Var Hole -> Maybe Indet
+indet :: Term Hole -> Maybe Indet
 indet = \case
   Hole h  -> Just $ Hole h
   Lam a x -> Just $ Lam a x
@@ -20,7 +20,7 @@ indet = \case
   _ -> Nothing
 
 {-# COMPLETE Indet, Var, App, Ctr, Fix, Let #-}
-pattern Indet :: Indet -> Term Var Hole
+pattern Indet :: Indet -> Term Hole
 pattern Indet i <- (indet -> Just i)
 
 evalApp :: Result -> Result -> Result
@@ -34,7 +34,7 @@ evalApp f x = case f of
     -> eval (Map.fromList (zip bs as) <> m) y
   r -> App r x
 
-eval :: Map Var Result -> Term Var Hole -> Result
+eval :: Map Var Result -> Term Hole -> Result
 eval m = \case
   Var v -> fromMaybe undefined $ Map.lookup v m
   App f x -> evalApp (eval m f) (eval m x)
@@ -47,7 +47,7 @@ eval m = \case
 -- TODO: Note that resumption loops forever if the hole fillings are (mutually)
 -- recursive. An alternative would be to only allow resumption of one hole at a
 -- time.
-resume :: Map Hole (Term Var Hole) -> Result -> Result
+resume :: Map Hole (Term Hole) -> Result -> Result
 resume hf = cataExpr \case
   App f x -> evalApp f x
   Ctr c -> Ctr c
@@ -72,7 +72,7 @@ downcast = cataExprM \case
   _ -> Nothing
 
 -- | Hole fillings
-type HF = Map Hole (Term Var Hole)
+type HF = Map Hole (Term Hole)
 
 -- | Unfilled holes
 type UH = Map Hole Constraint
@@ -91,7 +91,7 @@ type Constraint = [(Map Var Result, Example)]
 type UC = (UH, HF)
 
 -- TODO: are the holefillings here needed?
-satConstraint :: HF -> Term Var Hole -> Constraint -> Bool
+satConstraint :: HF -> Term Hole -> Constraint -> Bool
 satConstraint hf e = all \(m, ex) -> satExample hf (resume hf $ eval m e) ex
 
 -- TODO: are the holefillings and the submap check really needed?
@@ -114,7 +114,7 @@ mergeUnsolved = Map.unionsWith (++)
 merge :: [UC] -> Maybe UC
 merge cs = let (us, fs) = unzip cs in (mergeUnsolved us,) <$> mergeSolved fs
 
-checkLive :: Map Ctr Int -> Term Var Hole -> Constraint -> [UC]
+checkLive :: Map Ctr Int -> Term Hole -> Constraint -> [UC]
 checkLive cs e = mapMaybe merge . mapM \(env, ex) -> uneval cs (eval env e) ex
 
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets

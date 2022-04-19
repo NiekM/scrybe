@@ -17,7 +17,7 @@ import qualified RIO.Set as Set
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
 
-instance Parse (Expr l v h) => IsString (Expr l v h) where fromString = fromStr
+instance Parse (Expr l h) => IsString (Expr l h) where fromString = fromStr
 instance IsString Poly where fromString = fromStr
 
 prelude :: Module Void
@@ -45,14 +45,14 @@ tryTC x = fst <$> runTC x prelude
 trySyn :: Monad m => RWST (Module Void) () SynState m a -> m a
 trySyn x = fst <$> runSyn x prelude synSt
 
-preludeBinds :: [(Var, Term Var Hole)]
+preludeBinds :: [(Var, Term Hole)]
 preludeBinds = second (over holes' absurd . fst) <$> functions prelude
 
 liveEnv :: Map Var Result
 liveEnv = foldl' go mempty preludeBinds where
   go m (v, e) = Map.insert v (eval m e) m
 
-eval' :: Term Var Hole -> Result
+eval' :: Term Hole -> Result
 eval' = eval liveEnv
 
 uneval' :: Result -> Example -> [UC]

@@ -60,7 +60,7 @@ instance Pretty Concept where
 -- combinators in some sense.
 -- | Check if an expression is a combinator using at most some set of
 -- variables.
-comb :: Term Var Void -> Set Var -> Bool
+comb :: Term Void -> Set Var -> Bool
 comb = cataExpr \b as -> case b of
   Var a -> a `elem` as
   App f x -> f as && x as
@@ -86,8 +86,7 @@ restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 -- TODO: actually gather concepts from variables/constructors/language
 -- constructs, by looking up the corresponding concepts in the prelude and
 -- filtering out prohibited concepts such as combinators.
-fromSketch :: Module Void -> Ann Type 'Term Var a ->
-  (Env, MultiSet Concept)
+fromSketch :: Module Void -> Ann Type 'Term a -> (Env, MultiSet Concept)
 fromSketch m e =
   ( Map.fromList xs
   , fromList . concatMap (toList . snd . snd) . toList $ xs

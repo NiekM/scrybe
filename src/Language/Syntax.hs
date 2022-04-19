@@ -23,6 +23,10 @@ type family May (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint where
   May c 'Nothing = ()
   May c ('Just a) = c a
 
+type family IsJust x where
+  IsJust 'Nothing  = 'False
+  IsJust ('Just _) = 'True
+
 -- TODO: do we need a Core language and a surface language?
 -- TODO: maybe add kinds?
 -- TODO: maybe level should contain values (concrete evaluation results) as
@@ -44,14 +48,16 @@ type family Ctr' (l :: Level) where
 
 type HasCtr l c = Ctr' l ~ 'Just c
 
-type family HasVar' (l :: Level) where
-  HasVar' 'Value   = 'False
-  HasVar' 'Det     = 'False
-  HasVar' 'Ind     = 'False
-  HasVar' 'Example = 'False
-  HasVar' _        = 'True
+type family Var' (l :: Level) where
+  Var' 'Det     = 'Nothing
+  Var' 'Example = ('Just Value)
+  Var' _        = ('Just Var)
 
-type HasVar l = HasVar' l ~ 'True
+type family HasVar' (l :: Level) where
+  HasVar' 'Example = 'False
+  HasVar' l        = IsJust (Var' l)
+
+type HasVar l v = (HasVar' l ~ 'True, Var' l ~ 'Just v)
 
 type family HasApp' (l :: Level) where
   HasApp' 'Ind = 'False
@@ -65,7 +71,7 @@ type family HasLam' (l :: Level) where
   HasLam' 'Example = 'True
   HasLam' _        = 'False
 
-type HasLam l = HasLam' l ~ 'True
+type HasLam l v = (HasLam' l ~ 'True, Var' l ~ 'Just v)
 
 type family HasElim' (l :: Level) where
   HasElim' 'Term = 'True
@@ -91,7 +97,7 @@ type family HasLet' (l :: Level) where
   HasLet' 'Term = 'True
   HasLet' _     = 'False
 
-type HasLet l = HasLet' l ~ 'True
+type HasLet l v = (HasLet' l ~ 'True, Var' l ~ 'Just v)
 
 type HasArr l = (HasCtr l Ctr, HasApp l)
 
@@ -117,16 +123,16 @@ type NoBind l =
 --
 -- h: the type of holes used in the expression.
 --
-data Expr' (r :: Func) (l :: Level) v h where
-  Hole :: h -> Expr' r l v h
-  Ctr :: HasCtr l c => c -> Expr' r l v h
-  Var :: HasVar l => v -> Expr' r l v h
-  App :: HasApp l => Rec r l v h -> Rec r l v h -> Expr' r l v h
-  Lam :: HasLam l => v -> Rec r l v h -> Expr' r l v h
-  Let :: HasLet l => v -> Rec r l v h -> Rec r l v h -> Expr' r l v h
-  Elim :: HasElim l => [(Ctr, Rec r l v h)] -> Expr' r l v h
-  Fix :: HasFix l => Expr' r l v h
-  Prj :: HasPrj l => Ctr -> Int -> Expr' r l v h
+data Expr' (r :: Func) (l :: Level) h where
+  Hole :: h -> Expr' r l h
+  Ctr :: HasCtr l c => c -> Expr' r l h
+  Var :: HasVar l v => v -> Expr' r l h
+  App :: HasApp l => Rec r l h -> Rec r l h -> Expr' r l h
+  Lam :: HasLam l v => v -> Rec r l h -> Expr' r l h
+  Let :: HasLet l v => v -> Rec r l h -> Rec r l h -> Expr' r l h
+  Elim :: HasElim l => [(Ctr, Rec r l h)] -> Expr' r l h
+  Fix :: HasFix l => Expr' r l h
+  Prj :: HasPrj l => Ctr -> Int -> Expr' r l h
 
 data Func' a = Fixed | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
@@ -139,49 +145,49 @@ type Func = Func' Kind.Type
 -- actual Ann constructor in Expr', as well as some functions converting from
 -- `Ann a l v h -> Expr' ('Annotate l a) v h` and
 -- `Expr' ('Annotate l a) v h -> Ann (Maybe a) l v h`.
-type family Rec (f :: Func) (l :: Level) v h where
-  Rec 'Fixed l v h = Expr l v h
-  Rec ('Base c) _ _ _ = c
-  Rec ('Ann a) l v h = Ann a l v h
+type family Rec (f :: Func) (l :: Level) h where
+  Rec 'Fixed l h = Expr l h
+  Rec ('Base c) _ _ = c
+  Rec ('Ann a) l h = Ann a l h
 
 type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
-type Ann a l v h = Annot (Expr' ('Ann a) l v h) a
+type Ann a l h = Annot (Expr' ('Ann a) l h) a
 
-deriving instance (c ~ Ctr' l, Eq v, Eq h, May Eq c, Eq (Rec r l v h))
-  => Eq (Expr' r l v h)
+deriving instance (c ~ Ctr' l, v ~ Var' l, May Eq v, Eq h, May Eq c, Eq (Rec r l h))
+  => Eq (Expr' r l h)
 deriving instance
-  (c ~ Ctr' l, Ord v, Ord h, May Eq c, May Ord c, Ord (Rec r l v h))
-  => Ord (Expr' r l v h)
-deriving instance (c ~ Ctr' l, Show v, Show h, May Show c, Show (Rec r l v h))
-  => Show (Expr' r l v h)
+  (c ~ Ctr' l, v ~ Var' l, May Eq v, May Ord v, Ord h, May Eq c, May Ord c, Ord (Rec r l h))
+  => Ord (Expr' r l h)
+deriving instance (c ~ Ctr' l, v ~ Var' l, May Show v, Show h, May Show c, Show (Rec r l h))
+  => Show (Expr' r l h)
 
-pattern Arr :: HasCtr l Ctr => HasArr l => Expr l v h -> Expr l v h -> Expr l v h
+pattern Arr :: HasCtr l Ctr => HasArr l => Expr l h -> Expr l h -> Expr l h
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
 pattern Case :: () => (HasApp l, HasElim l) =>
-  Expr l v h -> [(Ctr, Expr l v h)] -> Expr l v h
+  Expr l h -> [(Ctr, Expr l h)] -> Expr l h
 pattern Case x xs = App (Elim xs) x
 
-type Type    = Expr 'Type Var Void
+type Type    = Expr 'Type Void
 type Term    = Expr 'Term
-type Value   = Expr 'Value Void Void
-type Example = Expr 'Example Value Unit
+type Value   = Expr 'Value Void
+type Example = Expr 'Example Unit
 
 -- | Indetermine expressions are either a (pattern) lambda followed by a term,
 -- or a hole.
-type Indet = Base (Term Var Hole) 'Ind Var Hole
+type Indet = Base (Term Hole) 'Ind Hole
 
 -- | Results are determinate expressions whose holes are indeterminate
 -- expressions capturing the local scope.
-type Result = Expr 'Det Var (Annot Indet Scope)
+type Result = Expr 'Det (Annot Indet Scope)
 
 newtype Scope = Scope (Map Var Result)
   deriving newtype (Eq, Ord, Show)
 
 -- Morphisms {{{
 
-rec :: Traversal (Expr' r l v h) (Expr' r' l v h) (Rec r l v h) (Rec r' l v h)
+rec :: Traversal (Expr' r l h) (Expr' r' l h) (Rec r l h) (Rec r' l h)
 rec go = \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
@@ -193,51 +199,51 @@ rec go = \case
   Fix -> pure Fix
   Prj c i -> pure $ Prj c i
 
-paraExprM :: Monad m => (Expr l v h -> Base c l v h -> m c) -> Expr l v h -> m c
+paraExprM :: Monad m => (Expr l h -> Base c l h -> m c) -> Expr l h -> m c
 paraExprM g e = g e =<< forOf rec e (paraExprM g)
 
-cataExprM :: Monad m => (Base c l v h -> m c) -> Expr l v h -> m c
+cataExprM :: Monad m => (Base c l h -> m c) -> Expr l h -> m c
 cataExprM = paraExprM . const
 
-paraExpr :: (Expr l v h -> Base c l v h -> c) -> Expr l v h -> c
+paraExpr :: (Expr l h -> Base c l h -> c) -> Expr l h -> c
 paraExpr g e = g e (over rec (paraExpr g) e)
 
-cataExpr :: (Base c l v h -> c) -> Expr l v h -> c
+cataExpr :: (Base c l h -> c) -> Expr l h -> c
 cataExpr = paraExpr . const
 
 apoExprM :: Monad m =>
-  (c -> m (Either (Expr l v h) (Base c l v h))) -> c -> m (Expr l v h)
+  (c -> m (Either (Expr l h) (Base c l h))) -> c -> m (Expr l h)
 apoExprM g e = g e >>= either return \x -> forOf rec x (apoExprM g)
 
-anaExprM :: Monad m => (c -> m (Base c l v h)) -> c -> m (Expr l v h)
+anaExprM :: Monad m => (c -> m (Base c l h)) -> c -> m (Expr l h)
 anaExprM = apoExprM . (fmap return .)
 
-apoExpr :: (c -> Either (Expr l v h) (Base c l v h)) -> c -> Expr l v h
+apoExpr :: (c -> Either (Expr l h) (Base c l h)) -> c -> Expr l h
 apoExpr g e = either id (over rec (apoExpr g)) (g e)
 
-anaExpr :: (c -> Base c l v h) -> c -> Expr l v h
+anaExpr :: (c -> Base c l h) -> c -> Expr l h
 anaExpr = apoExpr . (return .)
 
-fixExprM :: Monad m => Base (Expr l v h) l v h -> m (Expr l v h)
+fixExprM :: Monad m => Base (Expr l h) l h -> m (Expr l h)
 fixExprM = flip (forOf rec) return
 
-fixExpr :: Base (Expr l v h) l v h -> Expr l v h
+fixExpr :: Base (Expr l h) l h -> Expr l h
 fixExpr = over rec id
 
-mapAnn :: (a -> b) -> Ann a l v h -> Ann b l v h
+mapAnn :: (a -> b) -> Ann a l h -> Ann b l h
 mapAnn f (Annot e a) = Annot (over rec (mapAnn f) e) (f a)
 
-paraAnn :: (Ann a l v h -> Base c l v h -> c) -> Ann a l v h -> c
+paraAnn :: (Ann a l h -> Base c l h -> c) -> Ann a l h -> c
 paraAnn g (Annot e a) = g (Annot e a) (over rec (paraAnn g) e)
 
-cataAnn :: (a -> Base c l v h -> c) -> Ann a l v h -> c
+cataAnn :: (a -> Base c l h -> c) -> Ann a l h -> c
 cataAnn = paraAnn . (. view ann)
 
 -- }}}
 
 -- Lenses {{{
 
-holes' :: Traversal (Expr l v h) (Expr l v h') h (Expr l v h')
+holes' :: Traversal (Expr l h) (Expr l h') h (Expr l h')
 holes' g = cataExpr \case
   Hole h -> g h
   Ctr c -> pure $ Ctr c
@@ -249,10 +255,10 @@ holes' g = cataExpr \case
   Fix -> pure Fix
   Prj c i -> pure $ Prj c i
 
-holes :: Traversal (Expr l v h) (Expr l v h') h h'
+holes :: Traversal (Expr l h) (Expr l h') h h'
 holes = holes' . fmap (fmap Hole)
 
-free' :: NoBind l => Traversal (Expr l v h) (Expr l v' h) v (Expr l v' h)
+free' :: (NoBind l, HasVar l v) => Traversal (Expr l h) (Expr l h) v (Expr l h)
 free' g = cataExpr \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
@@ -261,7 +267,7 @@ free' g = cataExpr \case
   Fix -> pure Fix
   Prj c i -> pure $ Prj c i
 
-free :: (NoBind l, HasVar l) => Traversal (Expr l v h) (Expr l v' h) v v'
+free :: (NoBind l, HasVar l v) => Traversal (Expr l h) (Expr l h) v v
 free = free' . fmap (fmap Var)
 
 -- }}}
@@ -269,71 +275,71 @@ free = free' . fmap (fmap Var)
 -- Smart constructors {{{
 
 -- TODO: replace with more general infix function
-arrs :: (Foldable f, HasArr l) => f (Expr l v h) -> Expr l v h
+arrs :: (Foldable f, HasArr l) => f (Expr l h) -> Expr l h
 arrs = foldr1 Arr
 
-unArrs :: HasCtr l Ctr => Expr l v h -> NonEmpty (Expr l v h)
+unArrs :: HasCtr l Ctr => Expr l h -> NonEmpty (Expr l h)
 unArrs = \case
   Arr t u -> t `cons` unArrs u
   t -> pure t
 
 {-# COMPLETE Arrs #-}
-pattern Arrs :: HasCtr l Ctr => Expr l v h -> [Expr l v h] -> Expr l v h
+pattern Arrs :: HasCtr l Ctr => Expr l h -> [Expr l h] -> Expr l h
 pattern Arrs a bs <- (unArrs -> (a :| bs))
 
 {-# COMPLETE Args #-}
-pattern Args :: HasCtr l Ctr => [Expr l v h] -> Expr l v h -> Expr l v h
+pattern Args :: HasCtr l Ctr => [Expr l h] -> Expr l h -> Expr l h
 pattern Args as b <- (unsnoc . unArrs -> (as, b))
 
-apps :: (Foldable f, HasApp l) => Expr l v h -> f (Expr l v h) -> Expr l v h
+apps :: (Foldable f, HasApp l) => Expr l h -> f (Expr l h) -> Expr l h
 apps = foldl App
 
-unApps :: Expr l v h -> NonEmpty (Expr l v h)
+unApps :: Expr l h -> NonEmpty (Expr l h)
 unApps = reverse . go where
-  go :: Expr l v h -> NonEmpty (Expr l v h)
+  go :: Expr l h -> NonEmpty (Expr l h)
   go = \case
     App f x -> x `cons` go f
     e -> pure e
 
 {-# COMPLETE Apps #-}
-pattern Apps :: Expr l v h -> [Expr l v h] -> Expr l v h
+pattern Apps :: Expr l h -> [Expr l h] -> Expr l h
 pattern Apps f xs <- (unApps -> (f :| xs))
 
-lams :: (Foldable f, HasLam l) => f v -> Expr l v h -> Expr l v h
+lams :: (Foldable f, HasLam l v) => f v -> Expr l h -> Expr l h
 lams = flip (foldr Lam)
 
-unLams :: Expr l v h -> ([v], Expr l v h)
+unLams :: HasLam l v => Expr l h -> ([v], Expr l h)
 unLams = \case
   Lam a x -> first (a:) $ unLams x
   e -> ([], e)
 
 {-# COMPLETE Lams #-}
-pattern Lams :: [v] -> Expr l v h -> Expr l v h
+pattern Lams :: HasLam l v => [v] -> Expr l h -> Expr l h
 pattern Lams as x <- (unLams -> (as, x))
 
-nat :: (HasCtr l Ctr, HasApp l) => Int -> Expr l v h
+nat :: (HasCtr l Ctr, HasApp l) => Int -> Expr l h
 nat 0 = Ctr "Zero"
 nat n = App (Ctr "Succ") (nat $ n - 1)
 
-unNat :: HasCtr l Ctr => Expr l v h -> Maybe Int
+unNat :: HasCtr l Ctr => Expr l h -> Maybe Int
 unNat = \case
   Ctr "Zero" -> Just 0
   App (Ctr "Succ") n -> (1+) <$> unNat n
   _ -> Nothing
 
-pattern Nat :: HasCtr l Ctr => Int -> Expr l v h
+pattern Nat :: HasCtr l Ctr => Int -> Expr l h
 pattern Nat n <- (unNat -> Just n)
 
-list :: (HasCtr l Ctr, HasApp l) => [Expr l v h] -> Expr l v h
+list :: (HasCtr l Ctr, HasApp l) => [Expr l h] -> Expr l h
 list = foldr (\x y -> apps (Ctr "Cons") [x, y]) (Ctr "Nil")
 
-unList :: HasCtr l Ctr => Expr l v h -> Maybe [Expr l v h]
+unList :: HasCtr l Ctr => Expr l h -> Maybe [Expr l h]
 unList = \case
   Ctr "Nil" -> Just []
   Apps (Ctr "Cons") [x, xs] -> (x:) <$> unList xs
   _ -> Nothing
 
-pattern List :: HasCtr l Ctr => [Expr l v h] -> Expr l v h
+pattern List :: HasCtr l Ctr => [Expr l h] -> Expr l h
 pattern List xs <- (unList -> Just xs)
 
 -- }}}
@@ -418,7 +424,7 @@ varType = lens (\(Variable _ t _ _) -> t) \(Variable x _ i n) t ->
 class HasVars a where
   variables :: Lens' a (Map VarId Variable)
 
-data Sketch = Sketch Var Poly (Term Var Unit)
+data Sketch = Sketch Var Poly (Term Unit)
   deriving (Eq, Ord, Show)
 
 -- Module {{{
@@ -428,7 +434,7 @@ data Sketch = Sketch Var Poly (Term Var Unit)
 data Signature = MkSignature Var Poly
   deriving (Eq, Ord, Show)
 
-data Binding v h = MkBinding Var (Term v h)
+data Binding h = MkBinding Var (Term h)
   deriving (Eq, Ord, Show)
 
 data Datatype = MkDatatype Ctr [Var] [(Ctr, [Type])]
@@ -440,14 +446,14 @@ constructors (MkDatatype d as cs) = cs <&> second \ts ->
 
 data Definition a
   = Signature Signature
-  | Binding (Binding Var a)
+  | Binding (Binding a)
   | Datatype Datatype
   deriving (Eq, Ord, Show)
 
 newtype Module a = Module [Definition a]
   deriving (Eq, Ord, Show)
 
-sepModule :: Module a -> ([Signature], [Binding Var a], [Datatype])
+sepModule :: Module a -> ([Signature], [Binding a], [Datatype])
 sepModule (Module ds) = foldr go mempty ds where
   go = \case
     Signature s -> over _1 (s:)
@@ -464,12 +470,12 @@ sigs (Module xs) = xs >>= \case
   Signature (MkSignature x t) -> [(x, t)]
   _ -> []
 
-binds :: Module a -> [(Var, Term Var a)]
+binds :: Module a -> [(Var, Term a)]
 binds (Module xs) = xs >>= \case
   Binding (MkBinding x t) -> [(x, t)]
   _ -> []
 
-functions :: Module a -> [(Var, (Term Var a, Poly))]
+functions :: Module a -> [(Var, (Term a, Poly))]
 functions m = mapMaybe (\(v, t) -> (v,) . (,t) <$> lookup v (binds m)) $ sigs m
 
 arities :: Module a -> Map Ctr Int
@@ -481,27 +487,28 @@ arities m = Map.fromList (ctrs m) <&> \(Poly _ (Args as _)) -> length as
 
 -- | Substitute variables in an expression without variables bindings according
 -- to a map of variable substitutions.
-subst :: (Ord v, expr ~ Expr l v h, NoBind l) => Map v expr -> expr -> expr
+subst :: (HasVar l v, Ord v, expr ~ Expr l h, NoBind l) =>
+  Map v expr -> expr -> expr
 subst th = cataExpr \case
   Var v | Just x <- Map.lookup v th -> x
   e -> fixExpr e
 
 -- | Fill holes in an expression according to a map of hole fillings.
-fill :: (Ord h, expr ~ Expr l v h) => Map h expr -> expr -> expr
+fill :: (Ord h, expr ~ Expr l h) => Map h expr -> expr -> expr
 fill th = cataExpr \case
   Hole h | Just x <- Map.lookup h th -> x
   e -> fixExpr e
 
 -- | All subexpressions, including the expression itself.
-dissect :: Expr l v h -> [Expr l v h]
+dissect :: Expr l h -> [Expr l h]
 dissect = paraExpr \e -> (e:) . view rec
 
 -- | Remove all annotations from an expression.
-strip :: Ann a l v h -> Expr l v h
+strip :: Ann a l h -> Expr l h
 strip = cataAnn (const fixExpr)
 
 -- | Gather all subexpressions along with their annotation.
-collect :: Ann a l v h -> [Annot (Expr l v h) a]
+collect :: Ann a l h -> [Annot (Expr l h) a]
 collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
 
 -- | Uniquely number all holes in an expression.
@@ -510,7 +517,7 @@ number = traverse \x -> (,x) <$> fresh
 
 -- | Eta expand all holes in a sketch.
 etaExpand :: (FreshVarId m, MonadState s m, HasCtxs s, HasVars s) =>
-  Term Var Hole -> m (Term Var Hole)
+  Term Hole -> m (Term Hole)
 etaExpand = cataExprM \case
   Hole h -> do
     ctxs <- use holeCtxs
@@ -555,8 +562,8 @@ instance Pretty a => Pretty (Annot a Type) where
 instance Pretty a => Pretty (Annot a Text) where
   pretty (Annot x p) = "{-#" <+> pretty p <+> "#-}" <+> pretty x
 
-instance (Pretty (Ann a 'Term v h), Pretty v, Pretty h)
-  => Pretty (Expr' ('Ann a) 'Term v h) where
+instance (Pretty (Ann a 'Term h), Pretty h)
+  => Pretty (Expr' ('Ann a) 'Term h) where
   pretty = \case
     Hole i -> braces $ pretty i
     Var x -> pretty x
@@ -574,8 +581,8 @@ prettyParen b t
   | b = parens t
   | otherwise = t
 
-instance (Pretty a, Pretty v, Pretty h, May Pretty (Ctr' l))
-  => Pretty (Base a l v h) where
+instance (Pretty a, May Pretty (Var' l), Pretty h, May Pretty (Ctr' l))
+  => Pretty (Base a l h) where
   pretty = \case
     Hole h -> braces $ pretty h
     Var x -> pretty x
@@ -588,31 +595,43 @@ instance (Pretty a, Pretty v, Pretty h, May Pretty (Ctr' l))
     Fix -> "fix"
     Prj c n -> pretty c <> "." <> pretty n
 
-pp :: (Pretty v, Pretty h, HasCtr l Ctr) => Int -> Expr l v h -> Doc ann
-pp i = \case
+pTerm :: Pretty h => Int -> Term h -> Doc ann
+pTerm i = \case
   Hole h -> braces $ pretty h
   Var x -> pretty x
   Nat n -> pretty n
   List xs -> pretty xs
   Ctr c -> pretty c
-  Arr t u -> prettyParen (i > 1) $ sep [pp 2 t, "->", pp 1 u]
-  Case x xs -> prettyParen (i > 0) $ "case" <+> pp 0 x <+> "of" <+>
+  Arr t u -> prettyParen (i > 1) $ sep [pTerm 2 t, "->", pTerm 1 u]
+  Case x xs -> prettyParen (i > 0) $ "case" <+> pTerm 0 x <+> "of" <+>
     mconcat (intersperse "; " $ xs <&> \(p, Lams as b) ->
-      sep (pretty p : fmap pretty as) <+> "->" <+> pp 0 b)
-  App f x -> prettyParen (i > 2) $ sep [pp 2 f, pp 3 x]
+      sep (pretty p : fmap pretty as) <+> "->" <+> pTerm 0 b)
+  App f x -> prettyParen (i > 2) $ sep [pTerm 2 f, pTerm 3 x]
   Lam a (Lams as x) -> prettyParen (i > 0) $
-    "\\" <> sep (pretty <$> a:as) <+> "->" <+> pp 0 x
+    "\\" <> sep (pretty <$> a:as) <+> "->" <+> pTerm 0 x
   Let a (Lams as x) e -> prettyParen (i > 0) $
     "let" <+> pretty a <+> sep (pretty <$> as)
-    <+> "=" <+> pp 0 x <+> "in" <+> pp 0 e
+    <+> "=" <+> pTerm 0 x <+> "in" <+> pTerm 0 e
   Elim xs -> prettyParen (i > 0) $ "\\case" <+>
     mconcat (intersperse "; " $ xs <&> \(p, a) ->
-      pretty p <+> "->" <+> pp 0 a)
+      pretty p <+> "->" <+> pTerm 0 a)
   Fix -> "fix"
-  Prj c n -> pretty c <> "." <> pretty n
 
-instance (Pretty v, Pretty h, HasCtr l Ctr) => Pretty (Expr l v h) where
-  pretty = pp 0
+pType :: Int -> Type -> Doc ann
+pType i = \case
+  Hole h -> braces $ pretty h
+  Var x -> pretty x
+  Nat n -> pretty n
+  List xs -> pretty xs
+  Ctr c -> pretty c
+  Arr t u -> prettyParen (i > 1) $ sep [pType 2 t, "->", pType 1 u]
+  App f x -> prettyParen (i > 2) $ sep [pType 2 f, pType 3 x]
+
+instance Pretty h => Pretty (Term h) where
+  pretty = pTerm 0
+
+instance Pretty Type where
+  pretty = pType 0
 
 instance Pretty Datatype where
   pretty (MkDatatype d as cs) =
@@ -624,7 +643,7 @@ instance Pretty Datatype where
 instance Pretty Signature where
   pretty (MkSignature x t) = pretty x <+> "::" <+> pretty t
 
-instance (Pretty v, Pretty h) => Pretty (Binding v h) where
+instance Pretty h => Pretty (Binding h) where
   pretty (MkBinding x (Lams as e)) =
     sep (pretty x : fmap pretty as) <+> "=" <+> pretty e
 

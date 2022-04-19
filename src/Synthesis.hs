@@ -55,13 +55,13 @@ evalSyn tc m g = fst <$> runSyn tc m g
 
 -- TODO: does init make sense? Maybe we should just have a module as input
 -- and compute the GenState
-init :: SynMonad s m => Sketch -> m (Term Var Hole)
+init :: SynMonad s m => Sketch -> m (Term Hole)
 init (Sketch _ t e) = do
   (expr, _, ctx) <- check e t
   assign holeCtxs ctx
   postProcess (strip expr)
 
-step :: SynMonad s m => Term Var Hole -> m (Term Var Hole)
+step :: SynMonad s m => Term Hole -> m (Term Hole)
 step expr = do
   i <- selectFirst
   hf <- pick i
@@ -82,7 +82,7 @@ type SynMonad s m =
 -- function to appear.
 
 -- TODO: should we use concepts here?
-data Ref = Ref (Term Var Type) (Map Var Type) (Set Concept)
+data Ref = Ref (Term Type) (Map Var Type) (Set Concept)
   deriving (Eq, Ord, Show)
 
 type Refs = Map Hole [Ref]
@@ -125,7 +125,7 @@ refs (t, vs) = do
 
 pick' :: (FreshFree m, FreshHole m, FreshVarId m, MonadState s m)
   => (HasEnv s, HasVars s, HasCtxs s)
-  => Hole -> Ref -> Refs -> m (Term Var Hole, Refs)
+  => Hole -> Ref -> Refs -> m (Term Hole, Refs)
 pick' h (Ref e th _cs) rss = do
   applySubst th -- TODO: is this needed?
   -- Select and remove the holeCtx
@@ -142,35 +142,35 @@ pick' h (Ref e th _cs) rss = do
   let rss'' = mapMaybe (restrictRef th) <$> Map.delete h rss
   return (x, rss' <> rss'')
 
-next' :: SynMonad s m => Term Var Hole -> Refs ->
-  m (Hole, Ref, Term Var Hole, Refs)
+next' :: SynMonad s m => Term Hole -> Refs ->
+  m (Hole, Ref, Term Hole, Refs)
 next' e rss = do
   (h, rs) <- mfold . Map.assocs $ rss
   r <- mfold rs
   (x, rss') <- pick' h r rss
   return (h, r, fill (Map.singleton h x) e, rss')
 
-init' :: SynMonad s m => Sketch -> m (Hole, Ref, Term Var Hole, Refs)
+init' :: SynMonad s m => Sketch -> m (Hole, Ref, Term Hole, Refs)
 init' (Sketch _ t e) = do
   (expr, _, ctx) <- check e t
   assign holeCtxs ctx
   x <- postProcess (strip expr)
   use holeCtxs >>= holeVars >>= traverse refs >>= next' x
 
-step' :: SynMonad s m => (Hole, Ref, Term Var Hole, Refs)
-  -> m (Hole, Ref, Term Var Hole, Refs)
+step' :: SynMonad s m => (Hole, Ref, Term Hole, Refs)
+  -> m (Hole, Ref, Term Hole, Refs)
 step' (_, _, e, rss) = next' e rss
 
 -- }}}
 
-type HoleFilling = (Term Var Type, Type)
+type HoleFilling = (Term Type, Type)
 
 -- | Select the first hole to fill.
 selectFirst :: (MonadPlus m, MonadState s m, HasCtxs s) => m Hole
 selectFirst = use holeCtxs >>= fmap fst . mfold . Set.minView . Map.keysSet
 
 -- | Try to select a valid hole filling for a hole.
-pick :: SynMonad s m => Hole -> m (Term Var Hole)
+pick :: SynMonad s m => Hole -> m (Term Hole)
 pick h = do
   -- Choose hole fillings from either local or global variables.
   (hf, cs) <- locals h <|> globals <|> constructs
@@ -184,7 +184,7 @@ pick h = do
   return e
 
 -- | Try and fill a hole using a hole filling.
-fillHole :: SynMonad s m => Hole -> HoleFilling -> m (Term Var Hole)
+fillHole :: SynMonad s m => Hole -> HoleFilling -> m (Term Hole)
 fillHole h (e, t) = do
   ctx <- getCtx h
   -- Check if the hole filling fits.
@@ -200,7 +200,7 @@ fillHole h (e, t) = do
 
 -- | Process an expression.
 postProcess :: (MonadState s m, HasTech s, HasCtxs s, HasVars s, FreshVarId m)
-  => Term Var Hole -> m (Term Var Hole)
+  => Term Hole -> m (Term Hole)
 postProcess e = use technique >>= \case
   EtaLong -> etaExpand e
   _ -> return e
@@ -276,7 +276,7 @@ constructs = mzero -- TODO
 
 -- | Compute the possible hole fillings from a function.
 holeFillings :: (MonadPlus m, MonadState s m, HasTech s) =>
-  Term Var Type -> Type -> m HoleFilling
+  Term Type -> Type -> m HoleFilling
 holeFillings e t = use technique >>= \case
   EtaLong   -> return $ fullyApply (e, t)
   PointFree -> expand (e, t)

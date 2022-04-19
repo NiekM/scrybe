@@ -87,7 +87,7 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
 -- TODO: implement as a cataExprM?
 infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
   (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
-  Term Var Unit -> m (Ann Type 'Term Var Hole, Unify, Map Hole HoleCtx)
+  Term Unit -> m (Ann Type 'Term Hole, Unify, Map Hole HoleCtx)
 infer expr = do
   m <- ask
   let cs = Map.fromList $ ctrs m
@@ -112,10 +112,11 @@ infer expr = do
           -- Note the variable occurrence
           modifying variables . Map.insert x $ Variable name t i (n + 1)
           return (Var a `Annot` t, Map.empty, Map.empty)
-    Var a -> do
-      t <- failMaybe $ Map.lookup a fs
-      u <- instantiateFresh t
-      return (Var a `Annot` u, Map.empty, Map.empty)
+    Var a -> case Map.lookup a fs of
+      Nothing -> fail $ "Variable not in scope: " <> show a
+      Just t -> do
+        u <- instantiateFresh t
+        return (Var a `Annot` u, Map.empty, Map.empty)
     App f x -> do
       (f'@(Annot _ a), th1, ctx1) <- f loc
       (x'@(Annot _ b), th2, ctx2) <- x loc
@@ -172,7 +173,7 @@ infer expr = do
 -- partially annotated expressions.
 check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m) =>
   (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
-  Term Var Unit -> Poly -> m (Ann Type 'Term Var Hole, Unify, Map Hole HoleCtx)
+  Term Unit -> Poly -> m (Ann Type 'Term Hole, Unify, Map Hole HoleCtx)
 check e p = do
   (e'@(Annot _ u), th1, ctx1) <- infer e
   th2 <- unify (freeze p) u

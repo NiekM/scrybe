@@ -14,7 +14,7 @@ syntax t = case lexParse parser t of
   Nothing -> fail "Parsing failed"
   Just y -> return y
 
-climb :: (a ~ (Hole, Ref, Term Var Hole, Refs)) =>
+climb :: (a ~ (Hole, Ref, Term Hole, Refs)) =>
   [Tree a] -> RIO Application [a]
 climb xs = do
   let n = (2+) . length . show $ length xs
@@ -32,7 +32,7 @@ climb xs = do
       (y:) <$> climb ys
 
 readFiles :: String -> String -> String ->
-  RIO Application (Module Void, Sketch, Ann Type 'Term Var Hole)
+  RIO Application (Module Void, Sketch, Ann Type 'Term Hole)
 readFiles file sketch model = do
   m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
   sk@(Sketch _ t _) <- syntax =<< readFileUtf8
