@@ -24,12 +24,13 @@ import qualified RIO.Map as Map
 -- TODO: maybe level should contain values (concrete evaluation results) as
 -- well as 'results' (as seen in Smyth)
 data Level
-  = Type   -- ^ Type level expressions
-  | Term   -- ^ Term level expressions
-  | Lambda -- ^ Lambda expressions
-  | Det    -- ^ Determinate results
-  | Indet  -- ^ Indeterminate results
-  | Value  -- ^ Concrete values
+  = Type    -- ^ Type level expressions
+  | Term    -- ^ Term level expressions
+  | Lambda  -- ^ Lambda expressions
+  | Det     -- ^ Determinate results
+  | Indet   -- ^ Indeterminate results
+  | Value   -- ^ Concrete values
+  | Example -- ^ Input-output examples
   deriving (Eq, Ord, Show, Read)
 
 type family HasCtr' (l :: Level) where
@@ -40,10 +41,11 @@ type family HasCtr' (l :: Level) where
 type HasCtr l = HasCtr' l ~ 'True
 
 type family HasVar' (l :: Level) where
-  HasVar' 'Value = 'False
-  HasVar' 'Det   = 'False
-  HasVar' 'Indet = 'False
-  HasVar' _      = 'True
+  HasVar' 'Value   = 'False
+  HasVar' 'Det     = 'False
+  HasVar' 'Indet   = 'False
+  HasVar' 'Example = 'False
+  HasVar' _        = 'True
 
 type HasVar l = HasVar' l ~ 'True
 
@@ -54,9 +56,10 @@ type family HasApp' (l :: Level) where
 type HasApp l = HasApp' l ~ 'True
 
 type family HasLam' (l :: Level) where
-  HasLam' 'Term  = 'True
-  HasLam' 'Indet = 'True
-  HasLam' _      = 'False
+  HasLam' 'Term    = 'True
+  HasLam' 'Indet   = 'True
+  HasLam' 'Example = 'True
+  HasLam' _        = 'False
 
 type HasLam l = HasLam' l ~ 'True
 
@@ -73,6 +76,12 @@ type family HasFix' (l :: Level) where
   HasFix' _     = 'False
 
 type HasFix l = HasFix' l ~ 'True
+
+type family HasInvCtr' (l :: Level) where
+  HasInvCtr' 'Det = 'True
+  HasInvCtr' _    = 'False
+
+type HasInvCtr l = HasInvCtr' l ~ 'True
 
 type family HasLet' (l :: Level) where
   HasLet' 'Term = 'True
@@ -113,8 +122,9 @@ data Expr' (r :: Func) (l :: Level) v h where
   Let :: HasLet l => v -> Rec r l v h -> Rec r l v h -> Expr' r l v h
   Elim :: HasElim l => [(Ctr, Rec r l v h)] -> Expr' r l v h
   Fix :: HasFix l => Expr' r l v h
+  InvCtr :: HasInvCtr l => Ctr -> Expr' r l v h
 
-data Func' a = Fixed | Base a | Ann a | Opt a
+data Func' a = Fixed | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
 
 type Func = Func' Kind.Type
@@ -145,9 +155,10 @@ pattern Case :: () => (HasApp l, HasElim l) =>
   Expr l v h -> [(Ctr, Expr l v h)] -> Expr l v h
 pattern Case x xs = App (Elim xs) x
 
-type Type  = Expr 'Type Var Void
-type Term  = Expr 'Term
-type Value = Expr 'Value Void
+type Type    = Expr 'Type Var Void
+type Term    = Expr 'Term
+type Value   = Expr 'Value Void Void
+type Example = Expr 'Example Value Unit
 
 -- | Indetermine expressions are either a (pattern) lambda followed by a term,
 -- or a hole.
@@ -172,6 +183,7 @@ rec go = \case
   Let a x y -> Let a <$> go x <*> go y
   Elim xs -> Elim <$> traverse (traverse go) xs
   Fix -> pure Fix
+  InvCtr c -> pure $ InvCtr c
 
 paraExprM :: Monad m => (Expr l v h -> Base c l v h -> m c) -> Expr l v h -> m c
 paraExprM g e = g e =<< forOf rec e (paraExprM g)
@@ -206,7 +218,8 @@ coerceExpr ::
   , e ~ HasLet l, e' ~ HasLet l', e => e'
   , f ~ HasElim l, f' ~ HasElim l', f => f'
   , g ~ HasFix l, g' ~ HasFix l', g => g'
-  ) => Expr l v h -> Expr l' v h
+  , h ~ HasInvCtr l, h' ~ HasInvCtr l', h => h'
+  ) => Expr l v i -> Expr l' v i
 coerceExpr = cataExpr \case
   Hole h -> Hole h
   Ctr c -> Ctr c
@@ -216,6 +229,7 @@ coerceExpr = cataExpr \case
   Let a x y -> Let a x y
   Elim xs -> Elim xs
   Fix -> Fix
+  InvCtr c -> InvCtr c
 
 fixExprM :: Monad m => Base (Expr l v h) l v h -> m (Expr l v h)
 fixExprM = flip (forOf rec) return
@@ -246,6 +260,7 @@ holes' g = cataExpr \case
   Let a x y -> Let a <$> x <*> y
   Elim xs -> Elim <$> traverse sequenceA xs
   Fix -> pure Fix
+  InvCtr c -> pure $ InvCtr c
 
 holes :: Traversal (Expr l v h) (Expr l v h') h h'
 holes = holes' . fmap (fmap Hole)
@@ -257,6 +272,7 @@ free' g = cataExpr \case
   Var v -> g v
   App f x -> App <$> f <*> x
   Fix -> pure Fix
+  InvCtr c -> pure $ InvCtr c
 
 free :: (NoBind l, HasVar l) => Traversal (Expr l v h) (Expr l v' h) v v'
 free = free' . fmap (fmap Var)
@@ -577,6 +593,7 @@ instance (Pretty a, Pretty v, Pretty h) => Pretty (Base a l v h) where
     Elim xs -> "\\case" <+> mconcat (intersperse "; " $ xs <&> \(p, a) ->
       pretty p <+> "->" <+> pretty a)
     Fix -> "fix"
+    InvCtr c -> pretty c <> "~"
 
 pp :: (Pretty v, Pretty h) => Int -> Expr l v h -> Doc ann
 pp i = \case
@@ -599,6 +616,7 @@ pp i = \case
     mconcat (intersperse "; " $ xs <&> \(p, a) ->
       pretty p <+> "->" <+> pp 0 a)
   Fix -> "fix"
+  InvCtr c -> pretty c <> "~"
 
 instance (Pretty v, Pretty h) => Pretty (Expr l v h) where
   pretty = pp 0

@@ -50,4 +50,4 @@ preludeBinds = second (over holes' absurd . fst) <$> functions prelude
 
 liveEnv :: Map Var Result
 liveEnv = foldl' go mempty preludeBinds where
-  go m (v, e) = Map.insert v (live m e) m
+  go m (v, e) = Map.insert v (eval m e) m
