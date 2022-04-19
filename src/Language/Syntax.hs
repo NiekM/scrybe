@@ -41,15 +41,22 @@ data Level
   | Example -- ^ Input-output examples
   deriving (Eq, Ord, Show, Read)
 
+-- TODO: perhaps each of Ctr, Elim and Prj should have their own constructor
+-- type, which should usually match, but does not have to. Similarly for
+-- variables.
 type family Ctr' (l :: Level) where
   Ctr' 'Lambda = 'Nothing
-  Ctr' 'Ind    = 'Nothing
   Ctr' _       = ('Just Ctr)
 
-type HasCtr l c = Ctr' l ~ 'Just c
+type family HasCtr' (l :: Level) where
+  HasCtr' 'Ind    = 'False
+  HasCtr' l       = IsJust (Ctr' l)
+
+type HasCtr l c = (HasCtr' l ~ 'True, Ctr' l ~ 'Just c)
 
 type family Var' (l :: Level) where
   Var' 'Det     = 'Nothing
+  Var' 'Value   = 'Nothing
   Var' 'Example = ('Just Value)
   Var' _        = ('Just Var)
 
@@ -78,7 +85,7 @@ type family HasElim' (l :: Level) where
   HasElim' 'Ind  = 'True
   HasElim' _     = 'False
 
-type HasElim l = HasElim' l ~ 'True
+type HasElim l c = (HasElim' l ~ 'True, Ctr' l ~ 'Just c)
 
 type family HasFix' (l :: Level) where
   HasFix' 'Term = 'True
@@ -91,7 +98,7 @@ type family HasPrj' (l :: Level) where
   HasPrj' 'Det = 'True
   HasPrj' _    = 'False
 
-type HasPrj l = HasPrj' l ~ 'True
+type HasPrj l c = (HasPrj' l ~ 'True, Ctr' l ~ 'Just c)
 
 type family HasLet' (l :: Level) where
   HasLet' 'Term = 'True
@@ -103,7 +110,6 @@ type HasArr l = (HasCtr l Ctr, HasApp l)
 
 type NoBind l =
   ( HasLam' l ~ 'False
-  , HasElim' l ~ 'False
   , HasLet' l ~ 'False
   )
 
@@ -130,9 +136,9 @@ data Expr' (r :: Func) (l :: Level) h where
   App :: HasApp l => Rec r l h -> Rec r l h -> Expr' r l h
   Lam :: HasLam l v => v -> Rec r l h -> Expr' r l h
   Let :: HasLet l v => v -> Rec r l h -> Rec r l h -> Expr' r l h
-  Elim :: HasElim l => [(Ctr, Rec r l h)] -> Expr' r l h
+  Elim :: HasElim l c => [(Ctr, Rec r l h)] -> Expr' r l h
   Fix :: HasFix l => Expr' r l h
-  Prj :: HasPrj l => Ctr -> Int -> Expr' r l h
+  Prj :: HasPrj l c => Ctr -> Int -> Expr' r l h
 
 data Func' a = Fixed | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
@@ -154,18 +160,17 @@ type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
 type Ann a l h = Annot (Expr' ('Ann a) l h) a
 
-deriving instance (c ~ Ctr' l, v ~ Var' l, May Eq v, Eq h, May Eq c, Eq (Rec r l h))
-  => Eq (Expr' r l h)
-deriving instance
-  (c ~ Ctr' l, v ~ Var' l, May Eq v, May Ord v, Ord h, May Eq c, May Ord c, Ord (Rec r l h))
-  => Ord (Expr' r l h)
-deriving instance (c ~ Ctr' l, v ~ Var' l, May Show v, Show h, May Show c, Show (Rec r l h))
-  => Show (Expr' r l h)
+deriving instance (c ~ Ctr' l, v ~ Var' l, May Eq v, Eq h, May Eq c
+  , Eq (Rec r l h)) => Eq (Expr' r l h)
+deriving instance (c ~ Ctr' l, v ~ Var' l, May Eq v, May Ord v, Ord h
+  , May Eq c, May Ord c, Ord (Rec r l h)) => Ord (Expr' r l h)
+deriving instance (c ~ Ctr' l, v ~ Var' l, May Show v, Show h, May Show c
+  , Show (Rec r l h)) => Show (Expr' r l h)
 
 pattern Arr :: HasCtr l Ctr => HasArr l => Expr l h -> Expr l h -> Expr l h
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
 
-pattern Case :: () => (HasApp l, HasElim l) =>
+pattern Case :: () => (HasApp l, HasElim l c) =>
   Expr l h -> [(Ctr, Expr l h)] -> Expr l h
 pattern Case x xs = App (Elim xs) x
 
@@ -258,17 +263,12 @@ holes' g = cataExpr \case
 holes :: Traversal (Expr l h) (Expr l h') h h'
 holes = holes' . fmap (fmap Hole)
 
-free' :: (NoBind l, HasVar l v) => Traversal (Expr l h) (Expr l h) v (Expr l h)
-free' g = cataExpr \case
+free :: Traversal' Type Var
+free g = cataExpr \case
   Hole h -> pure $ Hole h
   Ctr c -> pure $ Ctr c
-  Var v -> g v
+  Var v -> Var <$> g v
   App f x -> App <$> f <*> x
-  Fix -> pure Fix
-  Prj c i -> pure $ Prj c i
-
-free :: (NoBind l, HasVar l v) => Traversal (Expr l h) (Expr l h) v v
-free = free' . fmap (fmap Var)
 
 -- }}}
 
