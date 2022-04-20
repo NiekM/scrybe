@@ -182,6 +182,7 @@ instance ParseAtom 'Example where
   parseAtom = choice
     [ lams <$ op "\\" <*> some (brackets Round parser <|> parseAtom)
       <* op "->" <*> parser
+    , Hole <$> brackets Curly parser
     , Ctr <$> parser
     , parseNat
     , parseList parser

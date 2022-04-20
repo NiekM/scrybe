@@ -205,8 +205,8 @@ type Indet = Base (Term Hole) 'Ind
 -- expressions capturing the local scope.
 type Result = Expr 'Det
 
-newtype Scope = Scope (Map Var Result)
-  deriving newtype (Eq, Ord, Show)
+newtype Scope = Scope { unScope :: Map Var Result }
+  deriving newtype (Eq, Ord)
 
 -- Morphisms {{{
 
@@ -567,8 +567,11 @@ instance Pretty Poly where
 instance (Pretty a, Pretty (Annot a b)) => Pretty (Annot a (Maybe b)) where
   pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a
 
+instance Pretty Scope where
+  pretty _ = "[..]"
+
 instance Pretty a => Pretty (Annot a Scope) where
-  pretty (Annot x _) = "[..]" <> pretty x
+  pretty (Annot x s) = pretty s <> pretty x
 
 instance Pretty a => Pretty (Annot a Type) where
   pretty (Annot x t) = pretty x <+> "::" <+> pretty t

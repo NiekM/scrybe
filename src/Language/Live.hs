@@ -84,14 +84,15 @@ satExample hf r ex = case (r, ex) of
   (_, Lam v x) -> satExample hf (resume hf (App r (upcast v))) x
   _ -> False
 
-type Constraint = [(Map Var Result, Example)]
+type Constraint = [(Scope, Example)]
 
 -- | Unevaluation constraints
 type UC = (UH, HF)
 
 -- TODO: are the holefillings here needed?
 satConstraint :: HF -> Term Hole -> Constraint -> Bool
-satConstraint hf e = all \(m, ex) -> satExample hf (resume hf $ eval m e) ex
+satConstraint hf e = all \(m, ex) ->
+  satExample hf (resume hf $ eval (unScope m) e) ex
 
 -- TODO: are the holefillings and the submap check really needed?
 satUneval :: HF -> UC -> Bool
@@ -114,7 +115,8 @@ merge :: [UC] -> Maybe UC
 merge cs = let (us, fs) = unzip cs in (mergeUnsolved us,) <$> mergeSolved fs
 
 checkLive :: Map Ctr Int -> Term Hole -> Constraint -> [UC]
-checkLive cs e = mapMaybe merge . mapM \(env, ex) -> uneval cs (eval env e) ex
+checkLive cs e = mapMaybe merge . mapM \(Scope env, ex) ->
+  uneval cs (eval env e) ex
 
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
 -- the recursive argument to Nothing. This makes many things more messy
@@ -133,7 +135,7 @@ uneval cs = curry \case
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
-    [(Map.singleton h [(m, lams vs ex)], mempty)]
+    [(Map.singleton h [(Scope m, lams vs ex)], mempty)]
   (App (Prj c n) r, ex) ->
     let arity = fromMaybe (error "Oh oh") $ Map.lookup c cs
     in uneval cs r $ apps (Ctr c) (replicate arity Top & ix (n - 1) .~ ex)
@@ -147,7 +149,7 @@ uneval cs = curry \case
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a x), Lam v y) ->
-    checkLive cs x [(Map.insert a (upcast v) m, y)]
+    checkLive cs x [(Scope $ Map.insert a (upcast v) m, y)]
   -- Fixed points additionally add their own definition to the environment.
   -- TODO: Does this work/make sense? It's a bit weird that we add (f, r) to
   -- the environment, because r contains the old environment, which it probably
@@ -155,5 +157,5 @@ uneval cs = curry \case
   -- > (App Fix r@(Scoped m (Lam f (Indet e))), ex) ->
   -- >  uneval (Scoped (Map.insert f r m) e) ex
   (App Fix r@(Scoped m (Lam f (Lam a x))), Lam v y) ->
-    checkLive cs x [(Map.fromList [(f, r), (a, upcast v)] <> m, y)]
+    checkLive cs x [(Scope $ Map.fromList [(f, r), (a, upcast v)] <> m, y)]
   _ -> []
