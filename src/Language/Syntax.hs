@@ -14,6 +14,7 @@ import Data.Foldable
 import RIO.List (intersperse, repeat)
 import RIO.NonEmpty (cons, reverse)
 import Prettyprinter hiding (list)
+import qualified Prettyprinter as P
 import qualified RIO.Map as Map
 
 -- Levels {{{
@@ -21,6 +22,10 @@ import qualified RIO.Map as Map
 type family May (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint where
   May c 'Nothing = ()
   May c ('Just a) = c a
+
+type family AllMay (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint where
+  AllMay c '[]       = ()
+  AllMay c (x ': xs) = (May c x, AllMay c xs)
 
 type family IsJust x where
   IsJust 'Nothing  = 'False
@@ -59,8 +64,8 @@ type family Ctr' (l :: Level) where
   Ctr' _       = ('Just Ctr)
 
 type family HasCtr' (l :: Level) where
-  HasCtr' 'Ind    = 'False
-  HasCtr' l       = IsJust (Ctr' l)
+  HasCtr' 'Ind = 'False
+  HasCtr' l    = IsJust (Ctr' l)
 
 type HasCtr l c = (HasCtr' l ~ 'True, Ctr' l ~ 'Just c)
 
@@ -78,7 +83,7 @@ type HasVar l v = (HasVar' l ~ 'True, Var' l ~ 'Just v)
 
 type family HasApp' (l :: Level) where
   HasApp' 'Ind = 'False
-  HasApp' _      = 'True
+  HasApp' _    = 'True
 
 type HasApp l = HasApp' l ~ 'True
 
@@ -118,10 +123,7 @@ type HasLet l v = (HasLet' l ~ 'True, Var' l ~ 'Just v)
 
 type HasArr l = (HasCtr l Ctr, HasApp l)
 
-type NoBind l =
-  ( HasLam' l ~ 'False
-  , HasLet' l ~ 'False
-  )
+type NoBind l = (HasLam' l ~ 'False, HasLet' l ~ 'False)
 
 -- }}}
 
@@ -133,11 +135,8 @@ type NoBind l =
 --
 -- l: the level of the expression, containing both universe levels as well as
 -- different compiler stages. This parameter is used to determine which
--- constructors are available.
---
--- v: the type of variables used in variable references as well as bindings.
---
--- h: the type of holes used in the expression.
+-- constructors are available, as well as the types of holes, constructors and
+-- variables in the expression.
 --
 data Expr' (r :: Func) (l :: Level) where
   Hole :: HasHole l h => h -> Expr' r l
@@ -577,76 +576,101 @@ instance Pretty a => Pretty (Annot a Type) where
 instance Pretty a => Pretty (Annot a Text) where
   pretty (Annot x p) = "{-#" <+> pretty p <+> "#-}" <+> pretty x
 
-instance (Pretty (Ann a ('Term h)), Pretty h)
-  => Pretty (Expr' ('Ann a) ('Term h)) where
-  pretty = \case
-    Hole i -> braces $ pretty i
-    Var x -> pretty x
-    Ctr c -> pretty c
-    App f x -> pretty f <+> pretty x
-    Lam a x -> parens $ "\\" <> pretty a <+> "->" <+> parens (pretty x)
-    Let a x e -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty e
-    Elim xs -> "\\case" <+>
-      mconcat (intersperse "; " $ xs <&> \(p, a) ->
-        pretty p <+> "->" <+> pretty a)
-    Fix -> "fix"
-
 prettyParen :: Bool -> Doc ann -> Doc ann
 prettyParen b t
   | b = parens t
   | otherwise = t
 
-instance
-  (Pretty a, May Pretty (Var' l), May Pretty (Hole' l), May Pretty (Ctr' l))
-  => Pretty (Base a l) where
-  pretty = \case
-    Hole h -> braces $ pretty h
-    Var x -> pretty x
-    Ctr c -> pretty c
-    App f x -> sep [pretty f, pretty x]
-    Lam a x -> "\\" <> pretty a <+> "->" <+> pretty x
-    Let a x y -> "let" <+> pretty a <+> "=" <+> pretty x <+> "in" <+> pretty y
-    Elim xs -> "\\case" <+> mconcat (intersperse "; " $ xs <&> \(p, a) ->
-      pretty p <+> "->" <+> pretty a)
-    Fix -> "fix"
-    Prj c n -> pretty c <> "." <> pretty n
-
-pTerm :: Pretty h => Int -> Term h -> Doc ann
-pTerm i = \case
+pExpr :: AllMay Pretty '[Hole' l, Var' l, Ctr' l] =>
+  (Int -> Rec r l -> Doc ann) -> Int -> Expr' r l -> Doc ann
+pExpr p i = \case
   Hole h -> braces $ pretty h
   Var x -> pretty x
-  Nat n -> pretty n
-  List xs -> pretty xs
   Ctr c -> pretty c
-  Arr t u -> prettyParen (i > 1) $ sep [pTerm 2 t, "->", pTerm 1 u]
-  Case x xs -> prettyParen (i > 0) $ "case" <+> pTerm 0 x <+> "of" <+>
-    mconcat (intersperse "; " $ xs <&> \(p, Lams as b) ->
-      sep (pretty p : fmap pretty as) <+> "->" <+> pTerm 0 b)
-  App f x -> prettyParen (i > 2) $ sep [pTerm 2 f, pTerm 3 x]
-  Lam a (Lams as x) -> prettyParen (i > 0) $
-    "\\" <> sep (pretty <$> a:as) <+> "->" <+> pTerm 0 x
-  Let a (Lams as x) e -> prettyParen (i > 0) $
-    "let" <+> pretty a <+> sep (pretty <$> as)
-    <+> "=" <+> pTerm 0 x <+> "in" <+> pTerm 0 e
-  Elim xs -> prettyParen (i > 0) $ "\\case" <+>
-    mconcat (intersperse "; " $ xs <&> \(p, a) ->
-      pretty p <+> "->" <+> pTerm 0 a)
+  App f x -> prettyParen (i > 2) $ sep [p 2 f, p 3 x]
+  Lam a x -> prettyParen (i > 0) $ "\\" <> pretty a <+> "->" <+> p 0 x
+  Let a x e -> prettyParen (i > 0) $ "let" <+> pretty a <+> "=" <+> p 0 x
+    <+> "in" <+> p 0 e
+  Elim xs -> prettyParen (i > 0) $ "\\case" <+> mconcat
+    (intersperse "; " $ xs <&> \(c, b) -> pretty c <+> "->" <+> p 0 b)
   Fix -> "fix"
+  Prj c n -> pretty c <> dot <> pretty n
 
-pType :: Int -> Type -> Doc ann
-pType i = \case
-  Var x -> pretty x
-  Nat n -> pretty n
-  List xs -> pretty xs
-  Ctr c -> pretty c
-  Arr t u -> prettyParen (i > 1) $ sep [pType 2 t, "->", pType 1 u]
-  App f x -> prettyParen (i > 2) $ sep [pType 2 f, pType 3 x]
+-- Syntax sugar {{{
+
+-- TODO: can we do something similar for parsing?
+
+type Sugar l ann =
+  (Int -> Expr l -> Doc ann) -> Int -> Expr l -> Maybe (Doc ann)
+
+none :: Sugar l ann
+none _ _ _ = Nothing
+
+orTry :: Sugar l ann -> Sugar l ann -> Sugar l ann
+orTry x y p i e = maybe (y p i e) return $ x p i e
+
+sTerm :: (HasLam l v, Pretty v, May Pretty (Ctr' l)) => Sugar l ann
+sTerm p i = \case
+  Lam a (Lams as x) -> Just . prettyParen (i > 0) $
+    "\\" <> sep (pretty <$> a:as) <+> "->" <+> p 0 x
+  Let a (Lams as x) e -> Just . prettyParen (i > 0) $
+    "let" <+> pretty a <+> sep (pretty <$> as)
+    <+> "=" <+> p 0 x <+> "in" <+> p 0 e
+  Case x xs -> Just . prettyParen (i > 0) $ "case" <+> p 0 x <+> "of" <+>
+    mconcat (intersperse "; " $ xs <&> \(c, Lams as b) ->
+      sep (pretty c : fmap pretty as) <+> "->" <+> p 0 b)
+  _ -> Nothing
+
+sArr :: HasCtr l Ctr => Sugar l ann
+sArr p i = \case
+  Arr t u -> Just . prettyParen (i > 1) $ sep [p 2 t, "->", p 1 u]
+  _ -> Nothing
+
+sLit :: HasCtr l Ctr => Sugar l ann
+sLit p _ = \case
+  Nat n -> Just $ pretty n
+  List xs -> Just $ P.list (p 0 <$> xs)
+  _ -> Nothing
+
+sExample :: Sugar 'Example ann
+sExample p i = \case
+  Lam v (Lams vs x) -> Just . prettyParen (i > 0) $
+    sep (withSugarPrec sLit 3 <$> v:vs) <+> "->" <+> p 0 x
+  _ -> Nothing
+
+withSugarPrec :: AllMay Pretty '[Hole' l, Var' l, Ctr' l] =>
+  Sugar l ann -> Int -> Expr l -> Doc ann
+withSugarPrec s n t = fromMaybe (pExpr go n t) (s go n t)
+  where go = withSugarPrec s
+
+withSugar :: AllMay Pretty '[Hole' l, Var' l, Ctr' l] =>
+  Sugar l ann -> Expr l -> Doc ann
+withSugar s = withSugarPrec s 0
+
+-- }}}
 
 instance Pretty h => Pretty (Term h) where
-  pretty = pTerm 0
+  pretty = withSugar (sLit `orTry` sTerm)
 
 instance Pretty Type where
-  pretty = pType 0
+  pretty = withSugar sArr
+
+instance Pretty Value where
+  pretty = withSugar sLit
+
+instance Pretty Example where
+  pretty = withSugar sExample
+
+instance Pretty Result where
+  pretty = withSugar sLit
+
+instance (Pretty (Ann a ('Term h)), Pretty h)
+  => Pretty (Expr' ('Ann a) ('Term h)) where
+  pretty = pExpr (const pretty) 0
+
+instance (Pretty a, AllMay Pretty '[Var' l, Hole' l, Ctr' l])
+  => Pretty (Base a l) where
+  pretty = pExpr (const pretty) 0
 
 instance Pretty Datatype where
   pretty (MkDatatype d as cs) =
