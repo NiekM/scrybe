@@ -26,7 +26,7 @@ pattern Indet i <- (indet -> Just i)
 evalApp :: Result -> Result -> Result
 evalApp f x = case f of
   App Fix (Scoped m (Lam g (Indet e))) ->
-    resume mempty (Scoped (Map.insert g f m) e)
+    evalApp (Scoped (Map.insert g f m) e) x
   Scoped m (Lam a y) -> eval (Map.insert a x m) y
   Scoped m (Elim xs)
     | Apps (Ctr c) as <- x
