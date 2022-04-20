@@ -603,9 +603,6 @@ pExpr p i = \case
 type Sugar l ann =
   (Int -> Expr l -> Doc ann) -> Int -> Expr l -> Maybe (Doc ann)
 
-none :: Sugar l ann
-none _ _ _ = Nothing
-
 orTry :: Sugar l ann -> Sugar l ann -> Sugar l ann
 orTry x y p i e = maybe (y p i e) return $ x p i e
 
@@ -635,7 +632,7 @@ sLit p _ = \case
 sExample :: Sugar 'Example ann
 sExample p i = \case
   Lam v (Lams vs x) -> Just . prettyParen (i > 0) $
-    sep (withSugarPrec sLit 3 <$> v:vs) <+> "->" <+> p 0 x
+    "\\" <> sep (withSugarPrec sLit 3 <$> v:vs) <+> "->" <+> p 0 x
   _ -> Nothing
 
 withSugarPrec :: AllMay Pretty '[Hole' l, Var' l, Ctr' l] =>
@@ -659,7 +656,7 @@ instance Pretty Value where
   pretty = withSugar sLit
 
 instance Pretty Example where
-  pretty = withSugar sExample
+  pretty = withSugar (sLit `orTry` sExample)
 
 instance Pretty Result where
   pretty = withSugar sLit

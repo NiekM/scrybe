@@ -139,7 +139,7 @@ instance Parse Free where
   parser = MkFree <$> int
 
 class ParseAtom l where
-  parseAtom :: (HasVar l v, Parse v) => Parser (Expr l)
+  parseAtom :: Parser (Expr l)
 
 parseNat :: (HasCtr l Ctr, HasApp l) => Parser (Expr l)
 parseNat = nat <$> int
@@ -171,7 +171,23 @@ instance ParseAtom 'Type where
     , Ctr <$> parser
     ]
 
-parseApps :: (HasVar l v, Parse v, May Parse (Hole' l), HasApp l, ParseAtom l)
+instance ParseAtom 'Value where
+  parseAtom = choice
+    [ Ctr <$> parser
+    , parseNat
+    , parseList parser
+    ]
+
+instance ParseAtom 'Example where
+  parseAtom = choice
+    [ lams <$ op "\\" <*> some (brackets Round parser <|> parseAtom)
+      <* op "->" <*> parser
+    , Ctr <$> parser
+    , parseNat
+    , parseList parser
+    ]
+
+parseApps :: (May Parse (Hole' l), HasApp l, ParseAtom l)
   => Parser (Expr l)
 parseApps = apps <$> atom <*> many atom
   where atom = brackets Round parseApps <|> parseAtom
@@ -181,6 +197,12 @@ instance Parse h => Parse (Term h) where
 
 instance Parse Type where
   parser = arrs <$> alt1 (brackets Round parser <|> parseApps) (op "->")
+
+instance Parse Value where
+  parser = parseApps
+
+instance Parse Example where
+  parser = parseApps
 
 instance Parse a => Parse (Annot a Type) where
   parser = Annot <$> parser <* op "::" <*> parser
