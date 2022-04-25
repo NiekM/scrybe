@@ -474,20 +474,23 @@ sepModule (Module ds) = foldr go mempty ds where
     Binding   b -> over _2 (b:)
     Datatype  d -> over _3 (d:)
 
+signatures :: Module a -> [Signature]
+signatures = view _1 . sepModule
+
+bindings :: Module a -> [Binding a]
+bindings = view _2 . sepModule
+
+datatypes :: Module a -> [Datatype]
+datatypes = view _3 . sepModule
+
 ctrs :: Module a -> [(Ctr, Poly)]
-ctrs (Module xs) = xs >>= \case
-  Datatype d -> constructors d
-  _ -> []
+ctrs = datatypes >=> constructors
 
 sigs :: Module a -> [(Var, Poly)]
-sigs (Module xs) = xs >>= \case
-  Signature (MkSignature x t) -> [(x, t)]
-  _ -> []
+sigs = signatures >=> \(MkSignature x t) -> [(x, t)]
 
 binds :: Module a -> [(Var, Term a)]
-binds (Module xs) = xs >>= \case
-  Binding (MkBinding x t) -> [(x, t)]
-  _ -> []
+binds = bindings >=> \(MkBinding x t) -> [(x, t)]
 
 functions :: Module a -> [(Var, (Term a, Poly))]
 functions m = mapMaybe (\(v, t) -> (v,) . (,t) <$> lookup v (binds m)) $ sigs m

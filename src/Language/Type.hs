@@ -82,11 +82,13 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
         th' <- unify t u
         combine th' th
 
+type Infer s m = (FreshFree m, FreshVarId m, FreshHole m, MonadFail m
+  , MonadReader (Module Void) m, MonadState s m, HasVars s)
+
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a cataExprM?
-infer :: (FreshFree m, FreshVarId m, FreshHole m, MonadFail m) =>
-  (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
-  Term Unit -> m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
+infer :: Infer s m => Term Unit ->
+  m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 infer expr = do
   m <- ask
   let cs = Map.fromList $ ctrs m
@@ -170,9 +172,8 @@ infer expr = do
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
-check :: (FreshFree m, FreshHole m, FreshVarId m, MonadFail m) =>
-  (MonadReader (Module Void) m, MonadState s m, HasVars s) =>
-  Term Unit -> Poly -> m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
+check :: Infer s m => Term Unit -> Poly ->
+  m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 check e p = do
   (e'@(Annot _ u), th1, ctx1) <- infer e
   th2 <- unify (freeze p) u

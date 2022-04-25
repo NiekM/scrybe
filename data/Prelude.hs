@@ -85,6 +85,9 @@ elimNat z s n = case n of Zero -> z; Succ m -> s m
 foldNat :: a -> (a -> a) -> Nat -> a
 foldNat z s = fix \go n -> case n of Zero -> z; Succ m -> s (go m)
 
+unfoldNat :: (a -> Maybe a) -> a -> Nat
+unfoldNat f x = case f x of Nothing -> Zero; Just y -> Succ (unfoldNat f y)
+
 plus :: Nat -> Nat -> Nat
 plus n = foldNat n Succ
 

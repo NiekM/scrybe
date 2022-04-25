@@ -11,6 +11,8 @@ module Import
   , mfold
   , failMaybe
   , search
+  , todo
+  , TODO
   ) where
 
 import RIO hiding (local)
@@ -49,3 +51,10 @@ search :: forall a r w s. Monoid w =>
 search step init = RWST \r s -> go r (init, s, mempty) where
   go :: r -> (a, s, w) -> Tree (a, s, w)
   go r (x, s, w) = Node (x, s, w) (go r <$> runRWST (step x) r s)
+
+{-# WARNING TODO "TODO left in code" #-}
+data TODO
+
+{-# WARNING todo "Todo left in code" #-}
+todo :: a
+todo = error "Todo left in code"

@@ -2,6 +2,7 @@ module Language.Live where
 
 import Import hiding (reverse)
 import Language.Syntax
+import Language.Type
 import RIO.List
 import qualified RIO.Map as Map
 
@@ -9,6 +10,7 @@ import qualified RIO.Map as Map
 pattern Scoped :: Map Var Result -> Indet -> Expr' r 'Det
 pattern Scoped m e = Hole (Annot e (Scope m))
 
+{-# COMPLETE Top, App, Ctr, Lam #-}
 pattern Top :: Example
 pattern Top = Hole (Unit ())
 
@@ -86,6 +88,7 @@ satExample hf r ex = case (r, ex) of
 
 type Constraint = [(Scope, Example)]
 
+-- TODO: Can we ignore HF for now?
 -- | Unevaluation constraints
 type UC = (UH, HF)
 
@@ -122,6 +125,8 @@ checkLive cs e = mapMaybe merge . mapM \(Scope env, ex) ->
 -- the recursive argument to Nothing. This makes many things more messy
 -- unfortunately.
 
+-- TODO: add fuel (probably using a FuelMonad or something, so that we can
+-- leave it out as well)
 uneval :: Map Ctr Int -> Result -> Example -> [UC]
 uneval cs = curry \case
   -- Top always succeeds.
@@ -151,11 +156,86 @@ uneval cs = curry \case
   (Scoped m (Lam a x), Lam v y) ->
     checkLive cs x [(Scope $ Map.insert a (upcast v) m, y)]
   -- Fixed points additionally add their own definition to the environment.
-  -- TODO: Does this work/make sense? It's a bit weird that we add (f, r) to
-  -- the environment, because r contains the old environment, which it probably
-  -- shouldn't.
-  -- > (App Fix r@(Scoped m (Lam f (Indet e))), ex) ->
-  -- >  uneval (Scoped (Map.insert f r m) e) ex
-  (App Fix r@(Scoped m (Lam f (Lam a x))), Lam v y) ->
-    checkLive cs x [(Scope $ Map.fromList [(f, r), (a, upcast v)] <> m, y)]
+  -- TODO: Does this work/make sense?
+  (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
+    uneval cs (Scoped (Map.insert f r m) e) ex
   _ -> []
+
+-- -- TODO: implement this according to figure 8
+-- solve :: UC -> HF
+-- solve (uh, hf) = case Map.minViewWithKey uh of
+--   Nothing -> hf
+--   Just ((h, c), xs) -> _
+--
+-- fill :: _
+-- fill = _
+
+type Goal = (Map Var Type, Type, Constraint)
+
+allSame :: Eq a => [a] -> Maybe a
+allSame = \case
+  x:xs | all (==x) xs -> Just x
+  _ -> Nothing
+
+-- TODO: maybe fullblown inference is not needed
+refine :: Infer s m => Goal -> m (Term Hole, Map Hole Goal)
+refine (goalEnv, goalType, constraints) = do
+  let constraints' = filter ((/= Top) . snd) constraints
+  ctrs' <- ctrs <$> ask -- TODO: use datatypes instead?
+  case goalType of
+    Arr arg res -> do
+      h <- fresh
+      f <- varId <$> fresh
+      a <- varId <$> fresh
+      xs <- failMaybe $ for constraints' \case
+        (Scope scope, Lam t u) ->
+          let r = App Fix (Scoped scope (Lam f (Lam a (Hole h))))
+              scope' = Map.fromList [(f, r), (a, upcast t)]
+          in Just (Scope $ scope' <> scope, u)
+        _ -> Nothing
+      -- TODO: record that f is a recursive call and a is its argument.
+      -- Probably using a global variable environment.
+      return
+        ( App Fix (lams [f, a] (Hole h))
+        , Map.singleton h
+          ( Map.fromList [(f, goalType), (a, arg)] <> goalEnv
+          , res
+          , xs
+          )
+        )
+    Apps (Ctr _typeCtr) _typeArgs -> do
+      xs <- failMaybe $ for constraints' \case
+        (scope, Apps (Ctr ctr) args) -> Just (ctr, (scope, args))
+        _ -> Nothing
+      let (cs, examples) = unzip xs
+      ctr <- failMaybe $ allSame cs
+      Poly _bound (Args args ctrType) <- failMaybe $ lookup ctr ctrs'
+      th <- unify ctrType goalType
+      let examples' = transpose $ sequence <$> examples
+      args' <- for args \t -> (, subst th t) <$> fresh
+      return
+        ( apps (Ctr ctr) (Hole . fst <$> args')
+        , Map.fromList $ zipWith (\(h, t) exs ->
+          (h, (goalEnv, t, exs))
+          ) args' examples'
+        )
+    _ -> fail "Failed refine"
+
+-- TODO: this doesn't really work for higher-order data structures such as
+-- Maybe (Nat -> Nat), but maybe we shouldn't focus on those. Do we still have
+-- this problem if the expression is in eta-long form?
+exampleMap :: Example -> Map [Value] Example
+exampleMap = uncurry Map.singleton . unLams
+
+mergeEx :: Example -> Example -> Maybe Example
+mergeEx = curry \case
+  (ex, Top) -> Just ex
+  (Top, ex) -> Just ex
+  (Ctr c, Ctr d) | c == d -> Just $ Ctr c
+  (App f x, App g y) -> App <$> mergeEx f g <*> mergeEx x y
+  _ -> Nothing
+
+mergeExamples :: [Example] -> Maybe (Map [Value] Example)
+mergeExamples = sequence
+  . Map.unionsWith ((join .) . liftM2 mergeEx)
+  . fmap (fmap Just . exampleMap)
