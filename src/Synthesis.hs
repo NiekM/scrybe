@@ -51,7 +51,7 @@ evalSyn tc m g = fst <$> runSyn tc m g
 -- and compute the GenState
 init :: SynMonad s m => Sketch -> m (Term Hole)
 init (Sketch _ t e) = do
-  (expr, _, ctx) <- check e t
+  (expr, _, ctx) <- check' e t
   assign holeCtxs ctx
   postProcess (strip expr)
 
@@ -135,7 +135,7 @@ next' e rss = do
 
 init' :: SynMonad s m => Sketch -> m (Hole, Ref, Term Hole, Refs)
 init' (Sketch _ t e) = do
-  (expr, _, ctx) <- check e t
+  (expr, _, ctx) <- check' e t
   assign holeCtxs ctx
   x <- postProcess (strip expr)
   use holeCtxs >>= traverse refs >>= next' x

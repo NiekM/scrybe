@@ -53,7 +53,7 @@ type Level = Level' Kind.Type
 type family Hole' (l :: Level) where
   Hole' ('Term t) = 'Just t
   Hole' 'Ind      = 'Just Hole
-  Hole' 'Det      = 'Just (Annot Indet Scope)
+  Hole' 'Det      = 'Just (Annot Scope Indet)
   Hole' 'Example  = 'Just Unit
   Hole' _         = 'Nothing
 
@@ -277,6 +277,17 @@ free g = cataExpr \case
   Ctr c -> pure $ Ctr c
   Var v -> Var <$> g v
   App f x -> App <$> f <*> x
+
+holesAnn :: Traversal (Ann a ('Term h)) (Ann a ('Term h')) h h'
+holesAnn g = cataAnn \t -> fmap (`Annot` t) . \case
+  Hole h -> Hole <$> g h
+  Ctr c -> pure $ Ctr c
+  Var v -> pure $ Var v
+  App f x -> App <$> f <*> x
+  Lam a x -> Lam a <$> x
+  Let a x y -> Let a <$> x <*> y
+  Elim xs -> Elim <$> traverse sequenceA xs
+  Fix -> pure Fix
 
 -- }}}
 
@@ -560,13 +571,13 @@ instance (Pretty b, Pretty (Annot a b)) => Pretty (Annot (Maybe a) b) where
 instance Pretty Scope where
   pretty _ = "[..]"
 
-instance Pretty a => Pretty (Annot a Scope) where
+instance Pretty a => Pretty (Annot Scope a) where
   pretty (Annot x s) = pretty s <> pretty x
 
-instance Pretty a => Pretty (Annot a Type) where
+instance Pretty a => Pretty (Annot Type a) where
   pretty (Annot x t) = pretty x <+> "::" <+> pretty t
 
-instance Pretty a => Pretty (Annot a Text) where
+instance Pretty a => Pretty (Annot Text a) where
   pretty (Annot x p) = "{-#" <+> pretty p <+> "#-}" <+> pretty x
 
 prettyParen :: Bool -> Doc ann -> Doc ann

@@ -70,80 +70,83 @@ type Infer s m = (FreshFree m, FreshHole m, MonadFail m
 
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a cataExprM?
-infer :: Infer s m => Term Unit ->
-  m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
+infer :: Infer s m => Term Unit -> m (Ann Type ('Term HoleCtx), Unify)
 infer expr = do
   m <- ask
   let cs = Map.fromList $ ctrs m
   let fs = Map.fromList $ sigs m
-  (e, th, ctx) <- (Map.empty &) $ expr & cataExpr \e loc -> case e of
+  (e, th) <- (Map.empty &) $ expr & cataExpr \e loc -> case e of
     Hole _ -> do
-      h <- fresh
       g <- Var <$> fresh
-      return (Hole h `Annot` g, Map.empty, Map.singleton h (HoleCtx g loc))
+      return (Hole (HoleCtx g loc) `Annot` g, Map.empty)
     Ctr c -> do
       t <- failMaybe $ Map.lookup c cs
       u <- instantiateFresh t
-      return (Annot (Ctr c) u, Map.empty, Map.empty)
+      return (Annot (Ctr c) u, Map.empty)
     Var a | Just t <- Map.lookup a loc ->
-      return (Var a `Annot` t, Map.empty, Map.empty)
+      return (Var a `Annot` t, Map.empty)
     Var a -> case Map.lookup a fs of
       Nothing -> fail $ "Variable not in scope: " <> show a
       Just t -> do
         u <- instantiateFresh t
-        return (Var a `Annot` u, Map.empty, Map.empty)
+        return (Var a `Annot` u, Map.empty)
     App f x -> do
-      (f'@(Annot _ a), th1, ctx1) <- f loc
-      (x'@(Annot _ b), th2, ctx2) <- x loc
+      (f'@(Annot _ a), th1) <- f loc
+      (x'@(Annot _ b), th2) <- x loc
       t <- Var <$> fresh
       th3 <- unify (subst th2 a) (Arr b t)
       let th4 = th3 `compose` th2 `compose` th1
-      let ctx3 = over goal (subst th4) <$> ctx1 <> ctx2
-      return (App f' x' `Annot` subst th4 t, th4, ctx3)
+      return (App f' x' `Annot` subst th4 t, th4)
     Lam a x -> do
       t <- Var <$> fresh
-      (x'@(Annot _ u), th, local') <- x (Map.insert a t loc)
+      (x'@(Annot _ u), th) <- x (Map.insert a t loc)
       let t' = subst th t
-      return (Lam a x' `Annot` Arr t' u, th, local')
+      return (Lam a x' `Annot` Arr t' u, th)
     Let a x y -> do
       t <- Var <$> fresh
-      (x'@(Annot _ t1), th1, ctx1) <- x loc
-      (y'@(Annot _ t2), th2, ctx2) <- y (Map.insert a t loc)
+      (x'@(Annot _ t1), th1) <- x loc
+      (y'@(Annot _ t2), th2) <- y (Map.insert a t loc)
       let th3 = th2 `compose` th1
       th4 <- unify (subst th3 t) t1
       let th5 = th4 `compose` th3
-      let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
-      return (Let a x' y' `Annot` subst th5 t2, th5, ctx3)
+      return (Let a x' y' `Annot` subst th5 t2, th5)
     Elim xs -> do
       t <- Var <$> fresh
       u <- Var <$> fresh
-      (ys, t', u', th', ctx') <-
-        xs & flip foldr (return ([], t, u, mempty, mempty)) \(c, y) r -> do
-        (as, t1, u1, th1, ctx1) <- r
+      (ys, t', u', th') <-
+        xs & flip foldr (return ([], t, u, mempty)) \(c, y) r -> do
+        (as, t1, u1, th1) <- r
         d <- failMaybe $ Map.lookup c cs
         Args args res <- instantiateFresh d
-        (y'@(Annot _ t2), th2, ctx2) <- y loc
+        (y'@(Annot _ t2), th2) <- y loc
         -- Check that the constructor type matches the scrutinee.
         th3 <- unify res t1
         -- Check that the branch type matches the resulting type.
         th4 <- unify (foldr Arr u1 args) t2
         let th5 = th4 `compose` th3 `compose` th2 `compose` th1
-        let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
-        return ((c, y'):as, subst th5 t1, subst th5 u1, th5, ctx3)
-      return (Elim (reverse ys) `Annot` Arr t' u', th', ctx')
+        return ((c, y'):as, subst th5 t1, subst th5 u1, th5)
+      return (Elim (reverse ys) `Annot` Arr t' u', th')
     Fix -> do
       t <- Var <$> fresh
-      return (Fix `Annot` Arr (Arr t t) t, mempty, mempty)
+      return (Fix `Annot` Arr (Arr t t) t, mempty)
 
-  return (mapAnn (subst th) e, th, ctx)
+  -- TODO: do we need to subst th over local environments?
+  return (mapAnn (subst th) e, th)
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
 check :: Infer s m => Term Unit -> Poly ->
-  m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
+  m (Ann Type ('Term HoleCtx), Unify)
 check e p = do
-  (e'@(Annot _ u), th1, ctx1) <- infer e
+  (e'@(Annot _ u), th1) <- infer e
   th2 <- unify (freeze p) u
   let th3 = compose th2 th1
-  let ctx2 = over goal (subst th3) <$> ctx1
-  return (mapAnn (subst th3) e', th3, ctx2)
+  let substCtx (HoleCtx g vs) = HoleCtx (subst th3 g) (subst th3 <$> vs)
+  return (over holesAnn substCtx $ mapAnn (subst th3) e', th3)
+
+check' :: Infer s m => Term Unit -> Poly ->
+  m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
+check' e t = do
+  (x, th) <- check e t
+  y <- forOf holesAnn x \ctx -> (,ctx) <$> fresh
+  return (over holesAnn fst y, th, Map.fromList $ toListOf holesAnn y)

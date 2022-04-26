@@ -8,7 +8,7 @@ import qualified RIO.Map as Map
 
 {-# COMPLETE Scoped, App, Ctr, Fix #-}
 pattern Scoped :: Map Var Result -> Indet -> Expr' r 'Det
-pattern Scoped m e = Hole (Annot (Scope m) e)
+pattern Scoped m e = Hole (Annot e (Scope m))
 
 {-# COMPLETE Top, App, Ctr, Lam #-}
 pattern Top :: Example
