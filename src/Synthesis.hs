@@ -76,12 +76,12 @@ type SynMonad s m =
 -- function to appear.
 
 -- TODO: should we use concepts here?
-data Ref = Ref (Term Type) (Map Var Type) (Set Concept)
+data Ref = Ref (Term Type) (Map Free Type) (Set Concept)
   deriving (Eq, Ord, Show)
 
 type Refs = Map Hole [Ref]
 
-restrictRef :: Map Var Type -> Ref -> Maybe Ref
+restrictRef :: Map Free Type -> Ref -> Maybe Ref
 restrictRef th1 (Ref x th2 c) = do
   th3 <- combine th1 th2
   return $ Ref (over holes (subst th3) x) th3 c
@@ -167,7 +167,7 @@ pick h = do
   return e
 
 -- | Performs type substitutions in holes and local variables.
-applySubst :: (MonadState s m, HasCtxs s) => Map Var Type -> m ()
+applySubst :: (MonadState s m, HasCtxs s) => Map Free Type -> m ()
 applySubst th = modifying holeCtxs . fmap $ over goal (subst th)
 
 -- | Try and fill a hole using a hole filling.

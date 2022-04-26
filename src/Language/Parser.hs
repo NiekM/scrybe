@@ -136,7 +136,7 @@ instance Parse Hole where
   parser = MkHole <$> int
 
 instance Parse Free where
-  parser = MkFree <$> int
+  parser = MkFree <$> identifier
 
 class ParseAtom l where
   parseAtom :: Parser (Expr l)

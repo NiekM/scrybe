@@ -73,9 +73,10 @@ type family HasCtr' (l :: Level) where
 type HasCtr l c = (HasCtr' l ~ 'True, Ctr' l ~ 'Just c)
 
 type family Ref' (l :: Level) where
-  Ref' 'Det     = 'Nothing
-  Ref' 'Value   = 'Nothing
-  Ref' _        = ('Just Var)
+  Ref' 'Det   = 'Nothing
+  Ref' 'Value = 'Nothing
+  Ref' 'Type  = 'Just Free
+  Ref' _      = 'Just Var
 
 type HasVar l v = Ref' l ~ 'Just v
 
@@ -178,7 +179,7 @@ deriving instance (Consts Eq l, Consts Ord l, Ord (Rec r l)) => Ord (Expr' r l)
 deriving instance (Consts Show l, Show (Rec r l)) => Show (Expr' r l)
 
 pattern Arr :: HasCtr l Ctr => HasArr l => Expr l -> Expr l -> Expr l
-pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
+pattern Arr t u = App (App (Ctr "->") t) u
 
 pattern Case :: () => (HasApp l, HasElim l c) =>
   Expr l -> [(c, Expr l)] -> Expr l
@@ -271,7 +272,7 @@ holes' g = cataExpr \case
 holes :: Traversal (Expr ('Term h)) (Expr ('Term h')) h h'
 holes = holes' . fmap (fmap Hole)
 
-free :: Traversal' Type Var
+free :: Traversal' Type Free
 free g = cataExpr \case
   Ctr c -> pure $ Ctr c
   Var v -> Var <$> g v
@@ -352,14 +353,14 @@ pattern List xs <- (unList -> Just xs)
 
 -- Polytypes {{{
 
-data Poly = Poly [Var] Type
+data Poly = Poly [Free] Type
   deriving (Eq, Ord, Show)
 
 -- | Turn a monotype into a polytype by quantifying all its free variables.
 poly :: Type -> Poly
 poly t = Poly (nubOrd $ toListOf free t) t
 
-alphaEq :: Poly -> Poly -> Maybe (Map Var Var)
+alphaEq :: Poly -> Poly -> Maybe (Map Free Free)
 alphaEq (Poly as t) (Poly bs u) = do
   let cs = filter (`elem` as) . nubOrd $ toListOf free t
   let th = Map.fromList $ zip bs cs
@@ -371,19 +372,19 @@ alphaEq (Poly as t) (Poly bs u) = do
 -- constructors of the same name.
 freeze :: Poly -> Type
 freeze (Poly as t) = flip cataExpr t \case
-  Var v | v `elem` as, MkVar c <- v -> Ctr (MkCtr c)
+  Var v | v `elem` as, MkFree c <- v -> Ctr (MkCtr c)
   e -> fixExpr e
 
 -- TODO: instantiation should also be able to introduce new type variables,
 -- e.g. by instantiating `id` to `forall a. List a -> List a`. Perhaps we
 -- should just substitute the monotype and recompute free quantified variables.
-instantiate :: Map Var Type -> Poly -> Poly
+instantiate :: Map Free Type -> Poly -> Poly
 instantiate th (Poly fr ty) =
   Poly (filter (`notElem` Map.keys th) fr) (subst th ty)
 
 refresh :: FreshFree m => Poly -> m Poly
 refresh (Poly as t) = do
-  th <- for as \a -> (a,) . freeId <$> fresh
+  th <- for as \a -> (a,) <$> fresh
   let u = subst (Var <$> Map.fromList th) t
   return $ Poly (snd <$> th) u
 
@@ -436,7 +437,7 @@ data Signature = MkSignature Var Poly
 data Binding h = MkBinding Var (Term h)
   deriving (Eq, Ord, Show)
 
-data Datatype = MkDatatype Ctr [Var] [(Ctr, [Type])]
+data Datatype = MkDatatype Ctr [Free] [(Ctr, [Type])]
   deriving (Eq, Ord, Show)
 
 constructors :: Datatype -> [(Ctr, Poly)]

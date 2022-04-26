@@ -178,7 +178,7 @@ allSame = \case
   _ -> Nothing
 
 -- TODO: maybe fullblown inference is not needed
-refine :: Infer s m => Goal -> m (Term Hole, Map Hole Goal)
+refine :: (FreshVar m, Infer s m) => Goal -> m (Term Hole, Map Hole Goal)
 refine (goalEnv, goalType, constraints) = do
   let constraints' = filter ((/= Top) . snd) constraints
   ctrs' <- ctrs <$> ask -- TODO: use datatypes instead?

@@ -20,13 +20,13 @@ evalTC tc m = fst <$> runTC tc m
 
 -- | Type unification & inference
 
-type Unify = Map Var Type
+type Unify = Map Free Type
 
 -- TODO: Add unit tests to test type unification, inference and checking
 
 -- | Unify two expressions, by checking if their holes can be filled such that
 -- they are equivalent.
-unify :: MonadFail m => Type -> Type -> m (Map Var Type)
+unify :: MonadFail m => Type -> Type -> m Unify
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
@@ -35,7 +35,7 @@ unify t u = case (t, u) of
   (_, Var a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
 
-occurs :: Var -> Type -> Bool
+occurs :: Free -> Type -> Bool
 occurs a tau = a `notElem` toListOf free tau
 
 -- NOTE: it seems that the left hand side of the composition should be the
@@ -49,7 +49,7 @@ compose sigma gamma = Map.unions
   ]
 
 -- | Unify multiple expressions.
-unifies :: (MonadFail m, Foldable t) => t (Type, Type) -> m (Map Var Type)
+unifies :: (MonadFail m, Foldable t) => t (Type, Type) -> m Unify
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)
@@ -65,7 +65,7 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
         th' <- unify t u
         combine th' th
 
-type Infer s m = (FreshFree m, FreshVar m, FreshHole m, MonadFail m
+type Infer s m = (FreshFree m, FreshHole m, MonadFail m
   , MonadReader (Module Void) m, MonadState s m)
 
 -- TODO: move holeCtxs to Monad
@@ -95,18 +95,18 @@ infer expr = do
     App f x -> do
       (f'@(Annot _ a), th1, ctx1) <- f loc
       (x'@(Annot _ b), th2, ctx2) <- x loc
-      t <- Var . freeId <$> fresh
+      t <- Var <$> fresh
       th3 <- unify (subst th2 a) (Arr b t)
       let th4 = th3 `compose` th2 `compose` th1
       let ctx3 = over goal (subst th4) <$> ctx1 <> ctx2
       return (App f' x' `Annot` subst th4 t, th4, ctx3)
     Lam a x -> do
-      t <- Var . freeId <$> fresh
+      t <- Var <$> fresh
       (x'@(Annot _ u), th, local') <- x (Map.insert a t loc)
       let t' = subst th t
       return (Lam a x' `Annot` Arr t' u, th, local')
     Let a x y -> do
-      t <- Var . freeId <$> fresh
+      t <- Var <$> fresh
       (x'@(Annot _ t1), th1, ctx1) <- x loc
       (y'@(Annot _ t2), th2, ctx2) <- y (Map.insert a t loc)
       let th3 = th2 `compose` th1
@@ -115,8 +115,8 @@ infer expr = do
       let ctx3 = over goal (subst th5) <$> ctx1 <> ctx2
       return (Let a x' y' `Annot` subst th5 t2, th5, ctx3)
     Elim xs -> do
-      t <- Var . freeId <$> fresh
-      u <- Var . freeId <$> fresh
+      t <- Var <$> fresh
+      u <- Var <$> fresh
       (ys, t', u', th', ctx') <-
         xs & flip foldr (return ([], t, u, mempty, mempty)) \(c, y) r -> do
         (as, t1, u1, th1, ctx1) <- r
@@ -132,7 +132,7 @@ infer expr = do
         return ((c, y'):as, subst th5 t1, subst th5 u1, th5, ctx3)
       return (Elim (reverse ys) `Annot` Arr t' u', th', ctx')
     Fix -> do
-      t <- Var . freeId <$> fresh
+      t <- Var <$> fresh
       return (Fix `Annot` Arr (Arr t t) t, mempty, mempty)
 
   return (mapAnn (subst th) e, th, ctx)

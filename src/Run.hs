@@ -21,7 +21,7 @@ climb xs = do
   for_ (zip [0 :: Int ..] xs) \(i, Node (h, Ref e th _, _, _) _) ->
     logInfo . display $ Prettyprinter.fill n (pretty i <> ":") <+>
       pretty h <+> "|->" <+> pretty e <> if null th then "" else " ---" <+>
-        tupled (Map.assocs th <&> \(k, x) -> pretty k <+> "|->" <> pretty x)
+        tupled (Map.assocs th <&> \(k, x) -> pretty k <+> "|->" <+> pretty x)
   l <- liftIO getLine
   case readMaybe l >>= \i -> preview (ix i) xs of
     Nothing -> logInfo "Done..." >> return []
