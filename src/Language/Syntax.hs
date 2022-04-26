@@ -27,6 +27,9 @@ type family AllMay (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint wher
   AllMay c '[]       = ()
   AllMay c (x ': xs) = (May c x, AllMay c xs)
 
+type Consts (c :: Kind.Type -> Kind.Constraint) (l :: Level) =
+  AllMay c '[Hole' l, Ctr' l, Ref' l, Bind' l]
+
 type family IsJust x where
   IsJust 'Nothing  = 'False
   IsJust ('Just _) = 'True
@@ -69,17 +72,18 @@ type family HasCtr' (l :: Level) where
 
 type HasCtr l c = (HasCtr' l ~ 'True, Ctr' l ~ 'Just c)
 
-type family Var' (l :: Level) where
-  Var' 'Det     = 'Nothing
-  Var' 'Value   = 'Nothing
-  Var' 'Example = ('Just Value)
-  Var' _        = ('Just Var)
+type family Ref' (l :: Level) where
+  Ref' 'Det     = 'Nothing
+  Ref' 'Value   = 'Nothing
+  Ref' _        = ('Just Var)
 
-type family HasVar' (l :: Level) where
-  HasVar' 'Example = 'False
-  HasVar' l        = IsJust (Var' l)
+type HasVar l v = Ref' l ~ 'Just v
 
-type HasVar l v = (HasVar' l ~ 'True, Var' l ~ 'Just v)
+type family Bind' (l :: Level) where
+  Bind' 'Example  = 'Just Value
+  Bind' ('Term _) = 'Just Var
+  Bind' 'Ind      = 'Just Var
+  Bind' _         = 'Nothing
 
 type family HasApp' (l :: Level) where
   HasApp' 'Ind = 'False
@@ -93,7 +97,7 @@ type family HasLam' (l :: Level) where
   HasLam' 'Example  = 'True
   HasLam' _         = 'False
 
-type HasLam l v = (HasLam' l ~ 'True, Var' l ~ 'Just v)
+type HasLam l v = (HasLam' l ~ 'True, Bind' l ~ 'Just v)
 
 type family HasElim' (l :: Level) where
   HasElim' ('Term _) = 'True
@@ -119,11 +123,11 @@ type family HasLet' (l :: Level) where
   HasLet' ('Term _) = 'True
   HasLet' _         = 'False
 
-type HasLet l v = (HasLet' l ~ 'True, Var' l ~ 'Just v)
+type HasLet l v = (HasLet' l ~ 'True, Bind' l ~ 'Just v)
 
 type HasArr l = (HasCtr l Ctr, HasApp l)
 
-type NoBind l = (HasLam' l ~ 'False, HasLet' l ~ 'False)
+type NoBind l = Bind' l ~ 'Nothing
 
 -- }}}
 
@@ -169,21 +173,9 @@ type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
 type Ann a l = Annot a (Expr' ('Ann a) l)
 
-deriving instance
-  ( h ~ Hole' l, May Eq h
-  , c ~ Ctr' l, May Eq c
-  , v ~ Var' l, May Eq v
-  , Eq (Rec r l)) => Eq (Expr' r l)
-deriving instance
-  ( h ~ Hole' l, May Eq h, May Ord h
-  , c ~ Ctr' l, May Eq c, May Ord c
-  , v ~ Var' l, May Eq v, May Ord v
-  , Ord (Rec r l)) => Ord (Expr' r l)
-deriving instance
-  ( h ~ Hole' l, May Show h
-  , c ~ Ctr' l, May Show c
-  , v ~ Var' l, May Show v
-  , Show (Rec r l)) => Show (Expr' r l)
+deriving instance (Consts Eq l, Eq (Rec r l)) => Eq (Expr' r l)
+deriving instance (Consts Eq l, Consts Ord l, Ord (Rec r l)) => Ord (Expr' r l)
+deriving instance (Consts Show l, Show (Rec r l)) => Show (Expr' r l)
 
 pattern Arr :: HasCtr l Ctr => HasArr l => Expr l -> Expr l -> Expr l
 pattern Arr t u = App (App (Ctr (MkCtr "->")) t) u
@@ -597,7 +589,7 @@ prettyParen b t
   | b = parens t
   | otherwise = t
 
-pExpr :: AllMay Pretty '[Hole' l, Var' l, Ctr' l] =>
+pExpr :: Consts Pretty l =>
   (Int -> Rec r l -> Doc ann) -> Int -> Expr' r l -> Doc ann
 pExpr p i = \case
   Hole h -> braces $ pretty h
@@ -651,13 +643,11 @@ sExample p i = \case
     "\\" <> sep (withSugarPrec sLit 3 <$> v:vs) <+> "->" <+> p 0 x
   _ -> Nothing
 
-withSugarPrec :: AllMay Pretty '[Hole' l, Var' l, Ctr' l] =>
-  Sugar l ann -> Int -> Expr l -> Doc ann
+withSugarPrec :: Consts Pretty l => Sugar l ann -> Int -> Expr l -> Doc ann
 withSugarPrec s n t = fromMaybe (pExpr go n t) (s go n t)
   where go = withSugarPrec s
 
-withSugar :: AllMay Pretty '[Hole' l, Var' l, Ctr' l] =>
-  Sugar l ann -> Expr l -> Doc ann
+withSugar :: Consts Pretty l => Sugar l ann -> Expr l -> Doc ann
 withSugar s = withSugarPrec s 0
 
 -- }}}
@@ -681,8 +671,7 @@ instance (Pretty (Ann a ('Term h)), Pretty h)
   => Pretty (Expr' ('Ann a) ('Term h)) where
   pretty = pExpr (const pretty) 0
 
-instance (Pretty a, AllMay Pretty '[Var' l, Hole' l, Ctr' l])
-  => Pretty (Base a l) where
+instance (Pretty a, Consts Pretty l) => Pretty (Base a l) where
   pretty = pExpr (const pretty) 0
 
 instance Pretty Datatype where
