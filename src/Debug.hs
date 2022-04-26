@@ -39,7 +39,7 @@ instance Pretty a => Pretty (Set a) where
 instance Pretty HoleCtx where
   pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs
 
-tryTC :: Monad m => RWST (Module Void) () TCState m a -> m a
+tryTC :: Monad m => RWST (Module Void) () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
 
 trySyn :: Monad m => RWST (Module Void) () SynState m a -> m a

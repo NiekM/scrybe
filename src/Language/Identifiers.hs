@@ -64,6 +64,9 @@ mkFreshState = FreshState 0 0 0
 class HasFreshState a where
   freshState :: Lens' a FreshState
 
+instance HasFreshState FreshState where
+  freshState = id
+
 instance (Monoid w, HasFreshState s, Monad m)
   => MonadFresh Hole (RWST r w s m) where
   fresh = fresh' freshHole

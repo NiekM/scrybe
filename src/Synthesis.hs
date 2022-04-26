@@ -14,7 +14,7 @@ data SynState = SynState
   , _env       :: Env
   , _technique :: Technique
   , _concepts  :: MultiSet Concept
-  , _tcState   :: TCState
+  , _fresh     :: FreshState
   }
 
 instance HasCtxs SynState where
@@ -29,17 +29,11 @@ instance HasTech SynState where
 instance HasConcepts SynState where
   concepts = lens _concepts \x y -> x { _concepts = y }
 
-instance HasTCState SynState where
-  tcState = lens _tcState \x y -> x { _tcState = y }
-
-instance HasVars SynState where
-  variables = tcState . variables
-
 instance HasFreshState SynState where
-  freshState = tcState . freshState
+  freshState = lens _fresh \x y -> x { _fresh = y }
 
 mkSynState :: Env -> Technique -> MultiSet Concept -> SynState
-mkSynState e t c = SynState mempty e t c mkTCState
+mkSynState e t c = SynState mempty e t c mkFreshState
 
 runSyn :: Monad m => RWST (Module Void) () SynState m a ->
   Module Void -> SynState -> m (a, SynState)
@@ -69,8 +63,8 @@ step expr = do
 
 type SynMonad s m =
   ( MonadReader (Module Void) m, MonadState s m
-  , HasEnv s, HasConcepts s , HasTech s, HasCtxs s , HasVars s
-  , FreshVarId m, FreshHole m, FreshFree m
+  , HasEnv s, HasConcepts s, HasTech s, HasCtxs s
+  , FreshVar m, FreshHole m, FreshFree m
   , MonadFail m , MonadPlus m
   )
 
@@ -100,18 +94,8 @@ globals' = do
     q <- refresh p
     return (x, q, c)
 
-holeVars :: (MonadState s m, HasVars s) =>
-  Map Hole HoleCtx -> m (Map Hole (Type, Map Var Type))
-holeVars ctxs = do
-  vs <- use variables
-  for ctxs \(HoleCtx t ids) ->
-    return . (t,) $ ids <&> \i -> case Map.lookup i vs of
-      Nothing -> error "Missing VarId: this should never happen"
-      Just (Variable _ u _ _) -> u
-
-refs :: (FreshFree m, MonadState s m, HasEnv s) =>
-  (Type, Map Var Type) -> m [Ref]
-refs (t, vs) = do
+refs :: (FreshFree m, MonadState s m, HasEnv s) => HoleCtx -> m [Ref]
+refs (HoleCtx t vs) = do
   gs <- globals'
   let ls = Map.assocs vs <&> \(a, u) -> (a, Poly [] u, Set.empty)
   return do
@@ -123,8 +107,8 @@ refs (t, vs) = do
         let th' = Map.withoutKeys th $ Set.fromList as
         [Ref e th' cs]
 
-pick' :: (FreshFree m, FreshHole m, FreshVarId m, MonadState s m)
-  => (HasEnv s, HasVars s, HasCtxs s)
+pick' :: (FreshFree m, FreshHole m, FreshVar m, MonadState s m)
+  => (HasEnv s, HasCtxs s)
   => Hole -> Ref -> Refs -> m (Term Hole, Refs)
 pick' h (Ref e th _cs) rss = do
   applySubst th -- TODO: is this needed?
@@ -138,7 +122,7 @@ pick' h (Ref e th _cs) rss = do
   -- Select holeCtxs of the new holes
   ctxs' <- flip Map.restrictKeys hs <$> use holeCtxs
   -- Compute all new refinements and restrict previous refinements
-  rss' <- traverse refs =<< holeVars ctxs'
+  rss' <- traverse refs ctxs'
   let rss'' = mapMaybe (restrictRef th) <$> Map.delete h rss
   return (x, rss' <> rss'')
 
@@ -154,7 +138,7 @@ init' (Sketch _ t e) = do
   (expr, _, ctx) <- check e t
   assign holeCtxs ctx
   x <- postProcess (strip expr)
-  use holeCtxs >>= holeVars >>= traverse refs >>= next' x
+  use holeCtxs >>= traverse refs >>= next' x
 
 step' :: SynMonad s m => (Hole, Ref, Term Hole, Refs)
   -> m (Hole, Ref, Term Hole, Refs)
@@ -182,6 +166,10 @@ pick h = do
   modifying environment . restrict $ Map.keysSet cs'
   return e
 
+-- | Performs type substitutions in holes and local variables.
+applySubst :: (MonadState s m, HasCtxs s) => Map Var Type -> m ()
+applySubst th = modifying holeCtxs . fmap $ over goal (subst th)
+
 -- | Try and fill a hole using a hole filling.
 fillHole :: SynMonad s m => Hole -> HoleFilling -> m (Term Hole)
 fillHole h (e, t) = do
@@ -198,7 +186,7 @@ fillHole h (e, t) = do
   postProcess x
 
 -- | Process an expression.
-postProcess :: (MonadState s m, HasTech s, HasCtxs s, HasVars s, FreshVarId m)
+postProcess :: (MonadState s m, HasTech s, HasCtxs s, FreshVar m)
   => Term Hole -> m (Term Hole)
 postProcess e = use technique >>= \case
   EtaLong -> etaExpand e
@@ -210,36 +198,18 @@ getCtx h = use holeCtxs >>=
   maybe (fail "Missing holeCtx") return . Map.lookup h
 
 -- | Introduce a new hole.
-introduceHole :: (FreshHole m, MonadState s m, HasCtxs s, HasVars s)
-  => HoleCtx -> m Hole
+introduceHole :: (FreshHole m, MonadState s m, HasCtxs s) => HoleCtx -> m Hole
 introduceHole ctx = do
   h <- fresh
   modifying holeCtxs $ Map.insert h ctx
-  forM_ (view local ctx) $ modifying variables . Map.adjust
-    \(Variable x t n m) -> Variable x t (n + 1) m
   return h
 
 -- | Handles everything regarding the closing of holes.
+-- NOTE: previously this made sure that we have no unused variables, but this
+-- seems to be too much work for the gain, since variable uses are easy to
+-- check anyways, as they introduce no new holes.
 closeHole :: SynMonad s m => Hole -> m ()
-closeHole h = do
-  ctx <- getCtx h
-  modifying holeCtxs $ Map.delete h
-  xs <- use variables
-  forM_ (view local ctx) \i -> case Map.lookup i xs of
-    Nothing -> fail $ "Missing variable id " <> show i
-    Just (Variable x t n m)
-      | n <= 1, m == 0 -> fail $ "Unused variable " <> show x
-      | otherwise ->
-        modifying variables $ Map.insert i (Variable x t (n - 1) m)
-
--- | Performs type substitutions in holes and local variables.
-applySubst :: (MonadState s m, HasCtxs s, HasVars s) => Map Var Type -> m ()
-applySubst th = do
-  modifying holeCtxs . fmap $ over goal (subst th)
-  modifying variables . fmap $ over varType (subst th)
-
--- TODO: rather than strictly disallowing some holefillings, we should use
--- weights to discourage them.
+closeHole h = modifying holeCtxs $ Map.delete h
 
 -- | Compute hole fillings from global variables.
 globals :: (MonadPlus m, FreshFree m, MonadState s m, HasTech s, HasEnv s) =>
@@ -251,16 +221,12 @@ globals = do
 
 -- | Compute hole fillings from local variables.
 locals :: (MonadFail m, MonadPlus m) =>
-  (MonadState s m, HasVars s, HasTech s, HasCtxs s) =>
+  (MonadState s m, HasTech s, HasCtxs s) =>
   Hole -> m (HoleFilling, Set Concept)
 locals h = do
-  ctx <- getCtx h
-  i <- mfold (view local ctx)
-  xs <- use variables
-  Variable x t n m <- mfold $ Map.lookup i xs
-  -- Note variable occurrence
-  modifying variables . Map.insert i $ Variable x t n (m + 1)
-  (,Set.empty) <$> holeFillings (Var x) t
+  HoleCtx _ vs <- getCtx h
+  (v, t) <- mfold $ Map.assocs vs
+  (,Set.empty) <$> holeFillings (Var v) t
 
 -- | Compute hole fillings from available language constructs.
 -- TODO: I guess this is mzero for PointFree, and just pattern matching for

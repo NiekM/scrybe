@@ -411,29 +411,17 @@ ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
 
-data HoleCtx = HoleCtx Type (Map Var VarId)
+data HoleCtx = HoleCtx Type (Map Var Type)
   deriving (Eq, Ord, Show)
 
 goal :: Lens' HoleCtx Type
 goal = lens (\(HoleCtx t _) -> t) \(HoleCtx _ vs) t -> HoleCtx t vs
 
-local :: Lens' HoleCtx (Map Var VarId)
+local :: Lens' HoleCtx (Map Var Type)
 local = lens (\(HoleCtx _ vs) -> vs) \(HoleCtx t _) vs -> HoleCtx t vs
 
 class HasCtxs a where
   holeCtxs :: Lens' a (Map Hole HoleCtx)
-
--- TODO: what else do we need to track for local variables?
--- Variable name, type, number of holes it appears in, number of occurrences
-data Variable = Variable Var Type Int Int
-  deriving (Eq, Ord, Show)
-
-varType :: Lens' Variable Type
-varType = lens (\(Variable _ t _ _) -> t) \(Variable x _ i n) t ->
-  Variable x t i n
-
-class HasVars a where
-  variables :: Lens' a (Map VarId Variable)
 
 data Sketch = Sketch Var Poly (Term Unit)
   deriving (Eq, Ord, Show)
@@ -534,7 +522,7 @@ etaHole (Args ts u) = do
   return $ lams xs (Hole u)
 
 -- | Eta expand all holes in a sketch.
-etaExpand :: (FreshVarId m, MonadState s m, HasCtxs s, HasVars s) =>
+etaExpand :: (FreshVar m, MonadState s m, HasCtxs s) =>
   Term Hole -> m (Term Hole)
 etaExpand = cataExprM \case
   Hole h -> do
@@ -546,15 +534,11 @@ etaExpand = cataExprM \case
         let Args ts u = view goal ctx
         -- Couple each argument with a fresh name
         xs <- number ts
-        let locals' = Map.fromList ((varId &&& id) . fst <$> xs)
+        let new = Map.fromList xs
         -- Update the hole context
-        modifying holeCtxs $
-          Map.insert h $ HoleCtx u (view local ctx <> locals')
-        let vs = Map.fromList $ xs <&> \(x, t) -> (x, Variable (varId x) t 1 0)
-        -- traceShowM vars
-        modifying variables (vs <>)
+        modifying holeCtxs . Map.insert h . HoleCtx u $ view local ctx <> new
         -- Eta expand the hole
-        return $ lams (varId . fst <$> xs) (Hole h)
+        return $ lams (fst <$> xs) (Hole h)
   e -> fixExprM e
 
 -- }}}

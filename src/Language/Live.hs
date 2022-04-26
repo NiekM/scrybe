@@ -185,8 +185,8 @@ refine (goalEnv, goalType, constraints) = do
   case goalType of
     Arr arg res -> do
       h <- fresh
-      f <- varId <$> fresh
-      a <- varId <$> fresh
+      f <- fresh
+      a <- fresh
       xs <- failMaybe $ for constraints' \case
         (Scope scope, Lam t u) ->
           let r = App Fix (Scoped scope (Lam f (Lam a (Hole h))))
