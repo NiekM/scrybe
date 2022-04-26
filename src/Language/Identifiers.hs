@@ -38,11 +38,12 @@ class Monad m => MonadFresh s m where
 type FreshHole m = MonadFresh Hole m
 type FreshFree m = MonadFresh Free m
 type FreshVarId m = MonadFresh VarId m
+type FreshVar m = MonadFresh Var m
 
 data FreshState = FreshState
-  { _freshHole  :: Hole
-  , _freshFree  :: Free
-  , _freshVarId :: VarId
+  { _freshHole :: Hole
+  , _freshFree :: Free
+  , _freshVar  :: VarId
   }
 
 fresh' :: (MonadState s m, HasFreshState s, Num a) => Lens' FreshState a -> m a
@@ -55,7 +56,7 @@ freshFree :: Lens' FreshState Free
 freshFree = lens _freshFree \x y -> x { _freshFree = y }
 
 freshVarId :: Lens' FreshState VarId
-freshVarId = lens _freshVarId \x y -> x { _freshVarId = y }
+freshVarId = lens _freshVar \x y -> x { _freshVar = y }
 
 mkFreshState :: FreshState
 mkFreshState = FreshState 0 0 0
@@ -72,3 +73,6 @@ instance (Monoid w, HasFreshState s, Monad m)
 instance (Monoid w, HasFreshState s, Monad m)
   => MonadFresh VarId (RWST r w s m) where
   fresh = fresh' freshVarId
+instance (Monoid w, HasFreshState s, Monad m)
+  => MonadFresh Var (RWST r w s m) where
+  fresh = varId <$> fresh

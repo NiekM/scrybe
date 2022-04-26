@@ -167,7 +167,7 @@ type family Rec (f :: Func) (l :: Level) where
 
 type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
-type Ann a l = Annot (Expr' ('Ann a) l) a
+type Ann a l = Annot a (Expr' ('Ann a) l)
 
 deriving instance
   ( h ~ Hole' l, May Eq h
@@ -405,10 +405,15 @@ instantiateFresh p = do
 
 -- TODO: maybe move these definitions somewhere else
 
-data Annot x a = Annot x a
-  deriving (Eq, Ord, Show)
+newtype Annot a x = MkAnnot (a, x)
+  deriving newtype (Eq, Ord, Show)
+  deriving newtype (Functor, Foldable, Applicative, Monad)
 
-ann :: Lens' (Annot x a) a
+{-# COMPLETE Annot #-}
+pattern Annot :: x -> a -> Annot a x
+pattern Annot x a = MkAnnot (a, x)
+
+ann :: Lens' (Annot a x) a
 ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
 
 newtype Unit = Unit ()
@@ -524,12 +529,17 @@ strip :: Ann a l -> Expr l
 strip = cataAnn (const fixExpr)
 
 -- | Gather all subexpressions along with their annotation.
-collect :: Ann a l -> [Annot (Expr l) a]
+collect :: Ann a l -> [Annot a (Expr l)]
 collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
 
 -- | Uniquely number all holes in an expression.
 number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
+
+etaHole :: FreshVar m => Type -> m (Term Type)
+etaHole (Args ts u) = do
+  xs <- for ts $ const fresh
+  return $ lams xs (Hole u)
 
 -- | Eta expand all holes in a sketch.
 etaExpand :: (FreshVarId m, MonadState s m, HasCtxs s, HasVars s) =>
@@ -567,7 +577,7 @@ instance Pretty Poly where
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
-instance (Pretty a, Pretty (Annot a b)) => Pretty (Annot a (Maybe b)) where
+instance (Pretty b, Pretty (Annot a b)) => Pretty (Annot (Maybe a) b) where
   pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a
 
 instance Pretty Scope where
