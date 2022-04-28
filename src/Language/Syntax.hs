@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes, PolyKinds, UndecidableInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 module Language.Syntax
@@ -19,6 +20,10 @@ import qualified RIO.Map as Map
 
 -- Levels {{{
 
+-- TODO: perhaps replace all these type families with associated types on a
+-- type class over 'Level, so that we can have default definitions and a nicer
+-- overview for each level.
+
 type family May (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint where
   May c 'Nothing = ()
   May c ('Just a) = c a
@@ -28,7 +33,7 @@ type family AllMay (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint wher
   AllMay c (x ': xs) = (May c x, AllMay c xs)
 
 type Consts (c :: Kind.Type -> Kind.Constraint) (l :: Level) =
-  AllMay c '[Hole' l, Ctr' l, Ref' l, Bind' l]
+  AllMay c '[Hole' l, Ctr' l, Var' l, Bind' l]
 
 type family IsJust x where
   IsJust 'Nothing  = 'False
@@ -72,13 +77,13 @@ type family HasCtr' (l :: Level) where
 
 type HasCtr l c = (HasCtr' l ~ 'True, Ctr' l ~ 'Just c)
 
-type family Ref' (l :: Level) where
-  Ref' 'Det   = 'Nothing
-  Ref' 'Value = 'Nothing
-  Ref' 'Type  = 'Just Free
-  Ref' _      = 'Just Var
+type family Var' (l :: Level) where
+  Var' 'Det   = 'Nothing
+  Var' 'Value = 'Nothing
+  Var' 'Type  = 'Just Free
+  Var' _      = 'Just Var
 
-type HasVar l v = Ref' l ~ 'Just v
+type HasVar l v = Var' l ~ 'Just v
 
 type family Bind' (l :: Level) where
   Bind' 'Example  = 'Just Value
@@ -528,30 +533,39 @@ collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
 number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
 
-etaHole :: FreshVar m => Type -> m (Term Type)
-etaHole (Args ts u) = do
-  xs <- for ts $ const fresh
-  return $ lams xs (Hole u)
+-- | Retrieve the context of a hole.
+getCtx :: (MonadFail m, MonadState s m, HasCtxs s) => Hole -> m HoleCtx
+getCtx h = use holeCtxs >>=
+  maybe (fail "Missing holeCtx") return . Map.lookup h
 
--- | Eta expand all holes in a sketch.
-etaExpand :: (FreshVar m, MonadState s m, HasCtxs s) =>
-  Term Hole -> m (Term Hole)
+-- Eta expansion {{{
+
+class ExpandHole h m where
+  expandHole :: h -> m ([(Var, Type)], h)
+
+instance FreshVar m => ExpandHole Type m where
+  expandHole (Args ts u) = (,u) <$> number ts
+
+instance FreshVar m => ExpandHole HoleCtx m where
+  expandHole (HoleCtx t vs) = do
+    (xs, u) <- expandHole t
+    return (xs, HoleCtx u (vs <> Map.fromList xs))
+
+instance (MonadFail m, FreshVar m, MonadState s m, HasCtxs s)
+  => ExpandHole Hole m where
+  expandHole h = do
+    (xs, ctx') <- getCtx h >>= expandHole
+    modifying holeCtxs $ Map.insert h ctx'
+    return (xs, h)
+
+etaExpand :: (Monad m, ExpandHole h m) => Term h -> m (Term h)
 etaExpand = cataExprM \case
   Hole h -> do
-    ctxs <- use holeCtxs
-    case Map.lookup h ctxs of
-      Nothing -> return $ Hole h
-      Just ctx -> do
-        -- Split the type in the arguments and the result type
-        let Args ts u = view goal ctx
-        -- Couple each argument with a fresh name
-        xs <- number ts
-        let new = Map.fromList xs
-        -- Update the hole context
-        modifying holeCtxs . Map.insert h . HoleCtx u $ view local ctx <> new
-        -- Eta expand the hole
-        return $ lams (fst <$> xs) (Hole h)
+    (xs, h') <- expandHole h
+    return $ lams (fst <$> xs) (Hole h')
   e -> fixExprM e
+
+-- }}}
 
 -- }}}
 

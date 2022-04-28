@@ -62,10 +62,8 @@ step expr = do
   return $ fill (Map.singleton i hf) expr
 
 type SynMonad s m =
-  ( MonadReader (Module Void) m, MonadState s m
-  , HasEnv s, HasConcepts s, HasTech s, HasCtxs s
-  , FreshVar m, FreshHole m, FreshFree m
-  , MonadFail m , MonadPlus m
+  ( TCMonad m, MonadPlus m, FreshVar m
+  , MonadState s m, HasEnv s, HasConcepts s, HasTech s, HasCtxs s
   )
 
 -- Refinements {{{
@@ -107,9 +105,7 @@ refs (HoleCtx t vs) = do
         let th' = Map.withoutKeys th $ Set.fromList as
         [Ref e th' cs]
 
-pick' :: (FreshFree m, FreshHole m, FreshVar m, MonadState s m)
-  => (HasEnv s, HasCtxs s)
-  => Hole -> Ref -> Refs -> m (Term Hole, Refs)
+pick' :: SynMonad s m => Hole -> Ref -> Refs -> m (Term Hole, Refs)
 pick' h (Ref e th _cs) rss = do
   applySubst th -- TODO: is this needed?
   -- Select and remove the holeCtx
@@ -186,16 +182,11 @@ fillHole h (e, t) = do
   postProcess x
 
 -- | Process an expression.
-postProcess :: (MonadState s m, HasTech s, HasCtxs s, FreshVar m)
+postProcess :: (MonadFail m, MonadState s m, HasTech s, HasCtxs s, FreshVar m)
   => Term Hole -> m (Term Hole)
 postProcess e = use technique >>= \case
   EtaLong -> etaExpand e
   _ -> return e
-
--- | Retrieve the context of a hole.
-getCtx :: (MonadFail m, MonadState s m, HasCtxs s) => Hole -> m HoleCtx
-getCtx h = use holeCtxs >>=
-  maybe (fail "Missing holeCtx") return . Map.lookup h
 
 -- | Introduce a new hole.
 introduceHole :: (FreshHole m, MonadState s m, HasCtxs s) => HoleCtx -> m Hole
@@ -220,8 +211,7 @@ globals = do
   (,c) <$> holeFillings (Var x) u
 
 -- | Compute hole fillings from local variables.
-locals :: (MonadFail m, MonadPlus m) =>
-  (MonadState s m, HasTech s, HasCtxs s) =>
+locals :: (MonadFail m, MonadPlus m, MonadState s m, HasTech s, HasCtxs s) =>
   Hole -> m (HoleFilling, Set Concept)
 locals h = do
   HoleCtx _ vs <- getCtx h
