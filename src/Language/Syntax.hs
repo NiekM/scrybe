@@ -20,10 +20,6 @@ import qualified RIO.Map as Map
 
 -- Levels {{{
 
--- TODO: perhaps replace all these type families with associated types on a
--- type class over 'Level, so that we can have default definitions and a nicer
--- overview for each level.
-
 type family May (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint where
   May c 'Nothing = ()
   May c ('Just a) = c a
@@ -39,14 +35,9 @@ type family IsJust x where
   IsJust 'Nothing  = 'False
   IsJust ('Just _) = 'True
 
--- TODO: do we need a Core language and a surface language?
--- TODO: maybe add kinds?
--- TODO: maybe level should contain values (concrete evaluation results) as
--- well as 'results' (as seen in Smyth)
 data Level' a
   = Type    -- ^ Type level expressions
   | Term a  -- ^ Term level expressions
-  | Lambda  -- ^ Lambda expressions
   | Det     -- ^ Determinate results
   | Ind     -- ^ Indeterminate results
   | Value   -- ^ Concrete values
@@ -55,85 +46,82 @@ data Level' a
 
 type Level = Level' Kind.Type
 
-type family Hole' (l :: Level) where
-  Hole' ('Term t) = 'Just t
-  Hole' 'Ind      = 'Just Hole
-  Hole' 'Det      = 'Just (Annot Scope Indet)
-  Hole' 'Example  = 'Just Unit
-  Hole' _         = 'Nothing
+class Leveled (l :: Level) where
+  type Hole' l :: Maybe Kind.Type
+  type Hole' l = 'Nothing
+
+  type Ctr' l :: Maybe Kind.Type
+  type Ctr' l = 'Just Ctr
+
+  type Var' l :: Maybe Kind.Type
+  type Var' l = 'Just Var
+
+  type Bind' l :: Maybe Kind.Type
+  type Bind' l = 'Nothing
+
+  type HasCtr' l :: Bool
+  type HasCtr' l = IsJust (Ctr' l)
+
+  type HasApp' l :: Bool
+  type HasApp' l = 'True
+
+  type HasLam' l :: Bool
+  type HasLam' l = IsJust (Bind' l)
+
+  type HasLet' l :: Bool
+  type HasLet' l = 'False
+
+  type HasElim' l :: Bool
+  type HasElim' l = 'False
+
+  type HasFix' l :: Bool
+  type HasFix' l = 'False
+
+  type HasPrj' l :: Bool
+  type HasPrj' l = 'False
 
 type HasHole l h = Hole' l ~ 'Just h
-
--- TODO: perhaps each of Ctr, Elim and Prj should have their own constructor
--- type, which should usually match, but does not have to. Similarly for
--- variables.
-type family Ctr' (l :: Level) where
-  Ctr' 'Lambda = 'Nothing
-  Ctr' _       = ('Just Ctr)
-
-type family HasCtr' (l :: Level) where
-  HasCtr' 'Ind = 'False
-  HasCtr' l    = IsJust (Ctr' l)
-
 type HasCtr l c = (HasCtr' l ~ 'True, Ctr' l ~ 'Just c)
-
-type family Var' (l :: Level) where
-  Var' 'Det   = 'Nothing
-  Var' 'Value = 'Nothing
-  Var' 'Type  = 'Just Free
-  Var' _      = 'Just Var
-
 type HasVar l v = Var' l ~ 'Just v
-
-type family Bind' (l :: Level) where
-  Bind' 'Example  = 'Just Value
-  Bind' ('Term _) = 'Just Var
-  Bind' 'Ind      = 'Just Var
-  Bind' _         = 'Nothing
-
-type family HasApp' (l :: Level) where
-  HasApp' 'Ind = 'False
-  HasApp' _    = 'True
-
 type HasApp l = HasApp' l ~ 'True
-
-type family HasLam' (l :: Level) where
-  HasLam' ('Term _) = 'True
-  HasLam' 'Ind      = 'True
-  HasLam' 'Example  = 'True
-  HasLam' _         = 'False
-
 type HasLam l v = (HasLam' l ~ 'True, Bind' l ~ 'Just v)
-
-type family HasElim' (l :: Level) where
-  HasElim' ('Term _) = 'True
-  HasElim' 'Ind      = 'True
-  HasElim' _         = 'False
-
+type HasLet l v = (HasLet' l ~ 'True, Bind' l ~ 'Just v)
 type HasElim l c = (HasElim' l ~ 'True, Ctr' l ~ 'Just c)
-
-type family HasFix' (l :: Level) where
-  HasFix' ('Term _) = 'True
-  HasFix' 'Det      = 'True
-  HasFix' _         = 'False
-
 type HasFix l = HasFix' l ~ 'True
-
-type family HasPrj' (l :: Level) where
-  HasPrj' 'Det = 'True
-  HasPrj' _    = 'False
-
 type HasPrj l c = (HasPrj' l ~ 'True, Ctr' l ~ 'Just c)
 
-type family HasLet' (l :: Level) where
-  HasLet' ('Term _) = 'True
-  HasLet' _         = 'False
-
-type HasLet l v = (HasLet' l ~ 'True, Bind' l ~ 'Just v)
-
 type HasArr l = (HasCtr l Ctr, HasApp l)
-
 type NoBind l = Bind' l ~ 'Nothing
+
+instance Leveled 'Type where
+  type Var' 'Type = 'Just Free
+
+instance Leveled ('Term h) where
+  type Hole'    ('Term h) = 'Just h
+  type Bind'    ('Term _) = 'Just Var
+  type HasElim' ('Term _) = 'True
+  type HasFix'  ('Term _) = 'True
+  type HasLet'  ('Term _) = 'True
+
+instance Leveled 'Det where
+  type Hole'   'Det = 'Just (Annot Scope Indet)
+  type Var'    'Det = 'Nothing
+  type HasFix' 'Det = 'True
+  type HasPrj' 'Det = 'True
+
+instance Leveled 'Ind where
+  type Hole'    'Ind = 'Just Hole
+  type HasCtr'  'Ind = 'False
+  type Bind'    'Ind = 'Just Var
+  type HasApp'  'Ind = 'False
+  type HasElim' 'Ind = 'True
+
+instance Leveled 'Value where
+  type Var' 'Value = 'Nothing
+
+instance Leveled 'Example where
+  type Hole' 'Example = 'Just Unit
+  type Bind' 'Example = 'Just Value
 
 -- }}}
 
@@ -164,7 +152,7 @@ data Func' a = Fixed | Base a | Ann a
 
 type Func = Func' Kind.Type
 
--- TODO: perhaps we should remove Fix and just have Ann, as it would make
+-- TODO: perhaps we should remove Fixed and just have Ann, as it would make
 -- things much simpler with generalizing functions, but it would be slightly
 -- less efficient. For optional annotations, it might be better to have an
 -- actual Ann constructor in Expr', as well as some functions converting from
@@ -615,8 +603,6 @@ pExpr p i = \case
   Prj c n -> pretty c <> dot <> pretty n
 
 -- Syntax sugar {{{
-
--- TODO: can we do something similar for parsing?
 
 type Sugar l ann =
   (Int -> Expr l -> Doc ann) -> Int -> Expr l -> Maybe (Doc ann)
