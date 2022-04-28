@@ -96,14 +96,8 @@ fromSketch m e =
     Var v | Just (_, cs) <- Map.lookup v fs -> [(v, (Poly [] u, cs))]
     _ -> []
 
-data Technique = PointFree | EtaLong
-  deriving (Eq, Ord, Show, Read)
-
 class HasConcepts a where
   concepts :: Lens' a (MultiSet Concept)
-
-class HasTech a where
-  technique :: Lens' a Technique
 
 class HasEnv a where
   environment :: Lens' a Env

@@ -27,7 +27,7 @@ prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
     Nothing -> error "Could not parse prelude"
 
 synSt :: SynState
-synSt = mkSynState (fromModule prelude) EtaLong mempty
+synSt = mkSynState (fromModule prelude) mempty
 
 instance (Pretty a, Pretty b) => Pretty (Map a b) where
   pretty m = align . Prettyprinter.list $ Map.assocs m <&> \(k, x) ->

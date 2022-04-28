@@ -12,7 +12,6 @@ import qualified RIO.Set as Set
 data SynState = SynState
   { _holeCtxs  :: Map Hole HoleCtx
   , _env       :: Env
-  , _technique :: Technique
   , _concepts  :: MultiSet Concept
   , _fresh     :: FreshState
   }
@@ -23,17 +22,14 @@ instance HasCtxs SynState where
 instance HasEnv SynState where
   environment = lens _env \x y -> x { _env = y }
 
-instance HasTech SynState where
-  technique = lens _technique \x y -> x { _technique = y }
-
 instance HasConcepts SynState where
   concepts = lens _concepts \x y -> x { _concepts = y }
 
 instance HasFreshState SynState where
   freshState = lens _fresh \x y -> x { _fresh = y }
 
-mkSynState :: Env -> Technique -> MultiSet Concept -> SynState
-mkSynState e t c = SynState mempty e t c mkFreshState
+mkSynState :: Env -> MultiSet Concept -> SynState
+mkSynState e c = SynState mempty e c mkFreshState
 
 runSyn :: Monad m => RWST (Module Void) () SynState m a ->
   Module Void -> SynState -> m (a, SynState)
@@ -53,7 +49,7 @@ init :: SynMonad s m => Sketch -> m (Term Hole)
 init (Sketch _ t e) = do
   (expr, _, ctx) <- check' e t
   assign holeCtxs ctx
-  postProcess (strip expr)
+  etaExpand $ strip expr
 
 step :: SynMonad s m => Term Hole -> m (Term Hole)
 step expr = do
@@ -63,7 +59,7 @@ step expr = do
 
 type SynMonad s m =
   ( TCMonad m, MonadPlus m, FreshVar m
-  , MonadState s m, HasEnv s, HasConcepts s, HasTech s, HasCtxs s
+  , MonadState s m, HasEnv s, HasConcepts s, HasCtxs s
   )
 
 -- Refinements {{{
@@ -73,46 +69,43 @@ type SynMonad s m =
 -- could be lowered after usage, depending on how often we still expect the
 -- function to appear.
 
--- TODO: should we use concepts here?
-data Ref = Ref (Term Type) (Map Free Type) (Set Concept)
+data Ref = Ref (Term Type) (Map Free Type)
   deriving (Eq, Ord, Show)
 
 type Refs = Map Hole [Ref]
 
 restrictRef :: Map Free Type -> Ref -> Maybe Ref
-restrictRef th1 (Ref x th2 c) = do
+restrictRef th1 (Ref x th2) = do
   th3 <- combine th1 th2
-  return $ Ref (over holes (subst th3) x) th3 c
+  return $ Ref (over holes (subst th3) x) th3
 
-globals' :: (MonadState s m, HasEnv s, FreshFree m) =>
-  m [(Var, Poly, Set Concept)]
+globals' :: (MonadState s m, HasEnv s, FreshFree m) => m [(Var, Poly)]
 globals' = do
   xs <- Map.assocs <$> use environment
-  for xs \(x, (p, c)) -> do
+  for xs \(x, (p, _)) -> do
     q <- refresh p
-    return (x, q, c)
+    return (x, q)
 
 refs :: (FreshFree m, MonadState s m, HasEnv s) => HoleCtx -> m [Ref]
 refs (HoleCtx t vs) = do
   gs <- globals'
-  let ls = Map.assocs vs <&> \(a, u) -> (a, Poly [] u, Set.empty)
+  let ls = Map.assocs vs <&> second (Poly [])
   return do
-    (x, Poly as (Args args res), cs) <- gs <> ls
+    (x, Poly as (Args args res)) <- gs <> ls
     case unify res t of
       Nothing -> []
       Just th -> do
         let e = apps (Var x) (Hole . subst th <$> args)
         let th' = Map.withoutKeys th $ Set.fromList as
-        [Ref e th' cs]
+        [Ref e th']
 
 pick' :: SynMonad s m => Hole -> Ref -> Refs -> m (Term Hole, Refs)
-pick' h (Ref e th _cs) rss = do
+pick' h (Ref e th) rss = do
   applySubst th -- TODO: is this needed?
   -- Select and remove the holeCtx
-  ctxs <- use holeCtxs
-  let ctx = fromMaybe (error "Missing hole") $ Map.lookup h ctxs
+  ctx <- getCtx h
   modifying holeCtxs $ Map.delete h
-  -- Process and etaExpand refinement
+  -- Process and eta expand refinement
   x <- etaExpand =<< forOf holes e \u -> introduceHole (set goal u ctx)
   let hs = Set.fromList $ toListOf holes x
   -- Select holeCtxs of the new holes
@@ -133,7 +126,7 @@ init' :: SynMonad s m => Sketch -> m (Hole, Ref, Term Hole, Refs)
 init' (Sketch _ t e) = do
   (expr, _, ctx) <- check' e t
   assign holeCtxs ctx
-  x <- postProcess (strip expr)
+  x <- etaExpand $ strip expr
   use holeCtxs >>= traverse refs >>= next' x
 
 step' :: SynMonad s m => (Hole, Ref, Term Hole, Refs)
@@ -177,16 +170,9 @@ fillHole h (e, t) = do
   -- Apply type substitutions to all relevant types.
   applySubst th
   -- Close the current hole.
-  closeHole h
+  modifying holeCtxs $ Map.delete h
   -- Do postprocessing of the hole filling.
-  postProcess x
-
--- | Process an expression.
-postProcess :: (MonadFail m, MonadState s m, HasTech s, HasCtxs s, FreshVar m)
-  => Term Hole -> m (Term Hole)
-postProcess e = use technique >>= \case
-  EtaLong -> etaExpand e
-  _ -> return e
+  etaExpand x
 
 -- | Introduce a new hole.
 introduceHole :: (FreshHole m, MonadState s m, HasCtxs s) => HoleCtx -> m Hole
@@ -195,28 +181,21 @@ introduceHole ctx = do
   modifying holeCtxs $ Map.insert h ctx
   return h
 
--- | Handles everything regarding the closing of holes.
--- NOTE: previously this made sure that we have no unused variables, but this
--- seems to be too much work for the gain, since variable uses are easy to
--- check anyways, as they introduce no new holes.
-closeHole :: SynMonad s m => Hole -> m ()
-closeHole h = modifying holeCtxs $ Map.delete h
-
 -- | Compute hole fillings from global variables.
-globals :: (MonadPlus m, FreshFree m, MonadState s m, HasTech s, HasEnv s) =>
+globals :: (MonadPlus m, FreshFree m, MonadState s m, HasEnv s) =>
   m (HoleFilling, Set Concept)
 globals = do
   (x, (t, c)) <- mfold . Map.assocs =<< use environment
   u <- instantiateFresh t
-  (,c) <$> holeFillings (Var x) u
+  return (fullyApply (Var x, u), c)
 
 -- | Compute hole fillings from local variables.
-locals :: (MonadFail m, MonadPlus m, MonadState s m, HasTech s, HasCtxs s) =>
+locals :: (MonadFail m, MonadPlus m, MonadState s m, HasCtxs s) =>
   Hole -> m (HoleFilling, Set Concept)
 locals h = do
   HoleCtx _ vs <- getCtx h
   (v, t) <- mfold $ Map.assocs vs
-  (,Set.empty) <$> holeFillings (Var v) t
+  return (fullyApply (Var v, t), Set.empty)
 
 -- | Compute hole fillings from available language constructs.
 -- TODO: I guess this is mzero for PointFree, and just pattern matching for
@@ -228,19 +207,8 @@ locals h = do
 constructs :: MonadPlus m => m (HoleFilling, Set Concept)
 constructs = mzero -- TODO
 
--- | Compute the possible hole fillings from a function.
-holeFillings :: (MonadPlus m, MonadState s m, HasTech s) =>
-  Term Type -> Type -> m HoleFilling
-holeFillings e t = use technique >>= \case
-  EtaLong   -> return $ fullyApply (e, t)
-  PointFree -> expand (e, t)
-
+-- TODO: this does not take into account the fact that expressions might have a
+-- polymorphic return type, i.e. might take any number of arguments given the
+-- right instantiations.
 fullyApply :: HoleFilling -> HoleFilling
 fullyApply (e, Args ts u) = (apps e (Hole <$> ts), u)
-
--- TODO: expand does not return 'all' ways to add holes to an
--- expression, since its return type might unify with a function type.
-expand :: MonadPlus m => HoleFilling -> m HoleFilling
-expand (e, t) = return (e, t) <|> case t of
-  Arr t1 t2 -> expand (App e (Hole t1), t2)
-  _ -> mzero

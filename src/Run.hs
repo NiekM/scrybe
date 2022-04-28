@@ -18,7 +18,7 @@ climb :: (a ~ (Hole, Ref, Term Hole, Refs)) =>
   [Tree a] -> RIO Application [a]
 climb xs = do
   let n = (2+) . length . show $ length xs
-  for_ (zip [0 :: Int ..] xs) \(i, Node (h, Ref e th _, _, _) _) ->
+  for_ (zip [0 :: Int ..] xs) \(i, Node (h, Ref e th, _, _) _) ->
     logInfo . display $ Prettyprinter.fill n (pretty i <> ":") <+>
       pretty h <+> "|->" <+> pretty e <> if null th then "" else " ---" <+>
         tupled (Map.assocs th <&> \(k, x) -> pretty k <+> "|->" <+> pretty x)
@@ -45,29 +45,27 @@ readFiles file sketch model = do
   (a, _, _) <- evalTC (check' b t) m
   return (m, sk, a)
 
-interactive :: String -> String -> String -> Technique -> RIO Application ()
-interactive file sketch model t = do
+interactive :: String -> String -> String -> RIO Application ()
+interactive file sketch model = do
   (m, sk, a) <- readFiles file sketch model
   let (env', c) = fromSketch m a
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ sk
   logInfo ""
-  logInfo $ "Technique: " <> displayShow t
-  let xs = runSyn (init' sk) m (mkSynState env' t c)
+  let xs = runSyn (init' sk) m (mkSynState env' c)
   _ <- climb $ xs <&> \(x, g) -> view _1 <$> runSyn (search step' x) m g
   logInfo ""
 
-synth :: String -> String -> String -> Technique -> RIO Application ()
-synth file sketch model t = do
+synth :: String -> String -> String -> RIO Application ()
+synth file sketch model = do
   (m, sk, a) <- readFiles file sketch model
   let (env', c) = fromSketch m a
   logInfo "Sketch:"
   logInfo ""
   logInfo . display . indent 2 . pretty $ sk
   logInfo ""
-  logInfo $ "Technique: " <> displayShow t
-  case runSyn (init sk) m (mkSynState env' t c) of
+  case runSyn (init sk) m (mkSynState env' c) of
     Nothing -> logInfo "Something went wrong :("
     Just (y, g) -> do
       let syn = levels $ runSyn (search step y) m g
@@ -85,14 +83,14 @@ synth file sketch model t = do
           --           <$> Map.assocs local)
   logInfo ""
 
-synth' :: Technique -> String -> RIO Application ()
-synth' t s = synth "prelude" s s t
+synth' :: String -> RIO Application ()
+synth' s = synth "prelude" s s
 
 run :: RIO Application ()
 run = do
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  traverse_ (synth' EtaLong)
+  traverse_ synth'
     [ "compose"
     , "flip"
     -- TODO: map as unfold?
@@ -110,4 +108,4 @@ run = do
     -- , "takeWhile"
     ]
   -- runSyn' "map_pointfree" PointFree
-  interactive "prelude" "length" "length" EtaLong
+  interactive "prelude" "length" "length"
