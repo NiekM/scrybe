@@ -64,6 +64,9 @@ type SynMonad s m =
 
 -- Refinements {{{
 
+-- This synthesis technique remembers every possible refinement for each hole,
+-- and then prunes those that are conflicting when making a choice.
+
 -- TODO: implement weighted search over the search space using a priority
 -- queue. Perhaps weights should be adjustable, e.g. the weight of a function
 -- could be lowered after usage, depending on how often we still expect the
@@ -212,3 +215,45 @@ constructs = mzero -- TODO
 -- right instantiations.
 fullyApply :: HoleFilling -> HoleFilling
 fullyApply (e, Args ts u) = (apps e (Hole <$> ts), u)
+
+
+-- TODO: this file is getting pretty messy, do some cleanup
+
+-- NOTE: this variant of pick ignores concepts so that the same expression can
+-- be used multiple times.
+-- | Try to select a valid hole filling for a hole.
+pick'' :: SynMonad s m => Hole -> m (Term Hole)
+pick'' h = do
+  -- Choose hole fillings from either local or global variables.
+  (hf, _) <- locals h <|> globals <|> constructs
+  -- Check if the hole fillings fit.
+  fillHole h hf
+
+-- TODO: replace fuel with a priority search queue.
+-- NOTE: we expect that the expression is already eta-expanded when we start
+-- guessing.
+guess :: SynMonad s m => Int -> HoleCtx -> m (Term Hole)
+guess i ctx = do
+  h <- fresh
+  assign holeCtxs $ Map.singleton h ctx
+  msum $ flip guess' h <$> [1..i]
+
+-- TODO: use some form of dynamic programming to reuse previously computed
+-- results.
+-- NOTE: each hole filling contributes 1 to the total size and the remaining
+-- size is distributed over newly introduced holes.
+guess' :: SynMonad s m => Int -> Hole -> m (Term Hole)
+guess' 0 _ = mzero
+guess' i h = do
+  hf <- pick'' h
+  -- TODO: this would be easier if we return a list of hole fillings instead of
+  -- an expression.
+  let hs = toListOf holes hf
+  case length hs of
+    -- NOTE: we only accept expresions of the exact size, to guarantee that we
+    -- do not generate the same expression more than once.
+    0 | i == 1 -> return hf
+    n -> do
+      is <- distr (i - 1) n
+      xs <- forM (zip is hs) \(i', h') -> (h',) <$> guess' i' h'
+      return $ fill (Map.fromList xs) hf

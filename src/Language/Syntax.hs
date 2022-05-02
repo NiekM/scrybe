@@ -138,14 +138,14 @@ instance Leveled 'Example where
 --
 data Expr' (r :: Func) (l :: Level) where
   Hole :: HasHole l h => h -> Expr' r l
-  Ctr :: HasCtr l c => c -> Expr' r l
-  Var :: HasVar l v => v -> Expr' r l
-  App :: HasApp l => Rec r l -> Rec r l -> Expr' r l
-  Lam :: HasLam l v => v -> Rec r l -> Expr' r l
-  Let :: HasLet l v => v -> Rec r l -> Rec r l -> Expr' r l
+  Ctr  :: HasCtr  l c => c -> Expr' r l
+  Var  :: HasVar  l v => v -> Expr' r l
+  App  :: HasApp  l   => Rec r l -> Rec r l -> Expr' r l
+  Lam  :: HasLam  l v => v -> Rec r l -> Expr' r l
+  Let  :: HasLet  l v => v -> Rec r l -> Rec r l -> Expr' r l
   Elim :: HasElim l c => [(c, Rec r l)] -> Expr' r l
-  Fix :: HasFix l => Expr' r l
-  Prj :: HasPrj l c => c -> Int -> Expr' r l
+  Fix  :: HasFix  l   => Expr' r l
+  Prj  :: HasPrj  l c => c -> Int -> Expr' r l
 
 data Func' a = Fixed | Base a | Ann a
   deriving (Eq, Ord, Show, Read)
@@ -454,7 +454,7 @@ data Definition a
   | Datatype Datatype
   deriving (Eq, Ord, Show)
 
-newtype Module a = Module [Definition a]
+newtype Module a = Module { getModule :: [Definition a] }
   deriving (Eq, Ord, Show)
 
 sepModule :: Module a -> ([Signature], [Binding a], [Datatype])
@@ -524,7 +524,7 @@ number = traverse \x -> (,x) <$> fresh
 -- | Retrieve the context of a hole.
 getCtx :: (MonadFail m, MonadState s m, HasCtxs s) => Hole -> m HoleCtx
 getCtx h = use holeCtxs >>=
-  maybe (fail "Missing holeCtx") return . Map.lookup h
+  maybe (fail $ "Missing holeCtx for hole " <> show h) return . Map.lookup h
 
 -- Eta expansion {{{
 

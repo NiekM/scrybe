@@ -156,7 +156,6 @@ uneval cs = curry \case
   (Scoped m (Lam a x), Lam v y) ->
     checkLive cs x [(Scope $ Map.insert a (upcast v) m, y)]
   -- Fixed points additionally add their own definition to the environment.
-  -- TODO: Does this work/make sense?
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
     uneval cs (Scoped (Map.insert f r m) e) ex
   _ -> []
@@ -168,8 +167,13 @@ uneval cs = curry \case
 --   Just ((h, c), xs) -> _
 --
 -- fill :: _
--- fill = _
+-- fill = _ {guess, defer, refine, branch}
 
+-- TODO: note that defer only happens when all examples are top, I think so
+-- that other holes can be checked as well.
+
+-- TODO: use Goal like (or rather in place of) hole ctxs. Perhaps make holeCtxs
+-- polymorphic in the ctx type.
 type Goal = (Map Var Type, Type, Constraint)
 
 allSame :: Eq a => [a] -> Maybe a
@@ -187,6 +191,8 @@ refine (goalEnv, goalType, constraints) = do
       h <- fresh
       f <- fresh
       a <- fresh
+      -- TODO: does it make sense to check all the constraints, or should we
+      -- just eta-expand immediately, since that is the only reasonable result?
       xs <- failMaybe $ for constraints' \case
         (Scope scope, Lam t u) ->
           let r = App Fix (Scoped scope (Lam f (Lam a (Hole h))))
@@ -220,6 +226,7 @@ refine (goalEnv, goalType, constraints) = do
           ) args' examples'
         )
     _ -> fail "Failed refine"
+
 
 -- TODO: this doesn't really work for higher-order data structures such as
 -- Maybe (Nat -> Nat), but maybe we shouldn't focus on those. Do we still have

@@ -1,3 +1,5 @@
+{-# LANGUAGE PolyKinds #-}
+
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Import
@@ -13,6 +15,7 @@ module Import
   , search
   , todo
   , TODO
+  , distr
   ) where
 
 import RIO hiding (local)
@@ -53,8 +56,19 @@ search step init = RWST \r s -> go r (init, s, mempty) where
   go r (x, s, w) = Node (x, s, w) (go r <$> runRWST (step x) r s)
 
 {-# WARNING TODO "TODO left in code" #-}
-data TODO
+type family TODO :: k where { }
 
 {-# WARNING todo "Todo left in code" #-}
 todo :: a
 todo = error "Todo left in code"
+
+distr :: MonadPlus m => Int -> Int -> m [Int]
+distr _ k | k <= 0 = mzero
+distr n 1 = return [n]
+distr n k = case compare n k of
+  LT -> mzero
+  EQ -> return $ replicate k 1
+  GT -> do
+    x <- mfold [1 .. n - k + 1]
+    xs <- distr (n - x) (k - 1)
+    return $ x : xs

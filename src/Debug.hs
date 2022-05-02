@@ -42,6 +42,22 @@ instance Pretty HoleCtx where
 tryTC :: Monad m => RWST (Module Void) () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
 
+imports :: [Var]
+imports = ["succ", "zero", "nil", "cons"]
+
+-- TODO: replace this with an 'import' function that selects what is imported
+-- from the prelude. Perhaps even implement this into model solutions so that
+-- you can write `import Prelude (...); model = ...`
+prelude' :: Module Void
+prelude' = Module . filter go . getModule $ prelude where
+  go = \case
+    Signature (MkSignature x _) -> x `elem` imports
+    Binding   (MkBinding x _) -> x `elem` imports
+    Datatype  _ -> True
+
+trySyn' :: Monad m => RWST (Module Void) () SynState m a -> m a
+trySyn' x = fst <$> runSyn x prelude' (mkSynState (fromModule prelude') mempty)
+
 trySyn :: Monad m => RWST (Module Void) () SynState m a -> m a
 trySyn x = fst <$> runSyn x prelude synSt
 

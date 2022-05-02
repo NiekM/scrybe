@@ -130,8 +130,8 @@ infer expr = do
       t <- Var <$> fresh
       return (Fix `Annot` Arr (Arr t t) t, mempty)
 
-  -- TODO: do we need to subst th over local environments?
-  return (mapAnn (subst th) e, th)
+  let substCtx (HoleCtx g vs) = HoleCtx (subst th g) (subst th <$> vs)
+  return (over holesAnn substCtx $ mapAnn (subst th) e, th)
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
