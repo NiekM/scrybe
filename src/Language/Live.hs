@@ -117,8 +117,8 @@ mergeUnsolved = Map.unionsWith (++)
 merge :: [UC] -> Maybe UC
 merge cs = let (us, fs) = unzip cs in (mergeUnsolved us,) <$> mergeSolved fs
 
-checkLive :: Map Ctr Int -> Term Hole -> Constraint -> [UC]
-checkLive cs e = mapMaybe merge . mapM \(Scope env, ex) ->
+checkLive :: MonadPlus m => Map Ctr Int -> Term Hole -> Constraint -> m UC
+checkLive cs e = mfold . mapMaybe merge . mapM \(Scope env, ex) ->
   uneval cs (eval env e) ex
 
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets

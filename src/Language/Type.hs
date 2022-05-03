@@ -133,6 +133,13 @@ infer expr = do
   let substCtx (HoleCtx g vs) = HoleCtx (subst th g) (subst th <$> vs)
   return (over holesAnn substCtx $ mapAnn (subst th) e, th)
 
+infer' :: TCMonad m => Term Unit ->
+  m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
+infer' e = do
+  (x, th) <- infer e
+  y <- forOf holesAnn x \ctx -> (,ctx) <$> fresh
+  return (over holesAnn fst y, th, Map.fromList $ toListOf holesAnn y)
+
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
 check :: TCMonad m => Term Unit -> Poly ->

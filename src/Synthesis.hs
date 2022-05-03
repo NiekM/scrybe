@@ -232,19 +232,19 @@ pick'' h = do
 -- TODO: replace fuel with a priority search queue.
 -- NOTE: we expect that the expression is already eta-expanded when we start
 -- guessing.
-guess :: SynMonad s m => Int -> HoleCtx -> m (Term Hole)
-guess i ctx = do
+guessUpTo :: SynMonad s m => Int -> HoleCtx -> m (Term Hole)
+guessUpTo i ctx = do
   h <- fresh
   assign holeCtxs $ Map.singleton h ctx
-  msum $ flip guess' h <$> [1..i]
+  msum $ flip guessExact h <$> [1..i]
 
 -- TODO: use some form of dynamic programming to reuse previously computed
 -- results.
 -- NOTE: each hole filling contributes 1 to the total size and the remaining
 -- size is distributed over newly introduced holes.
-guess' :: SynMonad s m => Int -> Hole -> m (Term Hole)
-guess' 0 _ = mzero
-guess' i h = do
+guessExact :: SynMonad s m => Int -> Hole -> m (Term Hole)
+guessExact 0 _ = mzero
+guessExact i h = do
   hf <- pick'' h
   -- TODO: this would be easier if we return a list of hole fillings instead of
   -- an expression.
@@ -255,5 +255,45 @@ guess' i h = do
     0 | i == 1 -> return hf
     n -> do
       is <- distr (i - 1) n
-      xs <- forM (zip is hs) \(i', h') -> (h',) <$> guess' i' h'
+      xs <- forM (zip is hs) \(i', h') -> (h',) <$> guessExact i' h'
       return $ fill (Map.fromList xs) hf
+
+-- TODO: move Map Ctr Int to monad
+guessCheck :: SynMonad s m => Map Ctr Int -> Int -> Hole -> Goal -> m UC
+guessCheck cs i h (vs, t, c) = do
+  -- TODO: perhaps we need to check for a timeout?
+  -- TODO: should we only guess at base types?
+  e <- guessUpTo i $ HoleCtx t vs
+  (uh, hf) <- checkLive cs e c
+  -- TODO: merge constraints?
+  return (uh, Map.insert h e hf)
+
+ref :: SynMonad s m => UH -> Hole -> Goal -> m UC
+ref uh h g = do
+  (e, gs) <- refine g
+  let uh' = uh <> fmap (view _3) gs
+  modifying holeCtxs . Map.union $ fmap (\(u, ws, _) -> HoleCtx ws u) gs
+  return (uh', Map.singleton h e)
+
+solve :: SynMonad s m => Map Var Result -> Map Ctr Int -> Term Unit -> Poly -> Example -> m HF
+solve rs is e t x = do
+  (strip -> e', _, ctxs) <- check' e t
+  assign holeCtxs ctxs
+  let r = eval rs e'
+  uc <- mfold $ uneval is r x
+  iterSolve is uc
+
+maxDepth :: Int
+maxDepth = 2
+
+iterSolve :: SynMonad s m => Map Ctr Int -> UC -> m HF
+iterSolve is (uh, hf) = case Map.minViewWithKey uh of
+  Nothing -> return hf
+  Just ((h, c), uh') -> do
+    HoleCtx t vs <- getCtx h
+    -- TODO: add refine & branch
+    -- TODO: rewrite refine to use holeCtxs (and add Constraint to HoleCtx)
+    uc <- ref uh' h (vs, t, c) <|> guessCheck is maxDepth h (vs, t, c)
+    -- TODO: simplify merged constraints
+    uc' <- mfold $ merge [(uh', hf), uc]
+    iterSolve is uc'
