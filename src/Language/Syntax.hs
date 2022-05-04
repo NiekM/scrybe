@@ -479,7 +479,7 @@ arity (Poly _ (Args as _)) = length as
 data Module = Module
   { funs :: Map Var (Term Void, Poly)
   , ctrs :: Map Ctr Poly
-  -- NOTE: this gives the order (simplified dependency graph) of the module.
+  -- | NOTE: this gives the order (simplified dependency graph) of the module.
   , deps :: [Var]
   , available :: Set Var
   }

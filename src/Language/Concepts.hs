@@ -70,7 +70,7 @@ comb = cataExpr \b as -> case b of
 type Env = Map Var (Poly, Set Concept)
 
 fromModule :: Module -> Env
-fromModule m = flip Map.mapWithKey (funs m)
+fromModule m = flip Map.mapWithKey (Map.restrictKeys (funs m) (available m))
   \x (e, t) -> (t,) . Set.fromList . catMaybes $
     [ Just (Func x)
     , if comb e mempty then Just Combinator else Nothing

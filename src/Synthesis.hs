@@ -258,7 +258,6 @@ guessExact i h = do
       xs <- forM (zip is hs) \(i', h') -> (h',) <$> guessExact i' h'
       return $ fill (Map.fromList xs) hf
 
--- TODO: move Map Ctr Int to monad
 guessCheck :: SynMonad s m => Int -> Hole -> Goal -> m UC
 guessCheck i h (vs, t, c) = do
   -- TODO: perhaps we need to check for a timeout?
@@ -275,8 +274,9 @@ ref uh h g = do
   modifying holeCtxs . Map.union $ fmap (\(u, ws, _) -> HoleCtx ws u) gs
   return (uh', Map.singleton h e)
 
-solve :: SynMonad s m => Map Var Result -> Term Unit -> Poly -> Example -> m HF
-solve rs e t x = do
+solve :: SynMonad s m => Term Unit -> Poly -> Example -> m HF
+solve e t x = do
+  rs <- liveEnv <$> ask
   (strip -> e', _, ctxs) <- check' e t
   assign holeCtxs ctxs
   let r = eval rs e'
@@ -284,7 +284,7 @@ solve rs e t x = do
   iterSolve uc
 
 maxDepth :: Int
-maxDepth = 2
+maxDepth = 2 -- TODO: move this into the synthesis monad.
 
 iterSolve :: SynMonad s m => UC -> m HF
 iterSolve (uh, hf) = case Map.minViewWithKey uh of

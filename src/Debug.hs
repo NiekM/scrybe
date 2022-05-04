@@ -43,19 +43,17 @@ tryTC :: Monad m => RWST Module () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
 
 imports :: Set Var
-imports = Set.fromList ["succ", "zero", "nil", "cons"]
+-- imports = Set.fromList ["succ", "zero", "nil", "cons", "map"]
+imports = Set.fromList ["map", "succ"]
 
--- TODO: replace this with an 'import' function that selects what is imported
--- from the prelude. Perhaps even implement this into model solutions so that
--- you can write `import Prelude (...); model = ...`
 prelude' :: Module
-prelude' = prelude { funs = Map.restrictKeys (funs prelude) imports }
+prelude' = prelude { available = Set.intersection (available prelude) imports }
 
-trySyn' :: Monad m => RWST Module () SynState m a -> m a
-trySyn' x = fst <$> runSyn x prelude' (mkSynState (fromModule prelude') mempty)
+trySyn' :: Monad m => Module -> RWST Module () SynState m a -> m a
+trySyn' m x = evalSyn x m (mkSynState (fromModule m) mempty)
 
 trySyn :: Monad m => RWST Module () SynState m a -> m a
-trySyn x = fst <$> runSyn x prelude synSt
+trySyn x = evalSyn x prelude synSt
 
 eval' :: Term Hole -> Result
 eval' = eval $ liveEnv prelude
