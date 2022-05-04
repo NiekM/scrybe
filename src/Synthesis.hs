@@ -31,14 +31,14 @@ instance HasFreshState SynState where
 mkSynState :: Env -> MultiSet Concept -> SynState
 mkSynState e c = SynState mempty e c mkFreshState
 
-runSyn :: Monad m => RWST (Module Void) () SynState m a ->
-  Module Void -> SynState -> m (a, SynState)
+runSyn :: Monad m => RWST Module () SynState m a ->
+  Module -> SynState -> m (a, SynState)
 runSyn tc m g = do
   (x, s, _) <- runRWST tc m g
   return (x, s)
 
-evalSyn :: Monad m => RWST (Module Void) () SynState m a ->
-  Module Void -> SynState -> m a
+evalSyn :: Monad m => RWST Module () SynState m a ->
+  Module -> SynState -> m a
 evalSyn tc m g = fst <$> runSyn tc m g
 
 -- }}}
@@ -259,12 +259,12 @@ guessExact i h = do
       return $ fill (Map.fromList xs) hf
 
 -- TODO: move Map Ctr Int to monad
-guessCheck :: SynMonad s m => Map Ctr Int -> Int -> Hole -> Goal -> m UC
-guessCheck cs i h (vs, t, c) = do
+guessCheck :: SynMonad s m => Int -> Hole -> Goal -> m UC
+guessCheck i h (vs, t, c) = do
   -- TODO: perhaps we need to check for a timeout?
   -- TODO: should we only guess at base types?
   e <- guessUpTo i $ HoleCtx t vs
-  (uh, hf) <- checkLive cs e c
+  (uh, hf) <- checkLive e c
   -- TODO: merge constraints?
   return (uh, Map.insert h e hf)
 
@@ -275,25 +275,25 @@ ref uh h g = do
   modifying holeCtxs . Map.union $ fmap (\(u, ws, _) -> HoleCtx ws u) gs
   return (uh', Map.singleton h e)
 
-solve :: SynMonad s m => Map Var Result -> Map Ctr Int -> Term Unit -> Poly -> Example -> m HF
-solve rs is e t x = do
+solve :: SynMonad s m => Map Var Result -> Term Unit -> Poly -> Example -> m HF
+solve rs e t x = do
   (strip -> e', _, ctxs) <- check' e t
   assign holeCtxs ctxs
   let r = eval rs e'
-  uc <- mfold $ uneval is r x
-  iterSolve is uc
+  uc <- uneval r x
+  iterSolve uc
 
 maxDepth :: Int
 maxDepth = 2
 
-iterSolve :: SynMonad s m => Map Ctr Int -> UC -> m HF
-iterSolve is (uh, hf) = case Map.minViewWithKey uh of
+iterSolve :: SynMonad s m => UC -> m HF
+iterSolve (uh, hf) = case Map.minViewWithKey uh of
   Nothing -> return hf
   Just ((h, c), uh') -> do
     HoleCtx t vs <- getCtx h
     -- TODO: add refine & branch
     -- TODO: rewrite refine to use holeCtxs (and add Constraint to HoleCtx)
-    uc <- ref uh' h (vs, t, c) <|> guessCheck is maxDepth h (vs, t, c)
+    uc <- ref uh' h (vs, t, c) <|> guessCheck maxDepth h (vs, t, c)
     -- TODO: simplify merged constraints
     uc' <- mfold $ merge [(uh', hf), uc]
-    iterSolve is uc'
+    iterSolve uc'

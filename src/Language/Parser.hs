@@ -223,7 +223,7 @@ instance Parse Datatype where
     , mempty
     ]
 
-instance Parse a => Parse (Definition a) where
+instance Parse a => Parse (Def a) where
   parser = choice
     [ Datatype <$> parser
     , do
@@ -234,11 +234,14 @@ instance Parse a => Parse (Definition a) where
         ]
     ]
 
-instance Parse a => Parse (Module a) where
-  parser = Module . catMaybes <$> alt (optional parser) (single Newline)
+instance Parse a => Parse (Defs a) where
+  parser = Defs . catMaybes <$> alt (optional parser) (single Newline)
+
+instance Parse Module where
+  parser = fromDefs <$> parser
 
 instance Parse Sketch where
   parser = do
-    ([MkSignature x s], [MkBinding y b], []) <- sepModule <$> parser
+    ([MkSignature x s], [MkBinding y b], []) <- sepDefs <$> parser
     guard (x == y)
     return $ Sketch x s b

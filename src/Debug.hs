@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- NOTE: this module is purely for debugging purposes and to load some
--- functions into ghci
+-- functions and instances into ghci
 module Debug where
 
 import Import
@@ -20,7 +20,7 @@ fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
 instance Parse (Expr l) => IsString (Expr l) where fromString = fromStr
 instance IsString Poly where fromString = fromStr
 
-prelude :: Module Void
+prelude :: Module
 prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
   case lexParse parser file of
     Just x -> x
@@ -39,37 +39,26 @@ instance Pretty a => Pretty (Set a) where
 instance Pretty HoleCtx where
   pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs
 
-tryTC :: Monad m => RWST (Module Void) () FreshState m a -> m a
+tryTC :: Monad m => RWST Module () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
 
-imports :: [Var]
-imports = ["succ", "zero", "nil", "cons"]
+imports :: Set Var
+imports = Set.fromList ["succ", "zero", "nil", "cons"]
 
 -- TODO: replace this with an 'import' function that selects what is imported
 -- from the prelude. Perhaps even implement this into model solutions so that
 -- you can write `import Prelude (...); model = ...`
-prelude' :: Module Void
-prelude' = Module . filter go . getModule $ prelude where
-  go = \case
-    Signature (MkSignature x _) -> x `elem` imports
-    Binding   (MkBinding x _) -> x `elem` imports
-    Datatype  _ -> True
+prelude' :: Module
+prelude' = prelude { funs = Map.restrictKeys (funs prelude) imports }
 
-trySyn' :: Monad m => RWST (Module Void) () SynState m a -> m a
+trySyn' :: Monad m => RWST Module () SynState m a -> m a
 trySyn' x = fst <$> runSyn x prelude' (mkSynState (fromModule prelude') mempty)
 
-trySyn :: Monad m => RWST (Module Void) () SynState m a -> m a
+trySyn :: Monad m => RWST Module () SynState m a -> m a
 trySyn x = fst <$> runSyn x prelude synSt
 
-preludeBinds :: [(Var, Term Hole)]
-preludeBinds = second (over holes' absurd . fst) <$> functions prelude
-
-liveEnv :: Map Var Result
-liveEnv = foldl' go mempty preludeBinds where
-  go m (v, e) = Map.insert v (eval m e) m
-
 eval' :: Term Hole -> Result
-eval' = eval liveEnv
+eval' = eval $ liveEnv prelude
 
 uneval' :: Result -> Example -> [UC]
-uneval' = uneval (arities prelude)
+uneval' r e = tryTC (uneval r e)

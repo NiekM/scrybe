@@ -69,8 +69,8 @@ comb = cataExpr \b as -> case b of
 
 type Env = Map Var (Poly, Set Concept)
 
-fromModule :: Module Void -> Env
-fromModule m = flip Map.mapWithKey (Map.fromList $ functions m)
+fromModule :: Module -> Env
+fromModule m = flip Map.mapWithKey (funs m)
   \x (e, t) -> (t,) . Set.fromList . catMaybes $
     [ Just (Func x)
     , if comb e mempty then Just Combinator else Nothing
@@ -86,7 +86,7 @@ restrict cs = Map.filter \(_, c) -> c `Set.isSubsetOf` cs
 -- TODO: actually gather concepts from variables/constructors/language
 -- constructs, by looking up the corresponding concepts in the prelude and
 -- filtering out prohibited concepts such as combinators.
-fromSketch :: Module Void -> Ann Type ('Term a) -> (Env, MultiSet Concept)
+fromSketch :: Module -> Ann Type ('Term a) -> (Env, MultiSet Concept)
 fromSketch m e =
   ( Map.fromList xs
   , fromList . concatMap (toList . snd . snd) . toList $ xs

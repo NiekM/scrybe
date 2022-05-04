@@ -32,7 +32,7 @@ climb xs = do
       (y:) <$> climb ys
 
 readFiles :: String -> String -> String ->
-  RIO Application (Module Void, Sketch, Ann Type ('Term Hole))
+  RIO Application (Module, Sketch, Ann Type ('Term Hole))
 readFiles file sketch model = do
   m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
   sk@(Sketch _ t _) <- syntax =<< readFileUtf8

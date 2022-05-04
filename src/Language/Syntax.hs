@@ -431,7 +431,7 @@ class HasCtxs a where
 data Sketch = Sketch Var Poly (Term Unit)
   deriving (Eq, Ord, Show)
 
--- Module {{{
+-- Defs {{{
 
 -- TODO: move this to its own file
 
@@ -448,45 +448,62 @@ constructors :: Datatype -> [(Ctr, Poly)]
 constructors (MkDatatype d as cs) = cs <&> second \ts ->
   Poly as (arrs (ts ++ [apps (Ctr d) (Var <$> as)]))
 
-data Definition a
+data Def a
   = Signature Signature
   | Binding (Binding a)
   | Datatype Datatype
   deriving (Eq, Ord, Show)
 
-newtype Module a = Module { getModule :: [Definition a] }
+newtype Defs a = Defs { getDefs :: [Def a] }
   deriving (Eq, Ord, Show)
 
-sepModule :: Module a -> ([Signature], [Binding a], [Datatype])
-sepModule (Module ds) = foldr go mempty ds where
+sepDefs :: Defs a -> ([Signature], [Binding a], [Datatype])
+sepDefs (Defs ds) = foldr go mempty ds where
   go = \case
     Signature s -> over _1 (s:)
     Binding   b -> over _2 (b:)
     Datatype  d -> over _3 (d:)
 
-signatures :: Module a -> [Signature]
-signatures = view _1 . sepModule
+signatures :: Defs a -> [Signature]
+signatures = view _1 . sepDefs
 
-bindings :: Module a -> [Binding a]
-bindings = view _2 . sepModule
+bindings :: Defs a -> [Binding a]
+bindings = view _2 . sepDefs
 
-datatypes :: Module a -> [Datatype]
-datatypes = view _3 . sepModule
+datatypes :: Defs a -> [Datatype]
+datatypes = view _3 . sepDefs
 
-ctrs :: Module a -> [(Ctr, Poly)]
-ctrs = datatypes >=> constructors
+arity :: Poly -> Int
+arity (Poly _ (Args as _)) = length as
 
-sigs :: Module a -> [(Var, Poly)]
-sigs = signatures >=> \(MkSignature x t) -> [(x, t)]
+data Module = Module
+  { funs :: Map Var (Term Void, Poly)
+  , ctrs :: Map Ctr Poly
+  -- NOTE: this gives the order (simplified dependency graph) of the module.
+  , deps :: [Var]
+  , available :: Set Var
+  }
 
-binds :: Module a -> [(Var, Term a)]
-binds = bindings >=> \(MkBinding x t) -> [(x, t)]
-
-functions :: Module a -> [(Var, (Term a, Poly))]
-functions m = mapMaybe (\(v, t) -> (v,) . (,t) <$> lookup v (binds m)) $ sigs m
-
-arities :: Module a -> Map Ctr Int
-arities m = Map.fromList (ctrs m) <&> \(Poly _ (Args as _)) -> length as
+fromDefs :: Defs Void -> Module
+fromDefs defs = Module
+  { funs
+  , ctrs
+  , deps
+  , available
+  }
+  where
+    -- NOTE: currently, bindings without signature and signatures without
+    -- bindings are ignored. We could possibly infer the type of a binding, but
+    -- then we already need the whole environment, so it gets a bit messy.
+    -- Similarly, we could introduce a binding with a hole in the case of a
+    -- lone signature, but currently modules do not have holes.
+    deps = ss <&> \(MkSignature x _) -> x
+    sigs = Map.fromList $ ss >>= \(MkSignature x t) -> [(x, t)]
+    binds = Map.fromList $ bs >>= \(MkBinding x t) -> [(x, t)]
+    funs = Map.intersectionWith (,) binds sigs
+    ctrs = Map.fromList $ ds >>= constructors
+    available = Map.keysSet funs
+    (ss, bs, ds) = sepDefs defs
 
 -- }}}
 
@@ -688,13 +705,13 @@ instance Pretty Sketch where
   pretty (Sketch x s b) = vsep
     [pretty $ MkSignature x s, pretty $ MkBinding x b]
 
-instance Pretty a => Pretty (Definition a) where
+instance Pretty a => Pretty (Def a) where
   pretty = \case
     Signature s -> pretty s
     Binding b -> pretty b
     Datatype d -> pretty d
 
-instance Pretty a => Pretty (Module a) where
-  pretty (Module cs) = vsep $ fmap pretty cs
+instance Pretty a => Pretty (Defs a) where
+  pretty (Defs cs) = vsep $ fmap pretty cs
 
 -- }}}

@@ -25,6 +25,8 @@ indet = \case
 pattern Indet :: Indet -> Term Hole
 pattern Indet i <- (indet -> Just i)
 
+-- Live evaluation {{{
+
 evalApp :: Result -> Result -> Result
 evalApp f x = case f of
   App Fix (Scoped m (Lam g (Indet e))) ->
@@ -60,6 +62,16 @@ resume hf = cataExpr \case
     | Just x <- Map.lookup h hf
     , x /= Hole h -> resume hf (eval m x)
   Scoped m e -> Scoped (resume hf <$> m) e
+
+liveEnv :: Module -> Map Var Result
+liveEnv m = foldl' go mempty binds
+  where
+    go r (v, e) = Map.insert v (eval r e) r
+    binds = deps m <&> \v ->
+      let (e, _) = fromMaybe undefined . Map.lookup v $ funs m
+      in (v, over holes' absurd e)
+
+-- }}}
 
 upcast :: Value -> Result
 upcast = cataExpr \case
@@ -117,9 +129,9 @@ mergeUnsolved = Map.unionsWith (++)
 merge :: [UC] -> Maybe UC
 merge cs = let (us, fs) = unzip cs in (mergeUnsolved us,) <$> mergeSolved fs
 
-checkLive :: MonadPlus m => Map Ctr Int -> Term Hole -> Constraint -> m UC
-checkLive cs e = mfold . mapMaybe merge . mapM \(Scope env, ex) ->
-  uneval cs (eval env e) ex
+checkLive :: (MonadPlus m, MonadReader Module m)
+  => Term Hole -> Constraint -> m UC
+checkLive e = mfold . merge <=< mapM \(Scope env, ex) -> uneval (eval env e) ex
 
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
 -- the recursive argument to Nothing. This makes many things more messy
@@ -127,38 +139,40 @@ checkLive cs e = mfold . mapMaybe merge . mapM \(Scope env, ex) ->
 
 -- TODO: add fuel (probably using a FuelMonad or something, so that we can
 -- leave it out as well)
-uneval :: Map Ctr Int -> Result -> Example -> [UC]
-uneval cs = curry \case
+uneval :: (MonadPlus m, MonadReader Module m) => Result -> Example -> m UC
+uneval = curry \case
   -- Top always succeeds.
-  (_, Top) -> [mempty]
+  (_, Top) -> return mempty
   -- Constructors are handled as opaque functions and their unevaluation is
   -- extensional in the sense that only their arguments are compared.
   (Apps (Ctr c) xs, Lams ys (Apps (Ctr d) zs))
     | c == d, length xs + length ys == length zs
-    -> mapMaybe merge $ zipWithM (uneval cs) (xs ++ map upcast ys) zs
+    -> mfold . merge =<< zipWithM uneval (xs ++ map upcast ys) zs
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
-    [(Map.singleton h [(Scope m, lams vs ex)], mempty)]
-  (App (Prj c n) r, ex) ->
-    let arity = fromMaybe (error "Oh oh") $ Map.lookup c cs
-    in uneval cs r $ apps (Ctr c) (replicate arity Top & ix (n - 1) .~ ex)
-  (App (Scoped m (Elim xs)) r, ex) -> do
-    (c, e) <- xs
-    let arity = fromMaybe (error "Oh oh") $ Map.lookup c cs
-    scrut <- uneval cs r (apps (Ctr c) (replicate arity Top))
-    let prjs = [App (Prj c n) r | n <- [1..arity]]
-    arm <- uneval cs (resume mempty (apps (eval m e) prjs)) ex
-    maybeToList $ merge [scrut, arm]
+    return (Map.singleton h [(Scope m, lams vs ex)], mempty)
+  (App (Prj c n) r, ex) -> do
+    cs <- fmap arity . ctrs <$> ask
+    let ar = fromMaybe (error "Oh oh") . Map.lookup c $ cs
+    uneval r $ apps (Ctr c) (replicate ar Top & ix (n - 1) .~ ex)
+  (App(Scoped m (Elim xs)) r, ex) -> do
+    (c, e) <- mfold xs
+    cs <- fmap arity . ctrs <$> ask
+    let ar = fromMaybe (error "Oh oh") $ Map.lookup c cs
+    scrut <- uneval r (apps (Ctr c) (replicate ar Top))
+    let prjs = [App (Prj c n) r | n <- [1..ar]]
+    arm <- uneval (resume mempty (apps (eval m e) prjs)) ex
+    mfold $ merge [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a x), Lam v y) ->
-    checkLive cs x [(Scope $ Map.insert a (upcast v) m, y)]
+    checkLive x [(Scope $ Map.insert a (upcast v) m, y)]
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    uneval cs (Scoped (Map.insert f r m) e) ex
-  _ -> []
+    uneval (Scoped (Map.insert f r m) e) ex
+  _ -> mzero
 
 -- -- TODO: implement this according to figure 8
 -- solve :: UC -> HF
@@ -185,7 +199,7 @@ allSame = \case
 refine :: (FreshVar m, TCMonad m) => Goal -> m (Term Hole, Map Hole Goal)
 refine (goalEnv, goalType, constraints) = do
   let constraints' = filter ((/= Top) . snd) constraints
-  ctrs' <- ctrs <$> ask -- TODO: use datatypes instead?
+  ctrs' <- ctrs <$> ask
   case goalType of
     Arr arg res -> do
       h <- fresh
@@ -215,7 +229,7 @@ refine (goalEnv, goalType, constraints) = do
         _ -> Nothing
       let (cs, examples) = unzip xs
       ctr <- failMaybe $ allSame cs
-      Poly _bound (Args args ctrType) <- failMaybe $ lookup ctr ctrs'
+      Poly _bound (Args args ctrType) <- failMaybe $ Map.lookup ctr ctrs'
       th <- unify ctrType goalType
       let examples' = transpose $ sequence <$> examples
       args' <- for args \t -> (, subst th t) <$> fresh

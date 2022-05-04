@@ -24,29 +24,29 @@ type Stack = [Address]
 type Heap = Map Address Node
 type Global = Map Var Address
 type Funs = Map Var ([Var], Body)
-type Def = (Var, [Var], Body)
+type Definition = (Var, [Var], Body)
 
 data GraphState = GraphState
   { stack :: [Address]
   , heap :: Heap
   , global :: Global
-  , funs :: Funs
+  , fns :: Funs
   } deriving (Eq, Ord, Show)
 
 step_ :: GraphState -> Either GraphState GraphState
-step_ g@GraphState { stack, heap, global, funs } = case stack of
+step_ g@GraphState { stack, heap, global, fns } = case stack of
   [] -> Left g
   (a:s) -> case Map.lookup a heap of
     Nothing -> Left g
     Just x -> case x of
-      App a1 a2 -> return $ GraphState (a1:a2:s) heap global funs
+      App a1 a2 -> return $ GraphState (a1:a2:s) heap global fns
       Var v
-        | Just (xs, e) <- Map.lookup v funs
+        | Just (xs, e) <- Map.lookup v fns
         , n <- length xs
         , (as, s') <- splitAt n s
         , length as == n ->
           let (b, h) = runState (inst (Map.fromList (zip xs as) <> global) e) heap
-          in return $ GraphState (b:s') h global funs
+          in return $ GraphState (b:s') h global fns
         | otherwise -> Left g
       _ -> Left g
 
@@ -63,20 +63,20 @@ inst g = cataExprM \case
   Hole i -> absurd i
   e -> alloc e
 
-initialHeap :: [Def] -> (Heap, Global, Funs)
+initialHeap :: [Definition] -> (Heap, Global, Funs)
 initialHeap = foldr (\(x, as, b) (h, g, f) ->
   let (g', h') = runState (allocate (x, as, b)) h
   in (h', g', Map.singleton x (as, b)) <> (h, g, f)) mempty
 
-compile :: [Def] -> GraphState
-compile program = GraphState { stack, heap, global, funs } where
+compile :: [Definition] -> GraphState
+compile program = GraphState { stack, heap, global, fns } where
   stack = [Map.findWithDefault (error "Oh no") "main" global]
-  (heap, global, funs) = initialHeap program
+  (heap, global, fns) = initialHeap program
 
 fromAddress :: Heap -> Address -> Maybe (Term Void)
 fromAddress = anaExprM . flip Map.lookup
 
-allocate :: Def -> State Heap Global
+allocate :: Definition -> State Heap Global
 allocate (name, _, _) = do
   address <- alloc $ Var name
   return $ Map.singleton name address
@@ -97,7 +97,7 @@ visualize (xs, y) = pretty (as, b) where
 parseUnsafe :: Parse a => Text -> a
 parseUnsafe = fromMaybe undefined . lexParse parser
 
-defs :: [Def]
+defs :: [Definition]
 defs =
   [ ("main", [], parseUnsafe "fix twice")
   , ("twice", ["a"], parseUnsafe "Pair a a")
