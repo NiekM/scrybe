@@ -42,12 +42,11 @@ instance Pretty HoleCtx where
 tryTC :: Monad m => RWST Module () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
 
-imports :: Set Var
--- imports = Set.fromList ["succ", "zero", "nil", "cons", "map"]
-imports = Set.fromList ["map", "succ"]
+imprts :: Set Var
+imprts = Set.fromList ["map", "succ"]
 
 prelude' :: Module
-prelude' = prelude { available = Set.intersection (available prelude) imports }
+prelude' = prelude { available = Set.intersection (available prelude) imprts }
 
 trySyn' :: Monad m => Module -> RWST Module () SynState m a -> m a
 trySyn' m x = evalSyn x m (mkSynState (fromModule m) mempty)

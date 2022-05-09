@@ -238,10 +238,13 @@ instance Parse a => Parse (Defs a) where
   parser = Defs . catMaybes <$> alt (optional parser) (single Newline)
 
 instance Parse Module where
-  parser = fromDefs <$> parser
+  parser = do
+    defs <- parser
+    guard . null $ imports defs
+    return $ fromDefs defs
 
 instance Parse Sketch where
   parser = do
-    ([MkSignature x s], [MkBinding y b], []) <- sepDefs <$> parser
+    ([], [MkSignature x s], [MkBinding y b], []) <- sepDefs <$> parser
     guard (x == y)
     return $ Sketch x s b

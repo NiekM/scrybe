@@ -444,12 +444,18 @@ data Binding h = MkBinding Var (Term h)
 data Datatype = MkDatatype Ctr [Free] [(Ctr, [Type])]
   deriving (Eq, Ord, Show)
 
+data Import = MkImport
+  { name :: Text
+  , expose :: Maybe [Var]
+  } deriving (Eq, Ord, Show)
+
 constructors :: Datatype -> [(Ctr, Poly)]
 constructors (MkDatatype d as cs) = cs <&> second \ts ->
   Poly as (arrs (ts ++ [apps (Ctr d) (Var <$> as)]))
 
 data Def a
-  = Signature Signature
+  = Import Import
+  | Signature Signature
   | Binding (Binding a)
   | Datatype Datatype
   deriving (Eq, Ord, Show)
@@ -457,21 +463,25 @@ data Def a
 newtype Defs a = Defs { getDefs :: [Def a] }
   deriving (Eq, Ord, Show)
 
-sepDefs :: Defs a -> ([Signature], [Binding a], [Datatype])
+sepDefs :: Defs a -> ([Import], [Signature], [Binding a], [Datatype])
 sepDefs (Defs ds) = foldr go mempty ds where
   go = \case
-    Signature s -> over _1 (s:)
-    Binding   b -> over _2 (b:)
-    Datatype  d -> over _3 (d:)
+    Import    i -> over _1 (i:)
+    Signature s -> over _2 (s:)
+    Binding   b -> over _3 (b:)
+    Datatype  d -> over _4 (d:)
+
+imports :: Defs a -> [Import]
+imports = view _1 . sepDefs
 
 signatures :: Defs a -> [Signature]
-signatures = view _1 . sepDefs
+signatures = view _2 . sepDefs
 
 bindings :: Defs a -> [Binding a]
-bindings = view _2 . sepDefs
+bindings = view _3 . sepDefs
 
 datatypes :: Defs a -> [Datatype]
-datatypes = view _3 . sepDefs
+datatypes = view _4 . sepDefs
 
 arity :: Poly -> Int
 arity (Poly _ (Args as _)) = length as
@@ -479,15 +489,18 @@ arity (Poly _ (Args as _)) = length as
 data Module = Module
   { funs :: Map Var (Term Void, Poly)
   , ctrs :: Map Ctr Poly
+  , types :: Map Ctr [Ctr]
   -- | NOTE: this gives the order (simplified dependency graph) of the module.
   , deps :: [Var]
   , available :: Set Var
   }
 
+-- TODO: handle imports
 fromDefs :: Defs Void -> Module
 fromDefs defs = Module
   { funs
   , ctrs
+  , types
   , deps
   , available
   }
@@ -501,9 +514,10 @@ fromDefs defs = Module
     sigs = Map.fromList $ ss >>= \(MkSignature x t) -> [(x, t)]
     binds = Map.fromList $ bs >>= \(MkBinding x t) -> [(x, t)]
     funs = Map.intersectionWith (,) binds sigs
+    types = Map.fromList $ ds <&> \(MkDatatype t _ cs) -> (t, fst <$> cs)
     ctrs = Map.fromList $ ds >>= constructors
     available = Map.keysSet funs
-    (ss, bs, ds) = sepDefs defs
+    (_, ss, bs, ds) = sepDefs defs
 
 -- }}}
 
@@ -687,6 +701,11 @@ instance (Pretty (Ann a ('Term h)), Pretty h)
 instance (Pretty a, Consts Pretty l) => Pretty (Base a l) where
   pretty = pExpr (const pretty) 0
 
+instance Pretty Import where
+  pretty (MkImport name Nothing) = "import" <+> pretty name
+  pretty (MkImport name (Just exports)) = "import" <+> pretty name <+>
+    parens (mconcat $ intersperse ", " (pretty <$> exports))
+
 instance Pretty Datatype where
   pretty (MkDatatype d as cs) =
     "data" <+> sep (pretty d : fmap pretty as) <+>
@@ -707,6 +726,7 @@ instance Pretty Sketch where
 
 instance Pretty a => Pretty (Def a) where
   pretty = \case
+    Import i -> pretty i
     Signature s -> pretty s
     Binding b -> pretty b
     Datatype d -> pretty d
