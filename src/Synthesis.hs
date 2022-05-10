@@ -314,11 +314,11 @@ refineUneval (goalEnv, goalType, constraints) = do
         )
     Apps (Ctr ctr) _ -> do
       -- TODO: check if this all makes sense with multiple examples
-      cs <- mfold $ Map.lookup ctr types'
+      cs <- mfold $ Map.lookup ctr (fmap fst . snd <$> types')
       c <- mfold cs
       Poly _ (Args args res) <- mfold $ Map.lookup c ctrs'
       th <- unify res goalType
-      hs <- for args \u -> (, subst th u) <$> fresh
+      hs <- for args \u -> (,subst th u) <$> fresh
       let expr = apps (Ctr c) (Hole . fst <$> hs)
       ucs <- for constraints \(Scope scope, ex) -> uneval (eval scope expr) ex
       (uh, _) <- mfold $ merge ucs
@@ -347,8 +347,8 @@ iterSolve (uh, hf) = case Map.minViewWithKey uh of
     HoleCtx t vs <- getCtx h
     -- TODO: add refine & branch
     -- TODO: rewrite refine to use holeCtxs (and add Constraint to HoleCtx)
-    uc <- refUneval uh' h (vs, t, c) <|> guessCheck 1 h (vs, t, c)
-    -- uc <- ref uh' h (vs, t, c) <|> guessCheck maxDepth h (vs, t, c)
+    -- uc <- refUneval uh' h (vs, t, c) <|> guessCheck 1 h (vs, t, c)
+    uc <- ref uh' h (vs, t, c) <|> guessCheck maxDepth h (vs, t, c)
     -- TODO: simplify merged constraints
     uc' <- mfold $ merge [(uh', hf), uc]
     iterSolve uc'

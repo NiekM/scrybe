@@ -39,7 +39,8 @@ identChar :: Lexer Char
 identChar = alphaNumChar <|> char '_' <|> char '\''
 
 keywords :: [Text]
-keywords = ["case", "of", "let", "in", "forall", "data", "fix"]
+keywords =
+  ["case", "of", "let", "in", "forall", "data", "fix", "import", "assert"]
 
 ident :: Lexer Char -> Lexer Text
 ident start = fmap fromString $ (:) <$> start <*> many identChar
@@ -223,9 +224,20 @@ instance Parse Datatype where
     , mempty
     ]
 
+instance Parse Import where
+  parser = MkImport <$ key "import" <*> constructor <*> choice
+    [ return <$> brackets Round (alt parser (sep ","))
+    , mempty
+    ]
+
+instance Parse Assert where
+  parser = MkAssert <$ key "assert" <*> parser <*> parser
+
 instance Parse a => Parse (Def a) where
   parser = choice
     [ Datatype <$> parser
+    , Import <$> parser
+    , Assert <$> parser
     , do
       x <- parser
       choice
@@ -245,6 +257,6 @@ instance Parse Module where
 
 instance Parse Sketch where
   parser = do
-    ([], [MkSignature x s], [MkBinding y b], []) <- sepDefs <$> parser
+    ([], [MkSignature x s], [MkBinding y b], [], []) <- sepDefs <$> parser
     guard (x == y)
     return $ Sketch x s b

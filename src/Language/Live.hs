@@ -241,7 +241,6 @@ refine (goalEnv, goalType, constraints) = do
         )
     _ -> fail "Failed refine"
 
-
 -- TODO: this doesn't really work for higher-order data structures such as
 -- Maybe (Nat -> Nat), but maybe we shouldn't focus on those. Do we still have
 -- this problem if the expression is in eta-long form?

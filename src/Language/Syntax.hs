@@ -449,6 +449,9 @@ data Import = MkImport
   , expose :: Maybe [Var]
   } deriving (Eq, Ord, Show)
 
+data Assert = MkAssert Var Example
+  deriving (Eq, Ord, Show)
+
 constructors :: Datatype -> [(Ctr, Poly)]
 constructors (MkDatatype d as cs) = cs <&> second \ts ->
   Poly as (arrs (ts ++ [apps (Ctr d) (Var <$> as)]))
@@ -458,18 +461,21 @@ data Def a
   | Signature Signature
   | Binding (Binding a)
   | Datatype Datatype
+  | Assert Assert
   deriving (Eq, Ord, Show)
 
 newtype Defs a = Defs { getDefs :: [Def a] }
   deriving (Eq, Ord, Show)
 
-sepDefs :: Defs a -> ([Import], [Signature], [Binding a], [Datatype])
+sepDefs :: Defs a ->
+  ([Import], [Signature], [Binding a], [Datatype], [Assert])
 sepDefs (Defs ds) = foldr go mempty ds where
   go = \case
     Import    i -> over _1 (i:)
     Signature s -> over _2 (s:)
     Binding   b -> over _3 (b:)
     Datatype  d -> over _4 (d:)
+    Assert    a -> over _5 (a:)
 
 imports :: Defs a -> [Import]
 imports = view _1 . sepDefs
@@ -483,13 +489,16 @@ bindings = view _3 . sepDefs
 datatypes :: Defs a -> [Datatype]
 datatypes = view _4 . sepDefs
 
+asserts :: Defs a -> [Assert]
+asserts = view _5 . sepDefs
+
 arity :: Poly -> Int
 arity (Poly _ (Args as _)) = length as
 
 data Module = Module
   { funs :: Map Var (Term Void, Poly)
   , ctrs :: Map Ctr Poly
-  , types :: Map Ctr [Ctr]
+  , types :: Map Ctr ([Free], [(Ctr, [Type])])
   -- | NOTE: this gives the order (simplified dependency graph) of the module.
   , deps :: [Var]
   , available :: Set Var
@@ -514,10 +523,10 @@ fromDefs defs = Module
     sigs = Map.fromList $ ss >>= \(MkSignature x t) -> [(x, t)]
     binds = Map.fromList $ bs >>= \(MkBinding x t) -> [(x, t)]
     funs = Map.intersectionWith (,) binds sigs
-    types = Map.fromList $ ds <&> \(MkDatatype t _ cs) -> (t, fst <$> cs)
+    types = Map.fromList $ ds <&> \(MkDatatype t f cs) -> (t, (f, cs))
     ctrs = Map.fromList $ ds >>= constructors
     available = Map.keysSet funs
-    (_, ss, bs, ds) = sepDefs defs
+    (_, ss, bs, ds, _) = sepDefs defs
 
 -- }}}
 
@@ -720,6 +729,9 @@ instance Pretty h => Pretty (Binding h) where
   pretty (MkBinding x (Lams as e)) =
     sep (pretty x : fmap pretty as) <+> "=" <+> pretty e
 
+instance Pretty Assert where
+  pretty (MkAssert a ex) = "assert" <+> pretty a <+> pretty ex
+
 instance Pretty Sketch where
   pretty (Sketch x s b) = vsep
     [pretty $ MkSignature x s, pretty $ MkBinding x b]
@@ -730,6 +742,7 @@ instance Pretty a => Pretty (Def a) where
     Signature s -> pretty s
     Binding b -> pretty b
     Datatype d -> pretty d
+    Assert a -> pretty a
 
 instance Pretty a => Pretty (Defs a) where
   pretty (Defs cs) = vsep $ fmap pretty cs
