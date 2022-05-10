@@ -12,6 +12,7 @@ module Import
   , maximumDef
   , mfold
   , failMaybe
+  , mergeMap
   , search
   , todo
   , TODO
@@ -21,6 +22,7 @@ module Import
 import RIO hiding (local)
 import RIO.Text (unpack)
 import RIO.List
+import qualified RIO.Map as Map
 import Prettyprinter
 import Data.Tree
 import Control.Monad.RWS hiding (local)
@@ -48,6 +50,13 @@ failMaybe :: MonadFail m => Maybe a -> m a
 failMaybe = \case
   Nothing -> fail ""
   Just x -> return x
+
+mergeMap :: (Monad m, Ord k) => (v -> v -> m v) ->
+  Map k v -> Map k v -> m (Map k v)
+mergeMap f x y = sequence $ Map.unionWith
+  (\a b -> join $ liftM2 f a b)
+  (return <$> x)
+  (return <$> y)
 
 search :: forall a r w s. Monoid w =>
   (a -> RWST r w s [] a) -> a -> RWST r w s Tree a

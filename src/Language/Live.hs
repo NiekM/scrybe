@@ -241,21 +241,38 @@ refine (goalEnv, goalType, constraints) = do
         )
     _ -> fail "Failed refine"
 
--- TODO: this doesn't really work for higher-order data structures such as
--- Maybe (Nat -> Nat), but maybe we shouldn't focus on those. Do we still have
--- this problem if the expression is in eta-long form?
-exampleMap :: Example -> Map [Value] Example
-exampleMap = uncurry Map.singleton . unLams
+data Ex
+  = ExFun (Map Value Ex)
+  | ExCtr Ctr [Ex]
+  | ExTop
+  deriving (Eq, Ord, Show)
 
-mergeEx :: Example -> Example -> Maybe Example
+mergeEx :: Ex -> Ex -> Maybe Ex
 mergeEx = curry \case
-  (ex, Top) -> Just ex
-  (Top, ex) -> Just ex
-  (Ctr c, Ctr d) | c == d -> Just $ Ctr c
-  (App f x, App g y) -> App <$> mergeEx f g <*> mergeEx x y
+  (ExTop, ex) -> Just ex
+  (ex, ExTop) -> Just ex
+  (ExFun fs, ExFun gs) -> ExFun <$> mergeMap mergeEx fs gs
+  (ExCtr c xs, ExCtr d ys) | c == d, length xs == length ys ->
+    ExCtr c <$> zipWithM mergeEx xs ys
   _ -> Nothing
 
-mergeExamples :: [Example] -> Maybe (Map [Value] Example)
-mergeExamples = sequence
-  . Map.unionsWith ((join .) . liftM2 mergeEx)
-  . fmap (fmap Just . exampleMap)
+toEx :: Example -> Ex
+toEx = \case
+  Top -> ExTop
+  Apps (Ctr c) xs -> ExCtr c (toEx <$> xs)
+  Lam v x -> ExFun (Map.singleton v $ toEx x)
+  _ -> error "Incorrect example"
+
+fromExamples :: [Example] -> Maybe Ex
+fromExamples = Just ExTop & foldl' \r x -> r >>= mergeEx (toEx x)
+
+fromEx :: Ex -> [Example]
+fromEx = \case
+  ExTop -> [Top]
+  ExCtr c xs -> apps (Ctr c) <$> for xs fromEx
+  ExFun fs -> Map.assocs fs >>= \(v, x) -> Lam v <$> fromEx x
+
+-- Note that example merging might result in more examples. It is probably more
+-- useful to just use Ex instead of [Example]
+mergeExamples :: [Example] -> Maybe [Example]
+mergeExamples = fmap fromEx . fromExamples
