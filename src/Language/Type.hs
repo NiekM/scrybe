@@ -102,14 +102,6 @@ infer expr = do
       (x'@(Annot _ u), th) <- x (Map.insert a t loc)
       let t' = subst th t
       return (Lam a x' `Annot` Arr t' u, th)
-    Let a x y -> do
-      t <- Var <$> fresh
-      (x'@(Annot _ t1), th1) <- x loc
-      (y'@(Annot _ t2), th2) <- y (Map.insert a t loc)
-      let th3 = th2 `compose` th1
-      th4 <- unify (subst th3 t) t1
-      let th5 = th4 `compose` th3
-      return (Let a x' y' `Annot` subst th5 t2, th5)
     Elim xs -> do
       t <- Var <$> fresh
       u <- Var <$> fresh

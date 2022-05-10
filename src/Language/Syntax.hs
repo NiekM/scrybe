@@ -68,9 +68,6 @@ class Leveled (l :: Level) where
   type HasLam' l :: Bool
   type HasLam' l = IsJust (Bind' l)
 
-  type HasLet' l :: Bool
-  type HasLet' l = 'False
-
   type HasElim' l :: Bool
   type HasElim' l = 'False
 
@@ -85,7 +82,6 @@ type HasCtr l c = (HasCtr' l ~ 'True, Ctr' l ~ 'Just c)
 type HasVar l v = Var' l ~ 'Just v
 type HasApp l = HasApp' l ~ 'True
 type HasLam l v = (HasLam' l ~ 'True, Bind' l ~ 'Just v)
-type HasLet l v = (HasLet' l ~ 'True, Bind' l ~ 'Just v)
 type HasElim l c = (HasElim' l ~ 'True, Ctr' l ~ 'Just c)
 type HasFix l = HasFix' l ~ 'True
 type HasPrj l c = (HasPrj' l ~ 'True, Ctr' l ~ 'Just c)
@@ -101,7 +97,6 @@ instance Leveled ('Term h) where
   type Bind'    ('Term _) = 'Just Var
   type HasElim' ('Term _) = 'True
   type HasFix'  ('Term _) = 'True
-  type HasLet'  ('Term _) = 'True
 
 instance Leveled 'Det where
   type Hole'   'Det = 'Just (Annot Scope Indet)
@@ -142,7 +137,6 @@ data Expr' (r :: Func) (l :: Level) where
   Var  :: HasVar  l v => v -> Expr' r l
   App  :: HasApp  l   => Rec r l -> Rec r l -> Expr' r l
   Lam  :: HasLam  l v => v -> Rec r l -> Expr' r l
-  Let  :: HasLet  l v => v -> Rec r l -> Rec r l -> Expr' r l
   Elim :: HasElim l c => [(c, Rec r l)] -> Expr' r l
   Fix  :: HasFix  l   => Expr' r l
   Prj  :: HasPrj  l c => c -> Int -> Expr' r l
@@ -178,6 +172,9 @@ pattern Case :: () => (HasApp l, HasElim l c) =>
   Expr l -> [(c, Expr l)] -> Expr l
 pattern Case x xs = App (Elim xs) x
 
+pattern Let :: () => (HasApp l, HasLam l v) => v -> Expr l -> Expr l -> Expr l
+pattern Let a x e = App (Lam a e) x
+
 type Type    = Expr 'Type
 type Term h  = Expr ('Term h)
 type Value   = Expr 'Value
@@ -203,7 +200,6 @@ rec go = \case
   Var v -> pure $ Var v
   App f x -> App <$> go f <*> go x
   Lam a x -> Lam a <$> go x
-  Let a x y -> Let a <$> go x <*> go y
   Elim xs -> Elim <$> traverse (traverse go) xs
   Fix -> pure Fix
   Prj c i -> pure $ Prj c i
@@ -258,7 +254,6 @@ holes' g = cataExpr \case
   Var v -> pure $ Var v
   App f x -> App <$> f <*> x
   Lam a x -> Lam a <$> x
-  Let a x y -> Let a <$> x <*> y
   Elim xs -> Elim <$> traverse sequenceA xs
   Fix -> pure Fix
 
@@ -278,7 +273,6 @@ holesAnn g = cataAnn \t -> fmap (`Annot` t) . \case
   Var v -> pure $ Var v
   App f x -> App <$> f <*> x
   Lam a x -> Lam a <$> x
-  Let a x y -> Let a <$> x <*> y
   Elim xs -> Elim <$> traverse sequenceA xs
   Fix -> pure Fix
 
@@ -635,8 +629,6 @@ pExpr p i = \case
   Ctr c -> pretty c
   App f x -> prettyParen (i > 2) $ sep [p 2 f, p 3 x]
   Lam a x -> prettyParen (i > 0) $ "\\" <> pretty a <+> "->" <+> p 0 x
-  Let a x e -> prettyParen (i > 0) $ "let" <+> pretty a <+> "=" <+> p 0 x
-    <+> "in" <+> p 0 e
   Elim xs -> prettyParen (i > 0) $ "\\case" <+> mconcat
     (intersperse "; " $ xs <&> \(c, b) -> pretty c <+> "->" <+> p 0 b)
   Fix -> "fix"
