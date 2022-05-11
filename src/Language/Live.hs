@@ -21,7 +21,7 @@ indet = \case
   Elim xs -> Just $ Elim xs
   _ -> Nothing
 
-{-# COMPLETE Indet, Var, App, Ctr, Fix, Let #-}
+{-# COMPLETE Indet, Var, App, Ctr, Fix #-}
 pattern Indet :: Indet -> Term Hole
 pattern Indet i <- (indet -> Just i)
 
@@ -44,7 +44,6 @@ eval m = \case
   App f x -> evalApp (eval m f) (eval m x)
   Ctr c -> Ctr c
   Fix -> Fix
-  Let _a _x _y -> undefined
   -- Indeterminate results
   Indet i -> Scoped m i
 
@@ -137,6 +136,7 @@ checkLive e = mfold . merge <=< mapM \(Scope env, ex) -> uneval (eval env e) ex
 -- the recursive argument to Nothing. This makes many things more messy
 -- unfortunately.
 
+-- TODO: let uneval just return a 'Map Hole (Map Scope Ex)', or [Example] i.o. Ex
 -- TODO: add fuel (probably using a FuelMonad or something, so that we can
 -- leave it out as well)
 uneval :: (MonadPlus m, MonadReader Module m) => Result -> Example -> m UC
@@ -157,7 +157,7 @@ uneval = curry \case
     cs <- fmap arity . ctrs <$> ask
     let ar = fromMaybe (error "Oh oh") . Map.lookup c $ cs
     uneval r $ apps (Ctr c) (replicate ar Top & ix (n - 1) .~ ex)
-  (App(Scoped m (Elim xs)) r, ex) -> do
+  (App (Scoped m (Elim xs)) r, ex) -> do
     (c, e) <- mfold xs
     cs <- fmap arity . ctrs <$> ask
     let ar = fromMaybe (error "Oh oh") $ Map.lookup c cs
