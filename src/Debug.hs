@@ -57,5 +57,5 @@ trySyn x = evalSyn x prelude synSt
 eval' :: Term Hole -> Result
 eval' = eval $ liveEnv prelude
 
-uneval' :: Result -> Example -> [UC]
+uneval' :: Result -> Example -> [UH]
 uneval' r e = tryTC (uneval r e)

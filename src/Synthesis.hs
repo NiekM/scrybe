@@ -263,9 +263,9 @@ guessCheck i h (vs, t, c) = do
   -- TODO: perhaps we need to check for a timeout?
   -- TODO: should we only guess at base types?
   e <- guessUpTo i $ HoleCtx t vs
-  (uh, hf) <- checkLive e c
+  uh <- checkLive e c
   -- TODO: merge constraints?
-  return (uh, Map.insert h e hf)
+  return (uh, Map.singleton h e)
 
 ref :: SynMonad s m => UH -> Hole -> Goal -> m UC
 ref uh h g = do
@@ -320,8 +320,8 @@ refineUneval (goalEnv, goalType, constraints) = do
       th <- unify res goalType
       hs <- for args \u -> (,subst th u) <$> fresh
       let expr = apps (Ctr c) (Hole . fst <$> hs)
-      ucs <- for constraints \(Scope scope, ex) -> uneval (eval scope expr) ex
-      (uh, _) <- mfold $ merge ucs
+      uhs <- for constraints \(Scope scope, ex) -> uneval (eval scope expr) ex
+      let uh = mergeUnsolved uhs
       xs <- for hs \(h, u) -> do
         constr <- mfold $ Map.lookup h uh
         return (h, (goalEnv, u, constr))
@@ -335,7 +335,7 @@ solve e t x = do
   assign holeCtxs ctxs
   let r = eval rs e'
   uc <- uneval r x
-  iterSolve uc
+  iterSolve (uc, mempty)
 
 maxDepth :: Int
 maxDepth = 4 -- TODO: move this into the synthesis monad.

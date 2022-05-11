@@ -129,8 +129,8 @@ merge :: [UC] -> Maybe UC
 merge cs = let (us, fs) = unzip cs in (mergeUnsolved us,) <$> mergeSolved fs
 
 checkLive :: (MonadPlus m, MonadReader Module m)
-  => Term Hole -> Constraint -> m UC
-checkLive e = mfold . merge <=< mapM \(Scope env, ex) -> uneval (eval env e) ex
+  => Term Hole -> Constraint -> m UH
+checkLive e = fmap mergeUnsolved . mapM \(Scope env, ex) -> uneval (eval env e) ex
 
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
 -- the recursive argument to Nothing. This makes many things more messy
@@ -139,7 +139,7 @@ checkLive e = mfold . merge <=< mapM \(Scope env, ex) -> uneval (eval env e) ex
 -- TODO: let uneval just return a 'Map Hole (Map Scope Ex)', or [Example] i.o. Ex
 -- TODO: add fuel (probably using a FuelMonad or something, so that we can
 -- leave it out as well)
-uneval :: (MonadPlus m, MonadReader Module m) => Result -> Example -> m UC
+uneval :: (MonadPlus m, MonadReader Module m) => Result -> Example -> m UH
 uneval = curry \case
   -- Top always succeeds.
   (_, Top) -> return mempty
@@ -147,12 +147,12 @@ uneval = curry \case
   -- extensional in the sense that only their arguments are compared.
   (Apps (Ctr c) xs, Lams ys (Apps (Ctr d) zs))
     | c == d, length xs + length ys == length zs
-    -> mfold . merge =<< zipWithM uneval (xs ++ map upcast ys) zs
+    -> mergeUnsolved <$> zipWithM uneval (xs ++ map upcast ys) zs
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
-    return (Map.singleton h [(Scope m, lams vs ex)], mempty)
+    return $ Map.singleton h [(Scope m, lams vs ex)]
   (App (Prj c n) r, ex) -> do
     cs <- fmap arity . ctrs <$> ask
     let ar = fromMaybe (error "Oh oh") . Map.lookup c $ cs
@@ -164,7 +164,7 @@ uneval = curry \case
     scrut <- uneval r (apps (Ctr c) (replicate ar Top))
     let prjs = [App (Prj c n) r | n <- [1..ar]]
     arm <- uneval (resume mempty (apps (eval m e) prjs)) ex
-    mfold $ merge [scrut, arm]
+    return $ mergeUnsolved [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a x), Lam v y) ->
