@@ -3,6 +3,7 @@ module Language.Parser where
 import Import hiding (some, many, lift, bracket)
 import RIO.Partial (read)
 import Language.Syntax
+import Language.Live
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -249,11 +250,12 @@ instance Parse a => Parse (Def a) where
 instance Parse a => Parse (Defs a) where
   parser = Defs . catMaybes <$> alt (optional parser) (single Newline)
 
-instance Parse Module where
+instance Parse Mod where
   parser = do
     defs <- parser
     guard . null $ imports defs
-    return $ fromDefs defs
+    guard . null $ asserts defs
+    return $ fromDfs defs
 
 instance Parse Sketch where
   parser = do

@@ -188,8 +188,7 @@ type Indet = Base (Term Hole) 'Ind
 -- expressions capturing the local scope.
 type Result = Expr 'Det
 
-newtype Scope = Scope { unScope :: Map Var Result }
-  deriving newtype (Eq, Ord)
+newtype Scope = Scope { unScope :: Map Var Result } deriving (Eq, Ord)
 
 -- Morphisms {{{
 
@@ -489,38 +488,27 @@ asserts = view _5 . sepDefs
 arity :: Poly -> Int
 arity (Poly _ (Args as _)) = length as
 
-data Module = Module
-  { funs :: Map Var (Term Void, Poly)
-  , ctrs :: Map Ctr Poly
-  , types :: Map Ctr ([Free], [(Ctr, [Type])])
-  -- | NOTE: this gives the order (simplified dependency graph) of the module.
-  , deps :: [Var]
-  , available :: Set Var
-  }
+type LiveEnv = Map Var Result
 
--- TODO: handle imports
-fromDefs :: Defs Void -> Module
-fromDefs defs = Module
-  { funs
-  , ctrs
-  , types
-  , deps
-  , available
-  }
-  where
-    -- NOTE: currently, bindings without signature and signatures without
-    -- bindings are ignored. We could possibly infer the type of a binding, but
-    -- then we already need the whole environment, so it gets a bit messy.
-    -- Similarly, we could introduce a binding with a hole in the case of a
-    -- lone signature, but currently modules do not have holes.
-    deps = ss <&> \(MkSignature x _) -> x
-    sigs = Map.fromList $ ss >>= \(MkSignature x t) -> [(x, t)]
-    binds = Map.fromList $ bs >>= \(MkBinding x t) -> [(x, t)]
-    funs = Map.intersectionWith (,) binds sigs
-    types = Map.fromList $ ds <&> \(MkDatatype t f cs) -> (t, (f, cs))
-    ctrs = Map.fromList $ ds >>= constructors
-    available = Map.keysSet funs
-    (_, ss, bs, ds, _) = sepDefs defs
+data Mod = Mod
+  { funs_ :: Map Var Poly
+  , live_ :: Map Var Result
+  , data_ :: Map Ctr ([Free], [(Ctr, [Type])])
+  } deriving (Eq, Ord)
+
+instance Semigroup Mod where
+  Mod a b c <> Mod d e f = Mod (a <> d) (b <> e) (c <> f)
+
+instance Monoid Mod where
+  mempty = Mod mempty mempty mempty
+
+arities :: Mod -> Map Ctr Int
+arities = fmap length . Map.fromList . concatMap snd . toList . data_
+
+ctrTs :: Mod -> Map Ctr Poly
+ctrTs = Map.mapWithKey go . Map.fromList
+  . concatMap (\(as, cs) -> fmap (second (as,)) cs) . toList . data_
+  where go t (as, ts) = Poly as (arrs $ ts ++ [Ctr t `apps` fmap Var as])
 
 -- }}}
 
@@ -605,7 +593,8 @@ instance (Pretty b, Pretty (Annot a b)) => Pretty (Annot (Maybe a) b) where
   pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a
 
 instance Pretty Scope where
-  pretty _ = "[..]"
+  pretty (Scope m) = align . P.list $ Map.assocs m <&> \(k, x) ->
+    pretty k <> ":" <+> align (pretty x)
 
 instance Pretty a => Pretty (Annot Scope a) where
   pretty (Annot x s) = pretty s <> pretty x

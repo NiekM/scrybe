@@ -20,7 +20,7 @@ fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
 instance Parse (Expr l) => IsString (Expr l) where fromString = fromStr
 instance IsString Poly where fromString = fromStr
 
-prelude :: Module
+prelude :: Mod
 prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
   case lexParse parser file of
     Just x -> x
@@ -39,23 +39,23 @@ instance Pretty a => Pretty (Set a) where
 instance Pretty HoleCtx where
   pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs
 
-tryTC :: Monad m => RWST Module () FreshState m a -> m a
+tryTC :: Monad m => RWST Mod () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
 
 imprts :: Set Var
 imprts = Set.fromList ["map", "succ"]
 
-prelude' :: Module
-prelude' = prelude { available = Set.intersection (available prelude) imprts }
+-- prelude' :: Mod
+-- prelude' = prelude { available = Set.intersection (available prelude) imprts }
 
-trySyn' :: Monad m => Module -> RWST Module () SynState m a -> m a
+trySyn' :: Monad m => Mod -> RWST Mod () SynState m a -> m a
 trySyn' m x = evalSyn x m (mkSynState (fromModule m) mempty)
 
-trySyn :: Monad m => RWST Module () SynState m a -> m a
+trySyn :: Monad m => RWST Mod () SynState m a -> m a
 trySyn x = evalSyn x prelude synSt
 
 eval' :: Term Hole -> Result
-eval' = eval $ liveEnv prelude
+eval' e = runReader (eval mempty e) prelude
 
 uneval' :: Result -> Example -> [UH]
 uneval' r e = tryTC (uneval r e)

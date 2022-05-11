@@ -7,13 +7,13 @@ import qualified RIO.Map as Map
 
 -- Type checking state {{{
 
-runTC :: Monad m => RWST Module () FreshState m a ->
-  Module -> m (a, FreshState)
+runTC :: Monad m => RWST Mod () FreshState m a ->
+  Mod -> m (a, FreshState)
 runTC tc m = do
   (x, s, _) <- runRWST tc m mkFreshState
   return (x, s)
 
-evalTC :: Monad m => RWST Module () FreshState m a -> Module -> m a
+evalTC :: Monad m => RWST Mod () FreshState m a -> Mod -> m a
 evalTC tc m = fst <$> runTC tc m
 
 -- }}}
@@ -66,15 +66,15 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
         combine th' th
 
 type TCMonad m =
-  (FreshFree m, FreshHole m, MonadFail m, MonadReader Module m)
+  (FreshFree m, FreshHole m, MonadFail m, MonadReader Mod m)
 
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a cataExprM?
 infer :: TCMonad m => Term Unit -> m (Ann Type ('Term HoleCtx), Unify)
 infer expr = do
   m <- ask
-  let cs = ctrs m
-  let fs = snd <$> funs m
+  let cs = ctrTs m
+  let fs = funs_ m
   (e, th) <- (Map.empty &) $ expr & cataExpr \e loc -> case e of
     Hole _ -> do
       g <- Var <$> fresh

@@ -7,7 +7,7 @@ import RIO.List
 import qualified RIO.Map as Map
 
 {-# COMPLETE Scoped, App, Ctr, Fix #-}
-pattern Scoped :: Map Var Result -> Indet -> Expr' r 'Det
+pattern Scoped :: LiveEnv -> Indet -> Expr' r 'Det
 pattern Scoped m e = Hole (Annot e (Scope m))
 
 {-# COMPLETE Top, App, Ctr, Lam #-}
@@ -27,7 +27,8 @@ pattern Indet i <- (indet -> Just i)
 
 -- Live evaluation {{{
 
-evalApp :: Result -> Result -> Result
+-- TODO: move env to reader monad
+evalApp :: MonadReader Mod m => Result -> Result -> m Result
 evalApp f x = case f of
   App Fix (Scoped m (Lam g (Indet e))) ->
     evalApp (Scoped (Map.insert g f m) e) x
@@ -36,39 +37,64 @@ evalApp f x = case f of
     | Apps (Ctr c) as <- x
     , Just (Lams bs y) <- lookup c xs
     -> eval (Map.fromList (zip bs as) <> m) y
-  r -> App r x
+  r -> return $ App r x
 
-eval :: Map Var Result -> Term Hole -> Result
-eval m = \case
-  Var v -> fromMaybe undefined $ Map.lookup v m
-  App f x -> evalApp (eval m f) (eval m x)
-  Ctr c -> Ctr c
-  Fix -> Fix
+eval :: MonadReader Mod m => LiveEnv -> Term Hole -> m Result
+eval loc = \case
+  Var v -> do
+    env <- live_ <$> ask
+    maybe undefined return $ Map.lookup v (loc <> env)
+  App f x -> do
+    f' <- eval loc f
+    x' <- eval loc x
+    evalApp f' x'
+  Ctr c -> return $ Ctr c
+  Fix -> return Fix
   -- Indeterminate results
-  Indet i -> Scoped m i
+  Indet i -> return $ Scoped loc i
 
 -- TODO: Note that resumption loops forever if the hole fillings are (mutually)
 -- recursive. An alternative would be to only allow resumption of one hole at a
 -- time.
-resume :: Map Hole (Term Hole) -> Result -> Result
-resume hf = cataExpr \case
+resume :: MonadReader Mod m => Map Hole (Term Hole) -> Result -> m Result
+resume hf = cataExprM \case
   App f x -> evalApp f x
-  Ctr c -> Ctr c
-  Fix -> Fix
-  Prj c n -> Prj c n
+  Ctr c -> return $ Ctr c
+  Fix -> return Fix
+  Prj c n -> return $ Prj c n
   -- Indeterminate results
   Scoped m (Hole h)
     | Just x <- Map.lookup h hf
-    , x /= Hole h -> resume hf (eval m x)
-  Scoped m e -> Scoped (resume hf <$> m) e
+    , x /= Hole h -> resume hf =<< eval m x
+  Scoped m e -> do
+    m' <- mapM (resume hf) m
+    return $ Scoped m' e
 
-liveEnv :: Module -> Map Var Result
-liveEnv m = foldl' go mempty binds
+-- TODO: type checking and imports
+fromDfs :: Defs Void -> Mod
+fromDfs defs = foldl' fromSigs bindMod ss
   where
-    go r (v, e) = Map.insert v (eval r e) r
-    binds = deps m <&> \v ->
-      let (e, _) = fromMaybe undefined . Map.lookup v $ funs m
-      in (v, over holes' absurd e)
+    dataMod :: Mod
+    dataMod = foldl' fromData mempty ds
+
+    bindMod :: Mod
+    bindMod = foldl' fromBind dataMod bs
+
+    fromData :: Mod -> Datatype -> Mod
+    fromData m (MkDatatype t as cs) =
+      m { data_ = Map.insert t (as, cs) (data_ m) }
+
+    fromBind :: Mod -> Binding Void -> Mod
+    fromBind m (MkBinding x e) =
+      let live = live_ m
+          r = runReader (eval mempty (over holes absurd e)) m
+      in m { live_ = Map.insert x r live }
+
+    fromSigs :: Mod -> Signature -> Mod
+    fromSigs m (MkSignature x t) =
+      m { funs_ = Map.insert x t (funs_ m) }
+
+    (_, ss, bs, ds, _) = sepDefs defs
 
 -- }}}
 
@@ -89,13 +115,15 @@ type HF = Map Hole (Term Hole)
 -- | Unfilled holes
 type UH = Map Hole Constraint
 
-satExample :: HF -> Result -> Example -> Bool
+satExample :: MonadReader Mod m => HF -> Result -> Example -> m Bool
 satExample hf r ex = case (r, ex) of
-  (_, Top) -> True
-  (Apps (Ctr c) xs, Apps (Ctr d) ys) ->
-    c == d && and (zipWith (satExample hf) xs ys)
-  (_, Lam v x) -> satExample hf (resume hf (App r (upcast v))) x
-  _ -> False
+  (_, Top) -> return True
+  (Apps (Ctr c) xs, Apps (Ctr d) ys) | c == d ->
+    and <$> zipWithM (satExample hf) xs ys
+  (_, Lam v x) -> do
+    r' <- resume hf (App r (upcast v))
+    satExample hf r' x
+  _ -> return False
 
 type Constraint = [(Scope, Example)]
 
@@ -104,14 +132,17 @@ type Constraint = [(Scope, Example)]
 type UC = (UH, HF)
 
 -- TODO: are the holefillings here needed?
-satConstraint :: HF -> Term Hole -> Constraint -> Bool
-satConstraint hf e = all \(m, ex) ->
-  satExample hf (resume hf $ eval (unScope m) e) ex
+satConstraint :: MonadReader Mod m => HF -> Term Hole -> Constraint -> m Bool
+satConstraint hf e cs = and <$> for cs \(Scope m, ex) -> do
+  r <- eval m e >>= resume hf
+  satExample hf r ex
 
 -- TODO: are the holefillings and the submap check really needed?
-satUneval :: HF -> UC -> Bool
-satUneval hf (uh, hf0) = Map.isSubmapOf hf0 hf
-  && all (\(h, c) -> satConstraint hf (Hole h) c) (Map.assocs uh)
+satUneval :: MonadReader Mod m => HF -> UC -> m Bool
+satUneval hf (uh, hf0)
+  | not $ Map.isSubmapOf hf0 hf = return False
+  | otherwise =
+    and <$> for (Map.assocs uh) \(h, c) -> satConstraint hf (Hole h) c
 
 -- TODO: do we know that they all have all the same holes?
 mergeSolved :: [HF] -> Maybe HF
@@ -128,9 +159,10 @@ mergeUnsolved = Map.unionsWith (++)
 merge :: [UC] -> Maybe UC
 merge cs = let (us, fs) = unzip cs in (mergeUnsolved us,) <$> mergeSolved fs
 
-checkLive :: (MonadPlus m, MonadReader Module m)
+checkLive :: (MonadPlus m, MonadReader Mod m)
   => Term Hole -> Constraint -> m UH
-checkLive e = fmap mergeUnsolved . mapM \(Scope env, ex) -> uneval (eval env e) ex
+checkLive e = fmap mergeUnsolved . mapM
+  \(Scope m, ex) -> eval m e >>= flip uneval ex
 
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
 -- the recursive argument to Nothing. This makes many things more messy
@@ -139,7 +171,7 @@ checkLive e = fmap mergeUnsolved . mapM \(Scope env, ex) -> uneval (eval env e) 
 -- TODO: let uneval just return a 'Map Hole (Map Scope Ex)', or [Example] i.o. Ex
 -- TODO: add fuel (probably using a FuelMonad or something, so that we can
 -- leave it out as well)
-uneval :: (MonadPlus m, MonadReader Module m) => Result -> Example -> m UH
+uneval :: (MonadPlus m, MonadReader Mod m) => Result -> Example -> m UH
 uneval = curry \case
   -- Top always succeeds.
   (_, Top) -> return mempty
@@ -154,16 +186,17 @@ uneval = curry \case
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
     return $ Map.singleton h [(Scope m, lams vs ex)]
   (App (Prj c n) r, ex) -> do
-    cs <- fmap arity . ctrs <$> ask
+    cs <- arities <$> ask
     let ar = fromMaybe (error "Oh oh") . Map.lookup c $ cs
     uneval r $ apps (Ctr c) (replicate ar Top & ix (n - 1) .~ ex)
   (App (Scoped m (Elim xs)) r, ex) -> do
     (c, e) <- mfold xs
-    cs <- fmap arity . ctrs <$> ask
+    cs <- arities <$> ask
     let ar = fromMaybe (error "Oh oh") $ Map.lookup c cs
     scrut <- uneval r (apps (Ctr c) (replicate ar Top))
     let prjs = [App (Prj c n) r | n <- [1..ar]]
-    arm <- uneval (resume mempty (apps (eval m e) prjs)) ex
+    e' <- eval m e
+    arm <- resume mempty (apps e' prjs) >>= flip uneval ex
     return $ mergeUnsolved [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
@@ -199,7 +232,7 @@ allSame = \case
 refine :: (FreshVar m, TCMonad m) => Goal -> m (Term Hole, Map Hole Goal)
 refine (goalEnv, goalType, constraints) = do
   let constraints' = filter ((/= Top) . snd) constraints
-  ctrs' <- ctrs <$> ask
+  ctrs' <- ctrTs <$> ask
   case goalType of
     Arr arg res -> do
       h <- fresh

@@ -31,14 +31,14 @@ instance HasFreshState SynState where
 mkSynState :: Env -> MultiSet Concept -> SynState
 mkSynState e c = SynState mempty e c mkFreshState
 
-runSyn :: Monad m => RWST Module () SynState m a ->
-  Module -> SynState -> m (a, SynState)
+runSyn :: Monad m => RWST Mod () SynState m a ->
+  Mod -> SynState -> m (a, SynState)
 runSyn tc m g = do
   (x, s, _) <- runRWST tc m g
   return (x, s)
 
-evalSyn :: Monad m => RWST Module () SynState m a ->
-  Module -> SynState -> m a
+evalSyn :: Monad m => RWST Mod () SynState m a ->
+  Mod -> SynState -> m a
 evalSyn tc m g = fst <$> runSyn tc m g
 
 -- }}}
@@ -287,8 +287,8 @@ refUneval uh h g = do
 refineUneval :: SynMonad s m => Goal -> m (Term Hole, Map Hole Goal)
 refineUneval (goalEnv, goalType, constraints) = do
   let constraints' = filter ((/= Top) . snd) constraints
-  ctrs' <- ctrs <$> ask
-  types' <- types <$> ask
+  ctrs' <- data_ <$> ask
+  types' <- ctrTs <$> ask
   case goalType of
     Arr arg res -> do -- TODO: replace this just eta-expansion
       h <- fresh
@@ -314,13 +314,14 @@ refineUneval (goalEnv, goalType, constraints) = do
         )
     Apps (Ctr ctr) _ -> do
       -- TODO: check if this all makes sense with multiple examples
-      cs <- mfold $ Map.lookup ctr (fmap fst . snd <$> types')
+      cs <- mfold $ Map.lookup ctr (fmap fst . snd <$> ctrs')
       c <- mfold cs
-      Poly _ (Args args res) <- mfold $ Map.lookup c ctrs'
+      Poly _ (Args args res) <- mfold $ Map.lookup c types'
       th <- unify res goalType
       hs <- for args \u -> (,subst th u) <$> fresh
       let expr = apps (Ctr c) (Hole . fst <$> hs)
-      uhs <- for constraints \(Scope scope, ex) -> uneval (eval scope expr) ex
+      uhs <- for constraints
+        \(Scope scope, ex) -> eval scope expr >>= flip uneval ex
       let uh = mergeUnsolved uhs
       xs <- for hs \(h, u) -> do
         constr <- mfold $ Map.lookup h uh
@@ -330,10 +331,10 @@ refineUneval (goalEnv, goalType, constraints) = do
 
 solve :: SynMonad s m => Term Unit -> Poly -> Example -> m HF
 solve e t x = do
-  rs <- liveEnv <$> ask
+  rs <- live_ <$> ask
   (strip -> e', _, ctxs) <- check' e t
   assign holeCtxs ctxs
-  let r = eval rs e'
+  r <- eval rs e'
   uc <- uneval r x
   iterSolve (uc, mempty)
 
