@@ -264,8 +264,7 @@ guessCheck i h (vs, t, c) = do
   -- TODO: should we only guess at base types?
   e <- guessUpTo i $ HoleCtx t vs
   uh <- checkLive e c
-  -- TODO: merge constraints?
-  return (uh, Map.singleton h e)
+  return (fmap (fmap fromEx) uh, Map.singleton h e)
 
 ref :: SynMonad s m => UH -> Hole -> Goal -> m UC
 ref uh h g = do
@@ -274,60 +273,60 @@ ref uh h g = do
   modifying holeCtxs . Map.union $ fmap (\(u, ws, _) -> HoleCtx ws u) gs
   return (uh', Map.singleton h e)
 
--- Alternative version of ref that refines an expressionby checking if
--- unevaluation succeeds rather than explicitly inspecting the constraints to
--- see if the same constructor is used for each constraint.
-refUneval :: SynMonad s m => UH -> Hole -> Goal -> m UC
-refUneval uh h g = do
-  (e, gs) <- refineUneval g
-  let uh' = uh <> fmap (view _3) gs
-  modifying holeCtxs . Map.union $ fmap (\(u, ws, _) -> HoleCtx ws u) gs
-  return (uh', Map.singleton h e)
+-- -- Alternative version of ref that refines an expressionby checking if
+-- -- unevaluation succeeds rather than explicitly inspecting the constraints to
+-- -- see if the same constructor is used for each constraint.
+-- refUneval :: SynMonad s m => UH -> Hole -> Goal -> m UC
+-- refUneval uh h g = do
+--   (e, gs) <- refineUneval g
+--   let uh' = uh <> fmap (view _3) gs
+--   modifying holeCtxs . Map.union $ fmap (\(u, ws, _) -> HoleCtx ws u) gs
+--   return (uh', Map.singleton h e)
 
-refineUneval :: SynMonad s m => Goal -> m (Term Hole, Map Hole Goal)
-refineUneval (goalEnv, goalType, constraints) = do
-  let constraints' = filter ((/= Top) . snd) constraints
-  ctrs' <- data_ <$> ask
-  types' <- ctrTs <$> ask
-  case goalType of
-    Arr arg res -> do -- TODO: replace this just eta-expansion
-      h <- fresh
-      f <- fresh
-      a <- fresh
-      -- TODO: does it make sense to check all the constraints, or should we
-      -- just eta-expand immediately, since that is the only reasonable result?
-      xs <- failMaybe $ for constraints' \case
-        (Scope scope, Lam t u) ->
-          let r = App Fix (Scoped scope (Lam f (Lam a (Hole h))))
-              scope' = Map.fromList [(f, r), (a, upcast t)]
-          in Just (Scope $ scope' <> scope, u)
-        _ -> Nothing
-      -- TODO: record that f is a recursive call and a is its argument.
-      -- Probably using a global variable environment.
-      return
-        ( App Fix (lams [f, a] (Hole h))
-        , Map.singleton h
-          ( Map.fromList [(f, goalType), (a, arg)] <> goalEnv
-          , res
-          , xs
-          )
-        )
-    Apps (Ctr ctr) _ -> do
-      -- TODO: check if this all makes sense with multiple examples
-      cs <- mfold $ Map.lookup ctr (fmap fst . snd <$> ctrs')
-      c <- mfold cs
-      Poly _ (Args args res) <- mfold $ Map.lookup c types'
-      th <- unify res goalType
-      hs <- for args \u -> (,subst th u) <$> fresh
-      let expr = apps (Ctr c) (Hole . fst <$> hs)
-      uhs <- for constraints
-        \(Scope scope, ex) -> eval scope expr >>= flip uneval ex
-      let uh = mergeUnsolved uhs
-      xs <- for hs \(h, u) -> do
-        constr <- mfold $ Map.lookup h uh
-        return (h, (goalEnv, u, constr))
-      return (expr, Map.fromList xs)
-    _ -> fail "Failed refine"
+-- refineUneval :: SynMonad s m => Goal -> m (Term Hole, Map Hole Goal)
+-- refineUneval (goalEnv, goalType, constraints) = do
+--   let constraints' = filter ((/= Top) . snd) constraints
+--   ctrs' <- data_ <$> ask
+--   types' <- ctrTs <$> ask
+--   case goalType of
+--     Arr arg res -> do -- TODO: replace this just eta-expansion
+--       h <- fresh
+--       f <- fresh
+--       a <- fresh
+--       -- TODO: does it make sense to check all the constraints, or should we
+--       -- just eta-expand immediately, since that is the only reasonable result?
+--       xs <- failMaybe $ for constraints' \case
+--         (Scope scope, Lam t u) ->
+--           let r = App Fix (Scoped scope (Lam f (Lam a (Hole h))))
+--               scope' = Map.fromList [(f, r), (a, upcast t)]
+--           in Just (Scope $ scope' <> scope, u)
+--         _ -> Nothing
+--       -- TODO: record that f is a recursive call and a is its argument.
+--       -- Probably using a global variable environment.
+--       return
+--         ( App Fix (lams [f, a] (Hole h))
+--         , Map.singleton h
+--           ( Map.fromList [(f, goalType), (a, arg)] <> goalEnv
+--           , res
+--           , xs
+--           )
+--         )
+--     Apps (Ctr ctr) _ -> do
+--       -- TODO: check if this all makes sense with multiple examples
+--       cs <- mfold $ Map.lookup ctr (fmap fst . snd <$> ctrs')
+--       c <- mfold cs
+--       Poly _ (Args args res) <- mfold $ Map.lookup c types'
+--       th <- unify res goalType
+--       hs <- for args \u -> (,subst th u) <$> fresh
+--       let expr = apps (Ctr c) (Hole . fst <$> hs)
+--       uhs <- for constraints
+--         \(Scope scope, ex) -> eval scope expr >>= flip uneval ex
+--       let uh = mergeUnsolved uhs
+--       xs <- for hs \(h, u) -> do
+--         constr <- mfold $ Map.lookup h uh
+--         return (h, (goalEnv, u, constr))
+--       return (expr, Map.fromList xs)
+--     _ -> fail "Failed refine"
 
 solve :: SynMonad s m => Term Unit -> Poly -> Example -> m HF
 solve e t x = do
@@ -336,7 +335,7 @@ solve e t x = do
   assign holeCtxs ctxs
   r <- eval rs e'
   uc <- uneval r x
-  iterSolve (uc, mempty)
+  iterSolve (fmap (fmap fromEx) uc, mempty)
 
 maxDepth :: Int
 maxDepth = 4 -- TODO: move this into the synthesis monad.

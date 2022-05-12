@@ -39,14 +39,11 @@ instance Pretty a => Pretty (Set a) where
 instance Pretty HoleCtx where
   pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs
 
+instance Pretty Ex where
+  pretty = pretty . fromEx
+
 tryTC :: Monad m => RWST Mod () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
-
-imprts :: Set Var
-imprts = Set.fromList ["map", "succ"]
-
--- prelude' :: Mod
--- prelude' = prelude { available = Set.intersection (available prelude) imprts }
 
 trySyn' :: Monad m => Mod -> RWST Mod () SynState m a -> m a
 trySyn' m x = evalSyn x m (mkSynState (fromModule m) mempty)
@@ -57,5 +54,15 @@ trySyn x = evalSyn x prelude synSt
 eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude
 
-uneval' :: Result -> Example -> [UH]
+uneval' :: Result -> Example -> [Uneval]
 uneval' r e = tryTC (uneval r e)
+
+{- NOTE: interesting example, try out different (orders of) hole fillings
+
+>>> xs = uneval (eval' "map (\\x -> {0}) {1}") "[1,2]"
+>>> pretty . trySyn @[] $ xs
+  >>= resumeUneval 0 "Succ {2}"
+  >>= resumeUneval 1 "[0, 1]"
+  >>= resumeUneval 2 "x"
+
+-}

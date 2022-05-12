@@ -37,6 +37,11 @@ evalApp f x = case f of
     | Apps (Ctr c) as <- x
     , Just (Lams bs y) <- lookup c xs
     -> eval (Map.fromList (zip bs as) <> m) y
+  -- TODO: not sure if this is necessary, but simplifying away projections when
+  -- possible leads to more readible unevaluation results.
+  Prj c n -> resume mempty x >>= \case
+    Apps (Ctr d) as | c == d, Just y <- preview (ix (n - 1)) as -> return y
+    _ -> return $ App (Prj c n) x
   r -> return $ App r x
 
 eval :: MonadReader Mod m => LiveEnv -> Term Hole -> m Result
@@ -71,8 +76,8 @@ resume hf = cataExprM \case
     return $ Scoped m' e
 
 -- TODO: type checking and imports
-fromDfs :: Defs Void -> Mod
-fromDfs defs = foldl' fromSigs bindMod ss
+fromDefs :: Defs Void -> Mod
+fromDefs defs = foldl' fromSigs bindMod ss
   where
     dataMod :: Mod
     dataMod = foldl' fromData mempty ds
@@ -125,7 +130,7 @@ satExample hf r ex = case (r, ex) of
     satExample hf r' x
   _ -> return False
 
-type Constraint = [(Scope, Example)]
+type Constraint = Map Scope [Example]
 
 -- TODO: Can we ignore HF for now?
 -- | Unevaluation constraints
@@ -133,9 +138,9 @@ type UC = (UH, HF)
 
 -- TODO: are the holefillings here needed?
 satConstraint :: MonadReader Mod m => HF -> Term Hole -> Constraint -> m Bool
-satConstraint hf e cs = and <$> for cs \(Scope m, ex) -> do
+satConstraint hf e cs = and <$> for (Map.assocs cs) \(Scope m, ex) -> do
   r <- eval m e >>= resume hf
-  satExample hf r ex
+  fmap and . for ex $ satExample hf r
 
 -- TODO: are the holefillings and the submap check really needed?
 satUneval :: MonadReader Mod m => HF -> UC -> m Bool
@@ -153,25 +158,33 @@ mergeSolved = sequence . Map.unionsWith go . fmap (fmap Just) where
     guard (a == b)
     return a
 
-mergeUnsolved :: [UH] -> UH
-mergeUnsolved = Map.unionsWith (++)
+mergeUnsolved :: [UH] -> Maybe UH
+mergeUnsolved = mergeMaps $ mergeMap \x y -> mergeExamples (x ++ y)
 
 merge :: [UC] -> Maybe UC
-merge cs = let (us, fs) = unzip cs in (mergeUnsolved us,) <$> mergeSolved fs
+merge = uncurry (liftM2 (,)) . (mergeUnsolved *** mergeSolved) . unzip
+
+type Constr = Map Scope Ex
+
+type Uneval = Map Hole Constr
+
+mergeUneval :: [Uneval] -> Maybe Uneval
+mergeUneval = mergeMaps $ mergeMap mergeEx
 
 checkLive :: (MonadPlus m, MonadReader Mod m)
-  => Term Hole -> Constraint -> m UH
-checkLive e = fmap mergeUnsolved . mapM
-  \(Scope m, ex) -> eval m e >>= flip uneval ex
+  => Term Hole -> Constraint -> m Uneval
+checkLive e cs = do
+  x <- for (Map.assocs cs) \(Scope m, exs) -> do
+    ex <- mfold exs
+    eval m e >>= flip uneval ex
+  mfold $ mergeUneval x
 
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
 -- the recursive argument to Nothing. This makes many things more messy
 -- unfortunately.
-
--- TODO: let uneval just return a 'Map Hole (Map Scope Ex)', or [Example] i.o. Ex
 -- TODO: add fuel (probably using a FuelMonad or something, so that we can
 -- leave it out as well)
-uneval :: (MonadPlus m, MonadReader Mod m) => Result -> Example -> m UH
+uneval :: (MonadPlus m, MonadReader Mod m) => Result -> Example -> m Uneval
 uneval = curry \case
   -- Top always succeeds.
   (_, Top) -> return mempty
@@ -179,12 +192,12 @@ uneval = curry \case
   -- extensional in the sense that only their arguments are compared.
   (Apps (Ctr c) xs, Lams ys (Apps (Ctr d) zs))
     | c == d, length xs + length ys == length zs
-    -> mergeUnsolved <$> zipWithM uneval (xs ++ map upcast ys) zs
+    -> mfold . mergeUneval =<< zipWithM uneval (xs ++ map upcast ys) zs
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
-    return $ Map.singleton h [(Scope m, lams vs ex)]
+    return $ Map.singleton h $ Map.singleton (Scope m) $ toEx $ lams vs ex
   (App (Prj c n) r, ex) -> do
     cs <- arities <$> ask
     let ar = fromMaybe (error "Oh oh") . Map.lookup c $ cs
@@ -197,15 +210,43 @@ uneval = curry \case
     let prjs = [App (Prj c n) r | n <- [1..ar]]
     e' <- eval m e
     arm <- resume mempty (apps e' prjs) >>= flip uneval ex
-    return $ mergeUnsolved [scrut, arm]
+    mfold $ mergeUneval [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a x), Lam v y) ->
-    checkLive x [(Scope $ Map.insert a (upcast v) m, y)]
+    checkLive x $ Map.singleton (Scope $ Map.insert a (upcast v) m) [y]
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
     uneval (Scoped (Map.insert f r m) e) ex
   _ -> mzero
+
+unevalEx :: (MonadPlus m, MonadReader Mod m) => Result -> Ex -> m Uneval
+unevalEx r ex = mfold . mergeUneval =<< for (fromEx ex) (uneval r)
+
+unevals :: (MonadPlus m, MonadReader Mod m) => Term Hole -> Constr -> m Uneval
+unevals e cs = mfold . mergeUneval =<< for (Map.assocs cs)
+  \(Scope s, x) -> eval s e >>= flip unevalEx x
+
+unevalsFill :: (MonadPlus m, MonadReader Mod m) =>
+  Map Hole (Term Hole) -> Constr -> m Constr
+unevalsFill hf cs = do
+  let foo = Map.assocs cs
+  bar <- for foo \(Scope s, x) -> do
+    s' <- mapM (resume hf) s
+    return $ Map.singleton (Scope s') x
+  mfold $ mergeMaps mergeEx bar
+--mfold . mergeUneval =<< for (Map.assocs cs)
+  -- \(Scope s, x) -> eval s e >>= flip unevalEx x
+
+resumeUneval :: (MonadPlus m, MonadReader Mod m) =>
+  Hole -> Term Hole -> Uneval -> m Uneval
+resumeUneval h e un = do
+  c <- mfold $ Map.lookup h un
+  -- TODO: update local scopes of other holes
+  x <- unevals e c
+  -- let y = Map.delete h un
+  y <- for (Map.delete h un) $ unevalsFill $ Map.singleton h e
+  mfold $ mergeUneval [x, y]
 
 -- -- TODO: implement this according to figure 8
 -- solve :: UC -> HF
@@ -228,51 +269,53 @@ allSame = \case
   x:xs | all (==x) xs -> Just x
   _ -> Nothing
 
--- TODO: maybe fullblown inference is not needed
 refine :: (FreshVar m, TCMonad m) => Goal -> m (Term Hole, Map Hole Goal)
-refine (goalEnv, goalType, constraints) = do
-  let constraints' = filter ((/= Top) . snd) constraints
-  ctrs' <- ctrTs <$> ask
-  case goalType of
-    Arr arg res -> do
-      h <- fresh
-      f <- fresh
-      a <- fresh
-      -- TODO: does it make sense to check all the constraints, or should we
-      -- just eta-expand immediately, since that is the only reasonable result?
-      xs <- failMaybe $ for constraints' \case
-        (Scope scope, Lam t u) ->
-          let r = App Fix (Scoped scope (Lam f (Lam a (Hole h))))
-              scope' = Map.fromList [(f, r), (a, upcast t)]
-          in Just (Scope $ scope' <> scope, u)
-        _ -> Nothing
-      -- TODO: record that f is a recursive call and a is its argument.
-      -- Probably using a global variable environment.
-      return
-        ( App Fix (lams [f, a] (Hole h))
-        , Map.singleton h
-          ( Map.fromList [(f, goalType), (a, arg)] <> goalEnv
-          , res
-          , xs
-          )
-        )
-    Apps (Ctr _typeCtr) _typeArgs -> do
-      xs <- failMaybe $ for constraints' \case
-        (scope, Apps (Ctr ctr) args) -> Just (ctr, (scope, args))
-        _ -> Nothing
-      let (cs, examples) = unzip xs
-      ctr <- failMaybe $ allSame cs
-      Poly _bound (Args args ctrType) <- failMaybe $ Map.lookup ctr ctrs'
-      th <- unify ctrType goalType
-      let examples' = transpose $ sequence <$> examples
-      args' <- for args \t -> (, subst th t) <$> fresh
-      return
-        ( apps (Ctr ctr) (Hole . fst <$> args')
-        , Map.fromList $ zipWith (\(h, t) exs ->
-          (h, (goalEnv, t, exs))
-          ) args' examples'
-        )
-    _ -> fail "Failed refine"
+refine = todo
+-- -- TODO: maybe fullblown inference is not needed
+-- refine :: (FreshVar m, TCMonad m) => Goal -> m (Term Hole, Map Hole Goal)
+-- refine (goalEnv, goalType, constraints) = do
+--   let constraints' = filter ((/= Top) . snd) constraints
+--   ctrs' <- ctrTs <$> ask
+--   case goalType of
+--     Arr arg res -> do
+--       h <- fresh
+--       f <- fresh
+--       a <- fresh
+--       -- TODO: does it make sense to check all the constraints, or should we
+--       -- just eta-expand immediately, since that is the only reasonable result?
+--       xs <- failMaybe $ for constraints' \case
+--         (Scope scope, Lam t u) ->
+--           let r = App Fix (Scoped scope (Lam f (Lam a (Hole h))))
+--               scope' = Map.fromList [(f, r), (a, upcast t)]
+--           in Just (Scope $ scope' <> scope, u)
+--         _ -> Nothing
+--       -- TODO: record that f is a recursive call and a is its argument.
+--       -- Probably using a global variable environment.
+--       return
+--         ( App Fix (lams [f, a] (Hole h))
+--         , Map.singleton h
+--           ( Map.fromList [(f, goalType), (a, arg)] <> goalEnv
+--           , res
+--           , xs
+--           )
+--         )
+--     Apps (Ctr _typeCtr) _typeArgs -> do
+--       xs <- failMaybe $ for constraints' \case
+--         (scope, Apps (Ctr ctr) args) -> Just (ctr, (scope, args))
+--         _ -> Nothing
+--       let (cs, examples) = unzip xs
+--       ctr <- failMaybe $ allSame cs
+--       Poly _bound (Args args ctrType) <- failMaybe $ Map.lookup ctr ctrs'
+--       th <- unify ctrType goalType
+--       let examples' = transpose $ sequence <$> examples
+--       args' <- for args \t -> (, subst th t) <$> fresh
+--       return
+--         ( apps (Ctr ctr) (Hole . fst <$> args')
+--         , Map.fromList $ zipWith (\(h, t) exs ->
+--           (h, (goalEnv, t, exs))
+--           ) args' examples'
+--         )
+--     _ -> fail "Failed refine"
 
 data Ex
   = ExFun (Map Value Ex)

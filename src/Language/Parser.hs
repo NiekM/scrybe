@@ -255,7 +255,7 @@ instance Parse Mod where
     defs <- parser
     guard . null $ imports defs
     guard . null $ asserts defs
-    return $ fromDfs defs
+    return $ fromDefs defs
 
 instance Parse Sketch where
   parser = do
