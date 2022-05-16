@@ -232,4 +232,23 @@ resumeUneval h e un = do
   y <- for (Map.delete h un) $ unevalsFill $ Map.singleton h e
   mfold $ mergeUneval [x, y]
 
+unevalProgram :: forall m. (MonadReader Mod m, FreshHole m, MonadPlus m) =>
+  Defs Unit -> m Uneval
+unevalProgram defs = do
+  -- TODO: handle imports
+  h <- fresh
+  e <- foldr addBinding (return (Hole h)) . bindings $ defs
+  eval mempty e >>= \case
+    Scoped m (Hole _) -> do
+      as <- for (asserts defs) \(MkAssert a ex) -> do
+        r <- eval m (Var a)
+        uneval r ex
+      mfold $ mergeUneval as
+    _ -> error "Should never happen"
+  where
+    addBinding :: Binding Unit -> m (Term Hole) -> m (Term Hole)
+    addBinding (MkBinding a x) y = do
+      e <- forOf holes x (const fresh)
+      Let a e <$> y
+
 -- }}}

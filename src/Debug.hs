@@ -51,6 +51,12 @@ eval' e = runReader (eval mempty e) prelude
 uneval' :: Result -> Example -> [Uneval]
 uneval' r e = tryTC (uneval r e)
 
+readUneval :: String -> [Uneval]
+readUneval s = let file = unsafePerformIO $ readFileUtf8 s in
+  case lexParse parser file of
+    Just x -> tryTC $ unevalProgram x
+    Nothing -> error "Could not parse file"
+
 test :: Term Hole -> Example -> [(Hole, Term Hole)] -> Doc ann
 test sk ex rs = pretty . tryUneval @[] $
   foldl' (\r (h, e) -> r >>= resumeUneval h e) (uneval (eval' sk) ex) rs
