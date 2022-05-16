@@ -14,22 +14,22 @@ syntax t = case lexParse parser t of
   Nothing -> fail "Parsing failed"
   Just y -> return y
 
-climb :: (a ~ (Hole, Ref, Term Hole, Refs)) =>
-  [Tree a] -> RIO Application [a]
-climb xs = do
-  let n = (2+) . length . show $ length xs
-  for_ (zip [0 :: Int ..] xs) \(i, Node (h, Ref e th, _, _) _) ->
-    logInfo . display $ Prettyprinter.fill n (pretty i <> ":") <+>
-      pretty h <+> "|->" <+> pretty e <> if null th then "" else " ---" <+>
-        tupled (Map.assocs th <&> \(k, x) -> pretty k <+> "|->" <+> pretty x)
-  l <- liftIO getLine
-  case readMaybe l >>= \i -> preview (ix i) xs of
-    Nothing -> logInfo "Done..." >> return []
-    Just (Node y ys) -> do
-      logInfo ""
-      logInfo . display . pretty $ view _3 y
-      logInfo ""
-      (y:) <$> climb ys
+-- climb :: (a ~ (Hole, Ref, Term Hole, Refs)) =>
+--   [Tree a] -> RIO Application [a]
+-- climb xs = do
+--   let n = (2+) . length . show $ length xs
+--   for_ (zip [0 :: Int ..] xs) \(i, Node (h, Ref e th, _, _) _) ->
+--     logInfo . display $ Prettyprinter.fill n (pretty i <> ":") <+>
+--       pretty h <+> "|->" <+> pretty e <> if null th then "" else " ---" <+>
+--         tupled (Map.assocs th <&> \(k, x) -> pretty k <+> "|->" <+> pretty x)
+--   l <- liftIO getLine
+--   case readMaybe l >>= \i -> preview (ix i) xs of
+--     Nothing -> logInfo "Done..." >> return []
+--     Just (Node y ys) -> do
+--       logInfo ""
+--       logInfo . display . pretty $ view _3 y
+--       logInfo ""
+--       (y:) <$> climb ys
 
 readFiles :: String -> String -> String ->
   RIO Application (Mod, Sketch, Ann Type ('Term Hole))
@@ -45,67 +45,68 @@ readFiles file sketch model = do
   (a, _, _) <- evalTC (check' b t) m
   return (m, sk, a)
 
-interactive :: String -> String -> String -> RIO Application ()
-interactive file sketch model = do
-  (m, sk, a) <- readFiles file sketch model
-  let (env', c) = fromSketch m a
-  logInfo "Sketch:"
-  logInfo ""
-  logInfo . display . indent 2 . pretty $ sk
-  logInfo ""
-  let xs = runSyn (init' sk) m (mkSynState env' c)
-  _ <- climb $ xs <&> \(x, g) -> view _1 <$> runSyn (search step' x) m g
-  logInfo ""
+-- interactive :: String -> String -> String -> RIO Application ()
+-- interactive file sketch model = do
+--   (m, sk, a) <- readFiles file sketch model
+--   let (env', c) = fromSketch m a
+--   logInfo "Sketch:"
+--   logInfo ""
+--   logInfo . display . indent 2 . pretty $ sk
+--   logInfo ""
+--   let xs = runSyn (init' sk) m (mkSynState env' c)
+--   _ <- climb $ xs <&> \(x, g) -> view _1 <$> runSyn (search step' x) m g
+--   logInfo ""
 
-synth :: String -> String -> String -> RIO Application ()
-synth file sketch model = do
-  (m, sk, a) <- readFiles file sketch model
-  let (env', c) = fromSketch m a
-  logInfo "Sketch:"
-  logInfo ""
-  logInfo . display . indent 2 . pretty $ sk
-  logInfo ""
-  case runSyn (init sk) m (mkSynState env' c) of
-    Nothing -> logInfo "Something went wrong :("
-    Just (y, g) -> do
-      let syn = levels $ runSyn (search step y) m g
-      let xss = take 10 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
-      forM_ xss \(i, xs) -> do
-        logInfo $ "Step: " <> fromString (show i)
-        forM_ xs \(e, _s) -> do
-          logInfo . display . indent 2 . pretty $ e
-          -- forM_ (Map.assocs $ _s ^. holeCtxs) \(h, HoleCtx goal local) -> do
-          --   logInfo . display . indent 4 .
-          --     ((pretty h <+> "::" <+> pretty goal <+> colon) <+>) . align $
-          --     vsep (fmap pretty . catMaybes $
-          --       (\(a, b) -> Map.lookup b (_s ^. variables) <&>
-          --         ((a,) . (\(Variable _ u _ _) -> u)))
-          --           <$> Map.assocs local)
-  logInfo ""
+-- synth :: String -> String -> String -> RIO Application ()
+-- synth file sketch model = do
+--   (m, sk, a) <- readFiles file sketch model
+--   let (env', c) = fromSketch m a
+--   logInfo "Sketch:"
+--   logInfo ""
+--   logInfo . display . indent 2 . pretty $ sk
+--   logInfo ""
+--   case runSyn (init sk) m (mkSynState env' c) of
+--     Nothing -> logInfo "Something went wrong :("
+--     Just (y, g) -> do
+--       let syn = levels $ runSyn (search step y) m g
+--       let xss = take 10 . takeWhile (not . null) . zip [0 :: Int ..] $ syn
+--       forM_ xss \(i, xs) -> do
+--         logInfo $ "Step: " <> fromString (show i)
+--         forM_ xs \(e, _s) -> do
+--           logInfo . display . indent 2 . pretty $ e
+--           -- forM_ (Map.assocs $ _s ^. holeCtxs) \(h, HoleCtx goal local) -> do
+--           --   logInfo . display . indent 4 .
+--           --     ((pretty h <+> "::" <+> pretty goal <+> colon) <+>) . align $
+--           --     vsep (fmap pretty . catMaybes $
+--           --       (\(a, b) -> Map.lookup b (_s ^. variables) <&>
+--           --         ((a,) . (\(Variable _ u _ _) -> u)))
+--           --           <$> Map.assocs local)
+--   logInfo ""
 
-synth' :: String -> RIO Application ()
-synth' s = synth "prelude" s s
+-- synth' :: String -> RIO Application ()
+-- synth' s = synth "prelude" s s
 
 run :: RIO Application ()
 run = do
+  return ()
   -- TODO: move these to the test-suite, checking if all generated expressions
   -- type check or perhaps even compare them to exactly what we expect.
-  traverse_ synth'
-    [ "compose"
-    , "flip"
-    -- TODO: map as unfold?
-    -- map f = unfoldr \case [] -> Nothing; x:xs -> Just (f x, xs)
-    , "map"
-    -- TODO: add simple testing to differentiate stutter from idList
-    , "stutter"
-    -- TODO: allow ignoring variables
-    , "length"
-    -- , "append"
-    -- , "replicate"
-    -- TODO: restrict search space more, e.g. by only allowing pattern matching
-    -- on variables
-    -- , "compareNat"
-    -- , "takeWhile"
-    ]
+  -- traverse_ synth'
+  --   [ "compose"
+  --   , "flip"
+  --   -- TODO: map as unfold?
+  --   -- map f = unfoldr \case [] -> Nothing; x:xs -> Just (f x, xs)
+  --   , "map"
+  --   -- TODO: add simple testing to differentiate stutter from idList
+  --   , "stutter"
+  --   -- TODO: allow ignoring variables
+  --   , "length"
+  --   -- , "append"
+  --   -- , "replicate"
+  --   -- TODO: restrict search space more, e.g. by only allowing pattern matching
+  --   -- on variables
+  --   -- , "compareNat"
+  --   -- , "takeWhile"
+  --   ]
   -- runSyn' "map_pointfree" PointFree
-  interactive "prelude" "length" "length"
+  -- interactive "prelude" "length" "length"

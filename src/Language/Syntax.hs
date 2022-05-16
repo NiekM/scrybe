@@ -412,11 +412,11 @@ newtype Unit = Unit ()
 data HoleCtx = HoleCtx Type (Map Var Type)
   deriving (Eq, Ord, Show)
 
-goal :: Lens' HoleCtx Type
-goal = lens (\(HoleCtx t _) -> t) \(HoleCtx _ vs) t -> HoleCtx t vs
+goalType :: Lens' HoleCtx Type
+goalType = lens (\(HoleCtx t _) -> t) \(HoleCtx _ vs) t -> HoleCtx t vs
 
-local :: Lens' HoleCtx (Map Var Type)
-local = lens (\(HoleCtx _ vs) -> vs) \(HoleCtx t _) vs -> HoleCtx t vs
+localEnv :: Lens' HoleCtx (Map Var Type)
+localEnv = lens (\(HoleCtx _ vs) -> vs) \(HoleCtx t _) vs -> HoleCtx t vs
 
 class HasCtxs a where
   holeCtxs :: Lens' a (Map Hole HoleCtx)

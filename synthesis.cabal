@@ -29,8 +29,6 @@ library
       Debug
       Import
       Language
-      Language.Concepts
-      Language.Eval
       Language.Identifiers
       Language.Live
       Language.Parser

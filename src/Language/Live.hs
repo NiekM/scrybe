@@ -204,6 +204,8 @@ uneval = curry \case
     uneval (Scoped (Map.insert f r m) e) ex
   _ -> mzero
 
+-- TODO: simplify these helper functions
+
 unevalEx :: MonadUneval m => Result -> Ex -> m Uneval
 unevalEx r ex = mfold . mergeUneval =<< for (fromEx ex) (uneval r)
 
@@ -219,10 +221,14 @@ unevalsFill hf cs = do
     return $ Map.singleton (Scope s') x
   mfold $ mergeMaps mergeEx bar
 
+-- TODO: test or prove that this is the correct unevaluation equivalent of
+-- resumption, i.e. that resuming and then unevaluation is equivalent to
+-- unevaluating and then "un-resuming".
 resumeUneval :: MonadUneval m => Hole -> Term Hole -> Uneval -> m Uneval
 resumeUneval h e un = do
   c <- mfold $ Map.lookup h un
-  x <- unevals e c
+  -- TODO: should we call unevalsFill on c?
+  x <- unevalsFill (Map.singleton h e) c >>= unevals e
   y <- for (Map.delete h un) $ unevalsFill $ Map.singleton h e
   mfold $ mergeUneval [x, y]
 

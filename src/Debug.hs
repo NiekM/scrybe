@@ -7,7 +7,7 @@ module Debug where
 
 import Import
 import Language
-import Synthesis
+-- import Synthesis
 import qualified RIO.Text as T
 import System.IO.Unsafe
 import Prettyprinter
@@ -26,9 +26,6 @@ prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
     Just x -> x
     Nothing -> error "Could not parse prelude"
 
-synSt :: SynState
-synSt = mkSynState (fromModule prelude) mempty
-
 instance (Pretty a, Pretty b) => Pretty (Map a b) where
   pretty m = align . Prettyprinter.list $ Map.assocs m <&> \(k, x) ->
     pretty k <> ":" <+> align (pretty x)
@@ -45,11 +42,8 @@ instance Pretty Ex where
 tryTC :: Monad m => RWST Mod () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
 
-trySyn' :: Monad m => Mod -> RWST Mod () SynState m a -> m a
-trySyn' m x = evalSyn x m (mkSynState (fromModule m) mempty)
-
-trySyn :: Monad m => RWST Mod () SynState m a -> m a
-trySyn x = evalSyn x prelude synSt
+tryUneval :: Monad m => RWST Mod () () m a -> m a
+tryUneval m = fst <$> evalRWST m prelude ()
 
 eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude
@@ -57,10 +51,14 @@ eval' e = runReader (eval mempty e) prelude
 uneval' :: Result -> Example -> [Uneval]
 uneval' r e = tryTC (uneval r e)
 
+test :: Term Hole -> Example -> [(Hole, Term Hole)] -> Doc ann
+test sk ex rs = pretty . tryUneval @[] $
+  foldl' (\r (h, e) -> r >>= resumeUneval h e) (uneval (eval' sk) ex) rs
+
 {- NOTE: interesting example, try out different (orders of) hole fillings
 
 >>> xs = uneval (eval' "map (\\x -> {0}) {1}") "[1,2]"
->>> pretty . trySyn @[] $ xs
+>>> pretty . tryUneval @[] $ xs
   >>= resumeUneval 0 "Succ {2}"
   >>= resumeUneval 1 "[0, 1]"
   >>= resumeUneval 2 "x"
