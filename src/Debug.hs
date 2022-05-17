@@ -7,7 +7,7 @@ module Debug where
 
 import Import
 import Language
--- import Synthesis
+import Synthesis
 import qualified RIO.Text as T
 import System.IO.Unsafe
 import Prettyprinter
@@ -39,6 +39,13 @@ instance Pretty HoleCtx where
 instance Pretty Ex where
   pretty = pretty . fromEx
 
+instance Pretty SynState where
+  pretty SynState { _typeCtx, _evalCtx, _filled } = align $ vsep
+    [ "Type contexts:", pretty _typeCtx
+    , "", "Evaluation contexts:", pretty _evalCtx
+    , "", "Hole fillings:", pretty _filled
+    ]
+
 tryTC :: Monad m => RWST Mod () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
 
@@ -51,10 +58,10 @@ eval' e = runReader (eval mempty e) prelude
 uneval' :: Result -> Example -> [Uneval]
 uneval' r e = tryTC (uneval r e)
 
-readUneval :: String -> [Uneval]
+readUneval :: String -> [SynState]
 readUneval s = let file = unsafePerformIO $ readFileUtf8 s in
   case lexParse parser file of
-    Just x -> tryTC $ unevalProgram x
+    Just x -> tryTC $ mkSynState x
     Nothing -> error "Could not parse file"
 
 test :: Term Hole -> Example -> [(Hole, Term Hole)] -> Doc ann

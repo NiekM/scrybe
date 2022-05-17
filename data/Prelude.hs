@@ -17,11 +17,6 @@ flip f x y = f y x
 compose :: (b -> c) -> (a -> b) -> (a -> c)
 compose f g x = f (g x)
 
--- || Recursion
-
-rec :: ((a -> b) -> (a -> b)) -> a -> b
-rec = fix
-
 -- || Booleans
 
 data Bool = False | True
@@ -82,6 +77,7 @@ succ = Succ
 elimNat :: a -> (Nat -> a) -> Nat -> a
 elimNat z s n = case n of Zero -> z; Succ m -> s m
 
+-- TODO: automatically introduce fixpoint for global bindings
 foldNat :: a -> (a -> a) -> Nat -> a
 foldNat z s = fix \go n -> case n of Zero -> z; Succ m -> s (go m)
 

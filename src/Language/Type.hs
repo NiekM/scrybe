@@ -65,8 +65,7 @@ combine th1 th2 = foldr (\y z -> z >>= go y)
         th' <- unify t u
         combine th' th
 
-type TCMonad m =
-  (FreshFree m, FreshHole m, MonadFail m, MonadReader Mod m)
+type TCMonad m = (FreshFree m, MonadFail m, MonadReader Mod m)
 
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a cataExprM?
@@ -122,10 +121,9 @@ infer expr = do
       t <- Var <$> fresh
       return (Fix `Annot` Arr (Arr t t) t, mempty)
 
-  let substCtx (HoleCtx g vs) = HoleCtx (subst th g) (subst th <$> vs)
-  return (over holesAnn substCtx $ mapAnn (subst th) e, th)
+  return (over holesAnn (substCtx th) $ mapAnn (subst th) e, th)
 
-infer' :: TCMonad m => Term Unit ->
+infer' :: (TCMonad m, FreshHole m) => Term Unit ->
   m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 infer' e = do
   (x, th) <- infer e
@@ -140,10 +138,9 @@ check e p = do
   (e'@(Annot _ u), th1) <- infer e
   th2 <- unify (freeze p) u
   let th3 = compose th2 th1
-  let substCtx (HoleCtx g vs) = HoleCtx (subst th3 g) (subst th3 <$> vs)
-  return (over holesAnn substCtx $ mapAnn (subst th3) e', th3)
+  return (over holesAnn (substCtx th3) $ mapAnn (subst th3) e', th3)
 
-check' :: TCMonad m => Term Unit -> Poly ->
+check' :: (TCMonad m, FreshHole m) => Term Unit -> Poly ->
   m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 check' e t = do
   (x, th) <- check e t

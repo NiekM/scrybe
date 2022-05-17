@@ -7,7 +7,8 @@ import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 
-type RefMonad s m = (TCMonad m, FreshVar m, MonadState s m, HasCtxs s)
+type RefMonad s m =
+  (TCMonad m, FreshHole m, FreshVar m, MonadState s m, HasCtxs s)
 
 ---- TODO: does init make sense? Maybe we should just have a module as input
 ---- and compute the GenState
@@ -21,15 +22,36 @@ data SynState = SynState
   { _typeCtx :: Map Hole HoleCtx
   , _evalCtx :: Map Hole Constraint
   , _filled  :: Map Hole (Term Hole)
-  , _freshSt :: FreshState
   }
 
 makeLenses ''SynState
 
 instance HasCtxs SynState where
   holeCtxs = typeCtx
-instance HasFreshState SynState where
-  freshState = freshSt
+
+mkSynState :: (TCMonad m, MonadPlus m, FreshHole m) => Defs Unit -> m SynState
+mkSynState defs = do
+  -- TODO: handle imports
+  let addBinding (MkBinding a x) = Let a (App Fix (Lam a x))
+  (x, _, ctx) <- infer' . foldr addBinding (Hole (Unit ())) . bindings $ defs
+  eval mempty (strip x) >>= \case
+    Scoped m (Hole h) -> do
+      _ctx <- mfold $ Map.assocs . view localEnv <$> Map.lookup h ctx
+      let ts = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
+      th <- unifies $ _ctx & mapMaybe \(v, t) -> do
+        Poly _ u <- Map.lookup v ts
+        return (u, t)
+      let _typeCtx = substCtx th <$> Map.delete h ctx
+      as <- for (asserts defs) \(MkAssert a ex) -> do
+        r <- eval m (Var a)
+        uneval r ex
+      _evalCtx <- mfold $ mergeUneval as
+      return SynState
+        { _typeCtx
+        , _evalCtx
+        , _filled  = mempty
+        }
+    _ -> error "Should never happen"
 
 type SynMonad m = (FreshVar m, FreshHole m,
   MonadState SynState m, MonadReader Mod m, MonadPlus m)
@@ -57,7 +79,6 @@ step = do
       -- If unevaluation resumption succeeds, return the valid hole filling.
       return expr'
     _ -> mzero
-
 
 -- OLD {{{
 -- Synthesis state {{{

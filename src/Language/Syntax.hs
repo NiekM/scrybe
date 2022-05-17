@@ -421,6 +421,9 @@ localEnv = lens (\(HoleCtx _ vs) -> vs) \(HoleCtx t _) vs -> HoleCtx t vs
 class HasCtxs a where
   holeCtxs :: Lens' a (Map Hole HoleCtx)
 
+substCtx :: Map Free Type -> HoleCtx -> HoleCtx
+substCtx th = over goalType (subst th) . over localEnv (subst th <$>)
+
 data Sketch = Sketch Var Poly (Term Unit)
   deriving (Eq, Ord, Show)
 
@@ -506,9 +509,9 @@ arities :: Mod -> Map Ctr Int
 arities = fmap length . Map.fromList . concatMap snd . toList . data_
 
 ctrTs :: Mod -> Map Ctr Poly
-ctrTs = Map.mapWithKey go . Map.fromList
-  . concatMap (\(as, cs) -> fmap (second (as,)) cs) . toList . data_
-  where go t (as, ts) = Poly as (arrs $ ts ++ [Ctr t `apps` fmap Var as])
+ctrTs = fmap go . Map.fromList . concatMap
+  (\(t, (as, cs)) -> fmap (second (t, as,)) cs) . Map.assocs . data_
+  where go (t, as, ts) = Poly as (arrs $ ts ++ [Ctr t `apps` fmap Var as])
 
 -- }}}
 
