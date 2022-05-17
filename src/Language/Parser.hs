@@ -19,8 +19,7 @@ data Lexeme
   | Separator Text
   | Bracket Bracket
   | Literal Int
-  | Newline
-  | Indent Int
+  | Newline Int
   deriving (Eq, Ord, Show, Read)
 
 type Bracket = (Shape, Position)
@@ -81,8 +80,7 @@ lex = (optional comment *>) . many . choice $ fmap (L.lexeme sc)
   , Bracket <$> bracket
   , Literal <$> literal
   ] ++ fmap (L.lexeme sc')
-  [ Newline <$ eol
-  , Indent . length <$> some (char ' ')
+  [ Newline . length <$ eol <*> many (char ' ')
   ]
 
 type Parser = Parsec Void [Lexeme]
@@ -159,10 +157,24 @@ parseList p = list <$> brackets Square (alt p (sep ","))
 parseBranch :: Parse h => Parser (Ctr, Term h)
 parseBranch = (,) <$> parser <*> (lams <$> many parser <* op "->" <*> parser)
 
+indent :: Parser Int
+indent = flip token Set.empty \case
+  Newline n -> Just n
+  _ -> Nothing
+
+parseBranches :: Parse h => Parser [(Ctr, Term h)]
+parseBranches = choice
+  [ do
+    n <- indent
+    guard $ n > 0
+    alt parseBranch (single (Newline n))
+  , alt parseBranch (sep ";")
+  ]
+
 instance Parse h => ParseAtom ('Term h) where
   parseAtom = choice
     [ lams <$ op "\\" <*> some parser <* op "->" <*> parser
-    , Case <$ key "case" <*> parser <* key "of" <*> alt parseBranch (sep ";")
+    , Case <$ key "case" <*> parser <* key "of" <*> parseBranches
     , Let <$ key "let" <*> parser <*>
       (lams <$> many parser <* op "=" <*> parser) <* key "in" <*> parser
     , Hole <$> brackets Curly parser
@@ -254,7 +266,7 @@ instance Parse a => Parse (Def a) where
     ]
 
 instance Parse a => Parse (Defs a) where
-  parser = Defs . catMaybes <$> alt (optional parser) (single Newline)
+  parser = Defs . catMaybes <$> alt (optional parser) (single $ Newline 0)
 
 instance Parse Mod where
   parser = do

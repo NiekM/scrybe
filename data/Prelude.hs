@@ -30,7 +30,9 @@ true :: Bool
 true = True
 
 elimBool :: a -> a -> Bool -> a
-elimBool f t b = case b of False -> f; True -> t
+elimBool f t b = case b of
+  False -> f
+  True -> t
 
 not :: Bool -> Bool
 not b = elimBool True False b
@@ -49,7 +51,10 @@ gt :: Ord
 gt = GT
 
 elimOrd :: a -> a -> a -> Ord -> a
-elimOrd l e g o = case o of LT -> l; EQ -> e; GT -> g
+elimOrd l e g o = case o of
+  LT -> l
+  EQ -> e
+  GT -> g
 
 -- || Maybe
 
@@ -62,7 +67,9 @@ just :: a -> Maybe a
 just = Just
 
 elimMaybe :: b -> (a -> b) -> Maybe a -> b
-elimMaybe n j m = case m of Nothing -> n; Just x -> j x
+elimMaybe n j m = case m of
+  Nothing -> n
+  Just x -> j x
 
 -- || Naturals
 
@@ -75,14 +82,20 @@ succ :: Nat -> Nat
 succ = Succ
 
 elimNat :: a -> (Nat -> a) -> Nat -> a
-elimNat z s n = case n of Zero -> z; Succ m -> s m
+elimNat z s n = case n of
+  Zero -> z
+  Succ m -> s m
 
 -- TODO: automatically introduce fixpoint for global bindings
 foldNat :: a -> (a -> a) -> Nat -> a
-foldNat z s = fix \go n -> case n of Zero -> z; Succ m -> s (go m)
+foldNat z s = fix \go n -> case n of
+  Zero -> z
+  Succ m -> s (go m)
 
 unfoldNat :: (a -> Maybe a) -> a -> Nat
-unfoldNat f x = case f x of Nothing -> Zero; Just y -> Succ (unfoldNat f y)
+unfoldNat f x = case f x of
+  Nothing -> Zero
+  Just y -> Succ (unfoldNat f y)
 
 plus :: Nat -> Nat -> Nat
 plus n = foldNat n Succ
@@ -104,16 +117,22 @@ cons :: a -> List a -> List a
 cons = Cons
 
 elimList :: a -> (b -> List b -> a) -> List b -> a
-elimList n c l = case l of Nil -> n; Cons h t -> c h t
+elimList n c l = case l of
+  Nil -> n
+  Cons h t -> c h t
 
 foldList :: b -> (a -> b -> b) -> List a -> b
-foldList n c = fix \go l -> case l of Nil -> n; Cons h t -> c h (go t)
+foldList n c = fix \go l -> case l of
+  Nil -> n
+  Cons h t -> c h (go t)
 
 foldr :: (a -> b -> b) -> b -> List a -> b
 foldr f e = foldList e f
 
 paraList :: b -> (a -> List a -> b -> b) -> List a -> b
-paraList n c = fix \go l -> case l of Nil -> n; Cons h t -> c h t (go t)
+paraList n c = fix \go l -> case l of
+  Nil -> n
+  Cons h t -> c h t (go t)
 
 map :: (a -> b) -> List a -> List b
 map f = foldList [] (\x -> Cons (f x))
@@ -131,7 +150,10 @@ product :: List Nat -> Nat
 product = foldList 1 mult
 
 insert :: Nat -> List Nat -> List Nat
-insert n = paraList [n] \x xs r -> case compareNat n x of LT -> Cons n (Cons x xs); EQ -> Cons n (Cons x xs); GT -> Cons x r
+insert n = paraList [n] \x xs r -> case compareNat n x of
+  LT -> Cons n (Cons x xs)
+  EQ -> Cons n (Cons x xs)
+  GT -> Cons x r
 
 sort :: List Nat -> List Nat
 sort = foldList [] insert
@@ -175,5 +197,6 @@ right :: b -> Either a b
 right = Right
 
 elimEither :: (a -> c) -> (b -> c) -> Either a b -> c
-elimEither l r e = case e of Left x -> l x; Right y -> r y
-
+elimEither l r e = case e of
+  Left x -> l x
+  Right y -> r y
