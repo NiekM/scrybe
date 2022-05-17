@@ -20,6 +20,7 @@ data Lexeme
   | Bracket Bracket
   | Literal Int
   | Newline
+  | Indent Int
   deriving (Eq, Ord, Show, Read)
 
 type Bracket = (Shape, Position)
@@ -32,6 +33,9 @@ data Position = Open | Close
 
 sc :: Lexer ()
 sc = L.space hspace1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
+
+sc' :: Lexer ()
+sc' = L.space mzero (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
 
 comment :: Lexer ()
 comment = L.skipLineComment "--" <|> L.skipBlockComment "{-" "-}"
@@ -69,14 +73,16 @@ literal :: Lexer Int
 literal = read <$> some digitChar
 
 lex :: Lexer [Lexeme]
-lex = (optional comment *>) . many . choice . fmap (L.lexeme sc) $
+lex = (optional comment *>) . many . choice $ fmap (L.lexeme sc)
   [ identOrKeyword
   , Constructor <$> ident upperChar
   , Operator <$> operator
   , Separator <$> separator
   , Bracket <$> bracket
   , Literal <$> literal
-  , Newline <$ eol
+  ] ++ fmap (L.lexeme sc')
+  [ Newline <$ eol
+  , Indent . length <$> some (char ' ')
   ]
 
 type Parser = Parsec Void [Lexeme]

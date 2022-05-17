@@ -5,9 +5,11 @@ import Test.Hspec
 import Language.Syntax
 import Language.Parser
 import Language.Type
+import Language.Live
 import Prettyprinter
 import Prettyprinter.Render.Text
 import qualified RIO.Text as Text
+import qualified RIO.Map as Map
 
 roundtrip :: (Pretty a, Parse a, Eq a) => a -> Bool
 roundtrip x =
@@ -24,9 +26,13 @@ spec = do
     case lexParse parser f of
       Nothing -> it "parses" False
       Just x -> do
-        let y = second (first (over holes absurd)) <$> functions x
-        forM_ y \(MkVar v, (e, t)) -> describe (Text.unpack v) do
-          it "type checks" . isJust $ evalTC (check e t) x
+        let es = Map.fromList $ bindings x <&>
+              \(MkBinding a e) -> (a, over holes absurd e)
+        let ts = Map.fromList $ signatures x <&> \(MkSignature a t) -> (a, t)
+        let y = Map.assocs $ Map.intersectionWith (,) es ts
+        let m = fromDefs x
+        forM_ y \(v, (e, t)) -> describe (show (pretty v)) do
+          it "type checks" . isJust $ evalTC (check e t) m
           it "type roundtrips" $ roundtrip t
           it "body roundtrips" $ roundtrip e
 
