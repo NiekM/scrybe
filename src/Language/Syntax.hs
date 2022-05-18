@@ -419,7 +419,10 @@ localEnv :: Lens' HoleCtx (Map Var Type)
 localEnv = lens (\(HoleCtx _ vs) -> vs) \(HoleCtx t _) vs -> HoleCtx t vs
 
 class HasCtxs a where
-  holeCtxs :: Lens' a (Map Hole HoleCtx)
+  contexts :: Lens' a (Map Hole HoleCtx)
+
+class HasFill a where
+  fillings :: Lens' a (Map Hole (Term Hole))
 
 substCtx :: Map Free Type -> HoleCtx -> HoleCtx
 substCtx th = over goalType (subst th) . over localEnv (subst th <$>)
@@ -548,7 +551,7 @@ number = traverse \x -> (,x) <$> fresh
 
 -- | Retrieve the context of a hole.
 getCtx :: (MonadFail m, MonadState s m, HasCtxs s) => Hole -> m HoleCtx
-getCtx h = use holeCtxs >>=
+getCtx h = use contexts >>=
   maybe (fail $ "Missing holeCtx for hole " <> show h) return . Map.lookup h
 
 -- Eta expansion {{{
@@ -568,7 +571,7 @@ instance (MonadFail m, FreshVar m, MonadState s m, HasCtxs s)
   => ExpandHole Hole m where
   expandHole h = do
     (xs, ctx') <- getCtx h >>= expandHole
-    modifying holeCtxs $ Map.insert h ctx'
+    modifying contexts $ Map.insert h ctx'
     return (xs, h)
 
 etaExpand :: (Monad m, ExpandHole h m) => Term h -> m (Term h)

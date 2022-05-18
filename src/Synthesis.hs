@@ -15,70 +15,81 @@ type RefMonad s m =
 init :: RefMonad s m => Sketch -> m (Term Hole)
 init (Sketch _ t e) = do
   (expr, _, ctx) <- check' e t
-  assign holeCtxs ctx
+  assign contexts ctx
   etaExpand $ strip expr
 
 data SynState = SynState
-  { _typeCtx :: Map Hole HoleCtx
-  , _evalCtx :: Map Hole Constraint
-  , _filled  :: Map Hole (Term Hole)
+  { _synContexts    :: Map Hole HoleCtx
+  , _synConstraints :: Map Hole Constraint
+  , _synFillings    :: Map Hole (Term Hole)
+  , _synFresh       :: FreshState
   }
 
 makeLenses ''SynState
 
-instance HasCtxs SynState where
-  holeCtxs = typeCtx
+emptySynState :: SynState
+emptySynState = SynState mempty mempty mempty mkFreshState
 
-mkSynState :: (TCMonad m, MonadPlus m, FreshHole m) => Defs Unit -> m SynState
-mkSynState defs = do
+instance HasCtxs SynState where contexts = synContexts
+instance HasCstr SynState where constraints = synConstraints
+instance HasFill SynState where fillings = synFillings
+instance HasFreshState SynState where freshState = synFresh
+
+runSyn :: Monad m => RWST Mod () SynState m a -> Mod -> m (a, SynState)
+runSyn tc m = do
+  (x, s, _) <- runRWST tc m emptySynState
+  return (x, s)
+
+type SynMonad s m = (FreshVar m, FreshHole m, TCMonad m, MonadPlus m
+  , MonadState s m, HasCtxs s, HasCstr s, HasFill s)
+
+initSyn :: SynMonad s m => Defs Unit -> m ()
+initSyn defs = do
   -- TODO: handle imports
   let addBinding (MkBinding a x) = Let a (App Fix (Lam a x))
   (x, _, ctx) <- infer' . foldr addBinding (Hole (Unit ())) . bindings $ defs
   eval mempty (strip x) >>= \case
     Scoped m (Hole h) -> do
-      _ctx <- mfold $ Map.assocs . view localEnv <$> Map.lookup h ctx
+      c <- mfold $ Map.assocs . view localEnv <$> Map.lookup h ctx
       let ts = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
-      th <- unifies $ _ctx & mapMaybe \(v, t) -> do
+      th <- unifies $ c & mapMaybe \(v, t) -> do
         Poly _ u <- Map.lookup v ts
         return (u, t)
-      let _typeCtx = substCtx th <$> Map.delete h ctx
+      assign contexts $ substCtx th <$> Map.delete h ctx
       as <- for (asserts defs) \(MkAssert a ex) -> do
         r <- eval m (Var a)
         uneval r ex
-      _evalCtx <- mfold $ mergeUneval as
-      return SynState
-        { _typeCtx
-        , _evalCtx
-        , _filled  = mempty
-        }
+      assign constraints =<< mfold (mergeUneval as)
     _ -> error "Should never happen"
 
-type SynMonad m = (FreshVar m, FreshHole m,
-  MonadState SynState m, MonadReader Mod m, MonadPlus m)
+tryFilling :: SynMonad s m => Hole -> Term HoleCtx -> m (Term Hole)
+tryFilling h e = do
+  -- Eta expand expression and compute new type contexts.
+  expr <- etaExpand e >>= traverseOf holes \ctx -> (,ctx) <$> fresh
+  modifying contexts (<> Map.fromList (toListOf holes expr))
+  let expr' = over holes fst expr
+  -- Resume unevaluation by refining with a constructor applied to holes.
+  assign constraints =<< resumeUneval h expr' =<< use constraints
+  return expr'
 
-step :: SynMonad m => m (Hole, Term Hole)
+step :: SynMonad s m => m ()
 step = do
   -- Pick one hole and remove it. TODO: not just pick the first hole.
-  ((hole, HoleCtx t env), _) <- mfold . Map.minViewWithKey =<< use typeCtx
-  modifying typeCtx $ Map.delete hole
-  (hole,) <$> case t of
+  ((hole, HoleCtx t env), _) <- mfold . Map.minViewWithKey =<< use contexts
+  modifying contexts $ Map.delete hole
+  e <- join $ mfold
     -- For concrete types, try the corresponding constructors.
-    Apps (Ctr d) ts -> do
-      (as, cs) <- mfold . Map.lookup d . data_ =<< ask
-      -- Pick a constructor.
-      (c, us) <- mfold cs
-      let th = Map.fromList $ zip as ts
-      let ctxs = us <&> \u -> HoleCtx (subst th u) env
-      -- Eta expand expression and compute new type contexts.
-      expr <- etaExpand (apps (Ctr c) (Hole <$> ctxs))
-        >>= traverseOf holes \ctx -> (,ctx) <$> fresh
-      modifying typeCtx (<> Map.fromList (toListOf holes expr))
-      let expr' = over holes fst expr
-      -- Resume unevaluation by refining with a constructor applied to holes.
-      assign evalCtx =<< resumeUneval hole expr' =<< use evalCtx
-      -- If unevaluation resumption succeeds, return the valid hole filling.
-      return expr'
-    _ -> mzero
+    [ case t of
+      Apps (Ctr d) _ -> do
+        (_, cs) <- mfold . Map.lookup d . data_ =<< ask
+        (c, ts) <- mfold cs
+        return $ apps (Ctr c) (Hole (Unit ()) <$ ts)
+      _ -> mzero
+    ]
+  (hf, _) <- check e $ Poly [] t
+  expr <- tryFilling hole (strip hf)
+  modifying fillings $ Map.insert hole expr
+  return ()
 
 -- OLD {{{
 -- Synthesis state {{{

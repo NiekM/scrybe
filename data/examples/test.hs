@@ -3,8 +3,8 @@ import Prelude ()
 foo :: Nat
 foo = 3
 
-bar :: Bool -> Nat
+bar :: Nat -> Nat
 bar x = {}
 
-assert bar \False -> 5
-assert bar \True  -> 6
+assert bar \5 -> 5
+assert bar \6  -> 6

@@ -148,6 +148,9 @@ fromEx = \case
 
 type Constraint = Map Scope Ex
 
+class HasCstr a where
+  constraints :: Lens' a (Map Hole Constraint)
+
 type Uneval = Map Hole Constraint
 
 -- Live unevaluation {{{

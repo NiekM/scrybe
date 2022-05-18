@@ -40,11 +40,14 @@ instance Pretty Ex where
   pretty = pretty . fromEx
 
 instance Pretty SynState where
-  pretty SynState { _typeCtx, _evalCtx, _filled } = align $ vsep
-    [ "Type contexts:", pretty _typeCtx
-    , "", "Evaluation contexts:", pretty _evalCtx
-    , "", "Hole fillings:", pretty _filled
+  pretty st = align $ vsep
+    [ "Contexts:", pretty $ view contexts st
+    , "", "Constraints:", pretty $ view constraints st
+    , "", "Fillings:", pretty $ view fillings st
     ]
+
+trySyn :: Monad m => RWST Mod () SynState m a -> m (a, SynState)
+trySyn x = runSyn x prelude
 
 tryTC :: Monad m => RWST Mod () FreshState m a -> m a
 tryTC x = fst <$> runTC x prelude
@@ -58,10 +61,10 @@ eval' e = runReader (eval mempty e) prelude
 uneval' :: Result -> Example -> [Uneval]
 uneval' r e = tryTC (uneval r e)
 
-readUneval :: String -> [SynState]
-readUneval s = let file = unsafePerformIO $ readFileUtf8 s in
+read :: Parse a => String -> Defs a
+read s = let file = unsafePerformIO $ readFileUtf8 s in
   case lexParse parser file of
-    Just x -> tryTC $ mkSynState x
+    Just x -> x
     Nothing -> error "Could not parse file"
 
 test :: Term Hole -> Example -> [(Hole, Term Hole)] -> Doc ann
