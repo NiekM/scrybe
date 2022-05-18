@@ -69,12 +69,13 @@ type TCMonad m = (FreshFree m, MonadFail m, MonadReader Mod m)
 
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a cataExprM?
-infer :: TCMonad m => Term Unit -> m (Ann Type ('Term HoleCtx), Unify)
-infer expr = do
+infer :: TCMonad m => Map Var Type -> Term Unit ->
+  m (Ann Type ('Term HoleCtx), Unify)
+infer env expr = do
   m <- ask
   let cs = ctrTs m
   let fs = funs_ m
-  (e, th) <- (Map.empty &) $ expr & cataExpr \e loc -> case e of
+  (e, th) <- (env &) $ expr & cataExpr \e loc -> case e of
     Hole _ -> do
       g <- Var <$> fresh
       return (Hole (HoleCtx g loc) `Annot` g, Map.empty)
@@ -123,26 +124,26 @@ infer expr = do
 
   return (over holesAnn (substCtx th) $ mapAnn (subst th) e, th)
 
-infer' :: (TCMonad m, FreshHole m) => Term Unit ->
+infer' :: (TCMonad m, FreshHole m) => Map Var Type -> Term Unit ->
   m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
-infer' e = do
-  (x, th) <- infer e
+infer' env e = do
+  (x, th) <- infer env e
   y <- forOf holesAnn x \ctx -> (,ctx) <$> fresh
   return (over holesAnn fst y, th, Map.fromList $ toListOf holesAnn y)
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
-check :: TCMonad m => Term Unit -> Poly ->
+check :: TCMonad m => Map Var Type -> Term Unit -> Poly ->
   m (Ann Type ('Term HoleCtx), Unify)
-check e p = do
-  (e'@(Annot _ u), th1) <- infer e
+check env e p = do
+  (e'@(Annot _ u), th1) <- infer env e
   th2 <- unify (freeze p) u
   let th3 = compose th2 th1
   return (over holesAnn (substCtx th3) $ mapAnn (subst th3) e', th3)
 
-check' :: (TCMonad m, FreshHole m) => Term Unit -> Poly ->
+check' :: (TCMonad m, FreshHole m) => Map Var Type -> Term Unit -> Poly ->
   m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
-check' e t = do
-  (x, th) <- check e t
+check' env e t = do
+  (x, th) <- check env e t
   y <- forOf holesAnn x \ctx -> (,ctx) <$> fresh
   return (over holesAnn fst y, th, Map.fromList $ toListOf holesAnn y)

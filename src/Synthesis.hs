@@ -14,7 +14,7 @@ type RefMonad s m =
 ---- and compute the GenState
 init :: RefMonad s m => Sketch -> m (Term Hole)
 init (Sketch _ t e) = do
-  (expr, _, ctx) <- check' e t
+  (expr, _, ctx) <- check' mempty e t
   assign contexts ctx
   etaExpand $ strip expr
 
@@ -47,7 +47,8 @@ initSyn :: SynMonad s m => Defs Unit -> m ()
 initSyn defs = do
   -- TODO: handle imports
   let addBinding (MkBinding a x) = Let a (App Fix (Lam a x))
-  (x, _, ctx) <- infer' . foldr addBinding (Hole (Unit ())) . bindings $ defs
+  (x, _, ctx) <-
+    infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
   eval mempty (strip x) >>= \case
     Scoped m (Hole h) -> do
       c <- mfold $ Map.assocs . view localEnv <$> Map.lookup h ctx
@@ -86,7 +87,7 @@ step = do
         return $ apps (Ctr c) (Hole (Unit ()) <$ ts)
       _ -> mzero
     ]
-  (hf, _) <- check e $ Poly [] t
+  (hf, _) <- check env e $ Poly [] t
   expr <- tryFilling hole (strip hf)
   modifying fillings $ Map.insert hole expr
   return ()
