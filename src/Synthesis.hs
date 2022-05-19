@@ -5,19 +5,13 @@ module Synthesis where
 import Import
 import Language
 import qualified RIO.Map as Map
-import qualified RIO.Set as Set
 
 type RefMonad s m =
   (TCMonad m, FreshHole m, FreshVar m, MonadState s m, HasCtxs s)
 
----- TODO: does init make sense? Maybe we should just have a module as input
----- and compute the GenState
-init :: RefMonad s m => Sketch -> m (Term Hole)
-init (Sketch _ t e) = do
-  (expr, _, ctx) <- check' mempty e t
-  assign contexts ctx
-  etaExpand $ strip expr
-
+-- TODO: maybe we also want to keep track of a list of possible refinements
+-- e.g. [Term Unit]
+-- TODO: keep track of the current result to compute the blocking hole.
 data SynState = SynState
   { _synContexts    :: Map Hole HoleCtx
   , _synConstraints :: Map Hole Constraint
@@ -43,8 +37,8 @@ runSyn tc m = do
 type SynMonad s m = (FreshVar m, FreshHole m, TCMonad m, MonadPlus m
   , MonadState s m, HasCtxs s, HasCstr s, HasFill s)
 
-initSyn :: SynMonad s m => Defs Unit -> m ()
-initSyn defs = do
+init :: SynMonad s m => Defs Unit -> m ()
+init defs = do
   -- TODO: handle imports
   let addBinding (MkBinding a x) = Let a (App Fix (Lam a x))
   (x, _, ctx) <-
@@ -86,6 +80,15 @@ step = do
         (c, ts) <- mfold cs
         return $ apps (Ctr c) (Hole (Unit ()) <$ ts)
       _ -> mzero
+    -- TODO: make sure that recursive functions do not loop infinitely.
+    -- Try functions.
+    -- , do
+      -- (v, Args ts _) <- mfold $ Map.assocs env
+      -- return $ apps (Var v) (Hole (Unit ()) <$ ts)
+    -- Local variables.
+    , do
+      (v, Args [] _) <- mfold $ Map.assocs env
+      return $ Var v
     ]
   (hf, _) <- check env e $ Poly [] t
   expr <- tryFilling hole (strip hf)
