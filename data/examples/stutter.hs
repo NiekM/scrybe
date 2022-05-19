@@ -1,12 +1,12 @@
 import Prelude (append)
 
 repl :: Nat -> a -> List a
-repl n x = case x of
+repl = fix \repl n x -> case x of
   Zero -> {}
   Succ m -> {}
 
 stutter :: Nat -> List a -> List a
-stutter n xs = case xs of
+stutter = fix \stutter n xs -> case xs of
   Nil -> Nil
   Cons y ys -> append (repl n y) (stutter n ys)
 

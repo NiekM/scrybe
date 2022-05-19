@@ -4,7 +4,7 @@ import Import hiding (reverse)
 import Language.Syntax
 import qualified RIO.Map as Map
 
-{-# COMPLETE Scoped, App, Ctr, Fix #-}
+{-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
 pattern Scoped :: LiveEnv -> Indet -> Expr' r 'Det
 pattern Scoped m e = Hole (Annot e (Scope m))
 
@@ -21,7 +21,11 @@ indet = \case
 
 {-# COMPLETE Indet, Var, App, Ctr, Fix #-}
 pattern Indet :: Indet -> Term Hole
-pattern Indet i <- (indet -> Just i)
+pattern Indet i <- (indet -> Just i) where
+  Indet = \case
+    Hole h -> Hole h
+    Lam a x -> Lam a x
+    Elim xs -> Elim xs
 
 -- Live evaluation {{{
 
@@ -43,6 +47,13 @@ evalApp :: MonadReader Mod m => Result -> Result -> m Result
 evalApp f x = case f of
   App Fix (Scoped m (Lam g (Indet e))) ->
     evalApp (Scoped (Map.insert g f m) e) x
+  -- NOTE: this performs only a single recursive step, which is not entirely in
+  -- line with evaluation semantics but is nice for testing functions that
+  -- would loop infinitely. This also allows functions defined as a fixed point
+  -- to not use the recursive argument, which is useful for automatic insertion
+  -- of fixed points in let desugaring. Eventually this should be replaced by a
+  -- lazy form of live evaluation.
+  -- Fix | Scoped m (Lam g e) <- x -> eval (Map.insert g (App f x) m) e
   Scoped m (Lam a y) -> eval (Map.insert a x m) y
   Scoped m (Elim xs)
     | Apps (Ctr c) as <- x
@@ -71,6 +82,12 @@ resume hf = cataExprM \case
   Scoped m e -> do
     m' <- mapM (resume hf) m
     return $ Scoped m' e
+
+blocking :: Result -> Maybe Hole
+blocking = cataExpr \case
+  Scoped _ (Hole h) -> Just h
+  App f x -> f <|> x
+  _ -> Nothing
 
 -- }}}
 

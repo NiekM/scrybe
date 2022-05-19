@@ -17,6 +17,7 @@ import RIO.NonEmpty (cons, reverse)
 import Prettyprinter hiding (list)
 import qualified Prettyprinter as P
 import qualified RIO.Map as Map
+import qualified RIO.Set as Set
 
 -- Levels {{{
 
@@ -108,6 +109,7 @@ instance Leveled 'Ind where
   type Hole'    'Ind = 'Just Hole
   type HasCtr'  'Ind = 'False
   type Bind'    'Ind = 'Just Var
+  type Var'     'Ind = 'Nothing
   type HasApp'  'Ind = 'False
   type HasElim' 'Ind = 'True
 
@@ -532,6 +534,12 @@ fill :: (HasHole l h, Ord h) => Map h (Expr l) -> Expr l -> Expr l
 fill th = cataExpr \case
   Hole h | Just x <- Map.lookup h th -> x
   e -> fixExpr e
+
+freeVars :: Term h -> Set Var
+freeVars = cataExpr \case
+  Lam a x -> Set.delete a x
+  Var a -> Set.singleton a
+  x -> view rec x
 
 -- | All subexpressions, including the expression itself.
 dissect :: Expr l -> [Expr l]

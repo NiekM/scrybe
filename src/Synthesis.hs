@@ -40,7 +40,7 @@ type SynMonad s m = (FreshVar m, FreshHole m, TCMonad m, MonadPlus m
 init :: SynMonad s m => Defs Unit -> m ()
 init defs = do
   -- TODO: handle imports
-  let addBinding (MkBinding a x) = Let a (App Fix (Lam a x))
+  let addBinding (MkBinding a x) = Let a x
   (x, _, ctx) <-
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
   eval mempty (strip x) >>= \case

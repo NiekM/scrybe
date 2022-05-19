@@ -1,10 +1,9 @@
 import Prelude ()
 
 foo :: Nat
-foo = 3
+foo = 17
 
-bar :: Nat -> Nat
-bar x = {}
+bar :: Nat
+bar = {}
 
-assert bar \5 -> 5
-assert bar \6  -> 6
+assert bar 17
