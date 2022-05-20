@@ -65,6 +65,10 @@ tryFilling h e = do
   let expr' = over holes fst expr
   -- Resume unevaluation by refining with a constructor applied to holes.
   assign constraints =<< resumeUneval h expr' =<< use constraints
+  -- Make sure every hole has constraints. ('Informativeness restriction')
+  ks <- Map.keysSet <$> use constraints
+  cs <- Map.keysSet <$> use contexts
+  guard $ ks == cs
   return expr'
 
 step :: SynMonad s m => m ()
