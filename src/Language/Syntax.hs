@@ -502,21 +502,15 @@ data Mod = Mod
   { funs_ :: Map Var Poly
   , live_ :: Map Var Result
   , data_ :: Map Ctr ([Free], [(Ctr, [Type])])
+  , ctrs_ :: Map Ctr Poly
   } deriving (Eq, Ord)
 
 instance Semigroup Mod where
-  Mod a b c <> Mod d e f = Mod (a <> d) (b <> e) (c <> f)
+  Mod a c e g <> Mod b d f h =
+    Mod (a <> b) (c <> d) (e <> f) (g <> h)
 
 instance Monoid Mod where
-  mempty = Mod mempty mempty mempty
-
-arities :: Mod -> Map Ctr Int
-arities = fmap length . Map.fromList . concatMap snd . toList . data_
-
-ctrTs :: Mod -> Map Ctr Poly
-ctrTs = fmap go . Map.fromList . concatMap
-  (\(t, (as, cs)) -> fmap (second (t, as,)) cs) . Map.assocs . data_
-  where go (t, as, ts) = Poly as (arrs $ ts ++ [Ctr t `apps` fmap Var as])
+  mempty = Mod mempty mempty mempty mempty
 
 -- }}}
 

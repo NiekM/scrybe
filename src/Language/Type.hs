@@ -73,7 +73,7 @@ infer :: TCMonad m => Map Var Type -> Term Unit ->
   m (Ann Type ('Term HoleCtx), Unify)
 infer env expr = do
   m <- ask
-  let cs = ctrTs m
+  let cs = ctrs_ m
   let fs = funs_ m
   (e, th) <- (env &) $ expr & cataExpr \e loc -> case e of
     Hole _ -> do

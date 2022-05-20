@@ -102,8 +102,12 @@ fromDefs defs = foldl' fromSigs bindMod ss
     bindMod = foldl' fromBind dataMod bs
 
     fromData :: Mod -> Datatype -> Mod
-    fromData m (MkDatatype t as cs) =
-      m { data_ = Map.insert t (as, cs) (data_ m) }
+    fromData m (MkDatatype t as cs) = m
+      { data_ = Map.insert t (as, cs) (data_ m)
+      , ctrs_ = Map.union cs' (ctrs_ m)
+      } where
+        t' = apps (Ctr t) (Var <$> as)
+        cs' = Map.fromList cs <&> \ts -> Poly as $ arrs $ ts ++ [t']
 
     fromBind :: Mod -> Binding Void -> Mod
     fromBind m (MkBinding x e) =
@@ -112,8 +116,7 @@ fromDefs defs = foldl' fromSigs bindMod ss
       in m { live_ = Map.insert x r live }
 
     fromSigs :: Mod -> Signature -> Mod
-    fromSigs m (MkSignature x t) =
-      m { funs_ = Map.insert x t (funs_ m) }
+    fromSigs m (MkSignature x t) = m { funs_ = Map.insert x t (funs_ m) }
 
     (_, ss, bs, ds, _) = sepDefs defs
 
@@ -203,13 +206,13 @@ uneval = curry \case
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
     return $ Map.singleton h $ Map.singleton (Scope m) $ toEx $ lams vs ex
   (App (Prj c n) r, ex) -> do
-    cs <- arities <$> ask
-    let ar = fromMaybe (error "Oh oh") . Map.lookup c $ cs
+    cs <- ctrs_ <$> ask
+    let ar = arity . fromMaybe (error "Oh oh") . Map.lookup c $ cs
     uneval r $ apps (Ctr c) (replicate ar Top & ix (n - 1) .~ ex)
   (App (Scoped m (Elim xs)) r, ex) -> do
     (c, e) <- mfold xs
-    cs <- arities <$> ask
-    let ar = fromMaybe (error "Oh oh") $ Map.lookup c cs
+    cs <- ctrs_ <$> ask
+    let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
     scrut <- uneval r (apps (Ctr c) (replicate ar Top))
     let prjs = [App (Prj c n) r | n <- [1..ar]]
     e' <- eval m e
