@@ -37,24 +37,27 @@ runSyn tc m = do
 type SynMonad s m = (FreshVar m, FreshHole m, TCMonad m, MonadPlus m
   , MonadState s m, HasCtxs s, HasCstr s, HasFill s)
 
-init :: SynMonad s m => Defs Unit -> m ()
+init :: SynMonad s m => Defs Unit -> m (Term Hole)
 init defs = do
   -- TODO: handle imports
   let addBinding (MkBinding a x) = Let a x
   (x, _, ctx) <-
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
-  eval mempty (strip x) >>= \case
+  let ts = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
+  th <- unifies $ collect x & mapMaybe \a -> do
+    Annot (Lam v _) (Arr t _) <- Just a
+    Poly _ u <- Map.lookup v ts
+    return (u, t)
+  assign contexts $ substCtx th <$> ctx
+  y <- etaExpand (strip x)
+  eval mempty y >>= \case
     Scoped m (Hole h) -> do
-      c <- mfold $ Map.assocs . view localEnv <$> Map.lookup h ctx
-      let ts = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
-      th <- unifies $ c & mapMaybe \(v, t) -> do
-        Poly _ u <- Map.lookup v ts
-        return (u, t)
-      assign contexts $ substCtx th <$> Map.delete h ctx
+      modifying contexts $ Map.delete h
       as <- for (asserts defs) \(MkAssert a ex) -> do
         r <- eval m (Var a)
         uneval r ex
       assign constraints =<< mfold (mergeUneval as)
+      return y
     _ -> error "Should never happen"
 
 tryFilling :: SynMonad s m => Hole -> Term HoleCtx -> m (Term Hole)
