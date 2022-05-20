@@ -11,6 +11,7 @@ import Synthesis
 import qualified RIO.Text as T
 import System.IO.Unsafe
 import Prettyprinter
+import qualified RIO.List as List
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 
@@ -66,6 +67,19 @@ read s = let file = unsafePerformIO $ readFileUtf8 s in
   case lexParse parser file of
     Just x -> x
     Nothing -> error "Could not parse file"
+
+final :: SynState -> Bool
+final = null . view constraints
+
+synth :: Defs Unit -> [Map Hole (Term Hole)]
+synth d = go $ snd <$> trySyn @[] (init d)
+  where
+    go [] = []
+    go xs =
+      let (as, bs) = List.partition final xs
+          done = view fillings <$> as
+          rest = fmap (view _2) . runRWST @_ @() @_ step prelude =<< bs
+      in done ++ go rest
 
 test :: Term Hole -> Example -> [(Hole, Term Hole)] -> Doc ann
 test sk ex rs = pretty . tryUneval @[] $
