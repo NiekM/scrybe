@@ -81,7 +81,7 @@ resume hf = cataExprM \case
     , x /= Hole h -> resume hf =<< eval m x
   Scoped m e -> do
     m' <- mapM (resume hf) m
-    return $ Scoped m' e
+    return . Scoped m' $ over rec (fill hf) e
 
 blocking :: Result -> Maybe Hole
 blocking = cataExpr \case
