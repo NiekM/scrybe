@@ -1,4 +1,4 @@
-import Prelude (append)
+import Prelude
 
 repl :: Nat -> a -> List a
 repl = fix \repl n x -> case x of

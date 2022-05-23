@@ -1,4 +1,4 @@
-import Prelude ()
+import Prelude
 
 foo :: Nat
 foo = 17

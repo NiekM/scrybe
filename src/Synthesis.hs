@@ -19,12 +19,13 @@ data SynState = SynState
   , _synFresh       :: FreshState
   , _synMainCtx     :: Map Var Result
   , _synExamples    :: [(Var, Example)]
+  , _synWeights     :: Map Var Int
   }
 
 makeLenses ''SynState
 
 emptySynState :: SynState
-emptySynState = SynState mempty mempty mempty mkFreshState mempty []
+emptySynState = SynState mempty mempty mempty mkFreshState mempty [] mempty
 
 instance HasCtxs SynState where contexts = synContexts
 instance HasCstr SynState where constraints = synConstraints
@@ -35,6 +36,8 @@ class    HasMainCtx a        where mainCtx :: Lens' a (Map Var Result)
 instance HasMainCtx SynState where mainCtx = synMainCtx
 class    HasExamples a        where examples :: Lens' a [(Var, Example)]
 instance HasExamples SynState where examples = synExamples
+class    HasWeights a        where weights :: Lens' a (Map Var Int)
+instance HasWeights SynState where weights = synWeights
 
 runSyn :: Monad m => RWST Mod () SynState m a -> Mod -> m (a, SynState)
 runSyn tc m = do
@@ -43,12 +46,14 @@ runSyn tc m = do
 
 type SynMonad s m =
   ( FreshVar m, FreshHole m, TCMonad m, MonadPlus m, MonadState s m
-  , HasCtxs s, HasCstr s, HasFill s, HasMainCtx s, HasExamples s
+  , HasCtxs s, HasCstr s, HasFill s, HasMainCtx s, HasExamples s, HasWeights s
   )
 
 init :: SynMonad s m => Defs Unit -> m (Term Hole)
 init defs = do
-  -- TODO: handle imports
+  let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
+  -- TODO: determine weights based on something
+  assign weights $ Map.fromList ((,1) <$> ws)
   let addBinding (MkBinding a x) = Let a x
   (x, _, ctx) <-
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
@@ -114,6 +119,13 @@ step = do
     -- For local variables, introduce a hole for every argument.
     , do
       (v, Args ts _) <- mfold $ Map.assocs env
+      return $ apps (Var v) (Hole (Unit ()) <$ ts)
+    -- Global variables are handled like local variables, but only if they are
+    -- explicitly imported.
+    , do
+      ps <- funs_ <$> ask
+      ws <- Map.keysSet <$> use weights
+      (v, Poly _ (Args ts _)) <- mfold $ Map.assocs $ Map.restrictKeys ps ws
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     ]
   (hf, _) <- check env e $ Poly [] t
