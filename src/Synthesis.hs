@@ -17,25 +17,34 @@ data SynState = SynState
   , _synConstraints :: Map Hole Constraint
   , _synFillings    :: Map Hole (Term Hole)
   , _synFresh       :: FreshState
+  , _synMainCtx     :: Map Var Result
+  , _synExamples    :: [(Var, Example)]
   }
 
 makeLenses ''SynState
 
 emptySynState :: SynState
-emptySynState = SynState mempty mempty mempty mkFreshState
+emptySynState = SynState mempty mempty mempty mkFreshState mempty []
 
 instance HasCtxs SynState where contexts = synContexts
 instance HasCstr SynState where constraints = synConstraints
 instance HasFill SynState where fillings = synFillings
 instance HasFreshState SynState where freshState = synFresh
 
+class    HasMainCtx a        where mainCtx :: Lens' a (Map Var Result)
+instance HasMainCtx SynState where mainCtx = synMainCtx
+class    HasExamples a        where examples :: Lens' a [(Var, Example)]
+instance HasExamples SynState where examples = synExamples
+
 runSyn :: Monad m => RWST Mod () SynState m a -> Mod -> m (a, SynState)
 runSyn tc m = do
   (x, s, _) <- runRWST tc m emptySynState
   return (x, s)
 
-type SynMonad s m = (FreshVar m, FreshHole m, TCMonad m, MonadPlus m
-  , MonadState s m, HasCtxs s, HasCstr s, HasFill s)
+type SynMonad s m =
+  ( FreshVar m, FreshHole m, TCMonad m, MonadPlus m, MonadState s m
+  , HasCtxs s, HasCstr s, HasFill s, HasMainCtx s, HasExamples s
+  )
 
 init :: SynMonad s m => Defs Unit -> m (Term Hole)
 init defs = do
@@ -52,8 +61,11 @@ init defs = do
   y <- etaExpand (strip x)
   eval mempty y >>= \case
     Scoped m (Hole h) -> do
+      assign mainCtx m
       modifying contexts $ Map.delete h
-      as <- for (asserts defs) \(MkAssert a ex) -> do
+      let xs = asserts defs <&> \(MkAssert a ex) -> (a, ex)
+      assign examples xs
+      as <- for xs \(a, ex) -> do
         r <- eval m (Var a)
         uneval r ex
       assign constraints =<< mfold (mergeUneval as)
@@ -68,16 +80,27 @@ tryFilling h e = do
   let expr' = over holes fst expr
   -- Resume unevaluation by refining with a constructor applied to holes.
   assign constraints =<< resumeUneval h expr' =<< use constraints
+  assign mainCtx =<< traverse (resume $ Map.singleton h expr') =<< use mainCtx
   -- Make sure every hole has constraints. ('Informativeness restriction')
   ks <- Map.keysSet <$> use constraints
   cs <- Map.keysSet <$> use contexts
   guard $ ks == cs
   return expr'
 
+computeBlocking :: MonadReader Mod m =>
+  Map Var Result -> Var -> Example -> m (Maybe Hole)
+computeBlocking env a (Lams vs _) = do
+  v <- eval env $ Var a
+  r <- resume mempty $ apps v (upcast <$> vs)
+  return $ blocking r
+
 step :: SynMonad s m => m ()
 step = do
   -- Pick one hole and remove it. TODO: not just pick the first hole.
-  ((hole, HoleCtx t env), _) <- mfold . Map.minViewWithKey =<< use contexts
+  ctx <- use mainCtx
+  hs <- use examples >>= mapM (uncurry $ computeBlocking ctx)
+  hole <- mfold $ foldr (<|>) Nothing hs
+  HoleCtx t env <- mfold . Map.lookup hole =<< use contexts
   modifying contexts $ Map.delete hole
   e <- join $ mfold
     -- For concrete types, try the corresponding constructors.
@@ -88,14 +111,10 @@ step = do
         return $ apps (Ctr c) (Hole (Unit ()) <$ ts)
       _ -> mzero
     -- TODO: make sure that recursive functions do not loop infinitely.
-    -- Try functions.
-    -- , do
-      -- (v, Args ts _) <- mfold $ Map.assocs env
-      -- return $ apps (Var v) (Hole (Unit ()) <$ ts)
-    -- Local variables.
+    -- For local variables, introduce a hole for every argument.
     , do
-      (v, Args [] _) <- mfold $ Map.assocs env
-      return $ Var v
+      (v, Args ts _) <- mfold $ Map.assocs env
+      return $ apps (Var v) (Hole (Unit ()) <$ ts)
     ]
   (hf, _) <- check env e $ Poly [] t
   expr <- tryFilling hole (strip hf)
