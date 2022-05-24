@@ -69,7 +69,7 @@ read s = let file = unsafePerformIO $ readFileUtf8 s in
     Nothing -> error "Could not parse file"
 
 final :: SynState -> Bool
-final = null . view constraints
+final = null . view contexts
 
 synth :: Defs Unit -> [Map Hole (Term Hole)]
 synth d = go $ snd <$> trySyn @[] (init d)

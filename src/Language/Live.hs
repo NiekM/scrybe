@@ -169,7 +169,7 @@ fromEx = \case
 type Constraint = Map Scope Ex
 
 class HasCstr a where
-  constraints :: Lens' a (Map Hole Constraint)
+  constraints :: Lens' a [Uneval]
 
 type Uneval = Map Hole Constraint
 

@@ -1,9 +1,7 @@
--- NOTE: synthesis takes too long if foldList is explicitly in scope
--- import Prelude (foldList)
+import Prelude (foldList)
 
 length :: List a -> Nat
--- length xs = {}
-length xs = foldList {} ({}) {}
+length = {}
 
 assert length \[] -> 0
 assert length \[3,3] -> 2

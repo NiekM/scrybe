@@ -14,7 +14,7 @@ type RefMonad s m =
 -- TODO: keep track of the current result to compute the blocking hole.
 data SynState = SynState
   { _synContexts    :: Map Hole HoleCtx
-  , _synConstraints :: Map Hole Constraint
+  , _synConstraints :: [Uneval]
   , _synFillings    :: Map Hole (Term Hole)
   , _synFresh       :: FreshState
   , _synMainCtx     :: Map Var Result
@@ -49,6 +49,14 @@ type SynMonad s m =
   , HasCtxs s, HasCstr s, HasFill s, HasMainCtx s, HasExamples s, HasWeights s
   )
 
+-- TODO: figure out why the unevaluation of 'foldList {} (\x r -> r) {}' onto
+-- some examples, like '\[] -> 0', diverges.
+-- NOTE: it seems to keep trying to merge more and more elaborate examples
+-- This seems to be a very specific example where unevaluation diverges, which
+-- is usually not encountered during synthesis, but only in these specific
+-- circumstances? TODO: test that this is the same for older versions of
+-- unevaluation.
+
 init :: SynMonad s m => Defs Unit -> m (Term Hole)
 init defs = do
   let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
@@ -70,12 +78,29 @@ init defs = do
       modifying contexts $ Map.delete h
       let xs = asserts defs <&> \(MkAssert a ex) -> (a, ex)
       assign examples xs
-      as <- for xs \(a, ex) -> do
-        r <- eval m (Var a)
-        uneval r ex
-      assign constraints =<< mfold (mergeUneval as)
+      -- NOTE: we explicitly run the reader transformer, so that we can
+      -- instantiate the MonadPlus constraint to list, avoiding the mixing of
+      -- two different types of nondeterminism, namely the nondeterministic
+      -- unevaluation constraints and the nondeterminism of the synthesis
+      -- procedure.
+      as <- ask <&> runReaderT do
+        mergeUneval <$> for xs \(a, ex) -> do
+          r <- eval m (Var a)
+          uneval r ex
+      -- TODO: perhaps we should not remove constraints that do not conform to
+      -- the informativeness restriction, as long as we don't introduce new
+      -- refinements like that.
+      updateConstraints $ catMaybes as
       return y
     _ -> error "Should never happen"
+
+updateConstraints :: SynMonad s m => [Uneval] -> m ()
+updateConstraints xs = do
+  cs <- Map.keysSet <$> use contexts
+  -- Make sure every hole has constraints. ('Informativeness restriction')
+  let ys = filter ((== cs) . Map.keysSet) xs
+  guard . not . null $ ys
+  assign constraints ys
 
 tryFilling :: SynMonad s m => Hole -> Term HoleCtx -> m (Term Hole)
 tryFilling h e = do
@@ -84,12 +109,12 @@ tryFilling h e = do
   modifying contexts (<> Map.fromList (toListOf holes expr))
   let expr' = over holes fst expr
   -- Resume unevaluation by refining with a constructor applied to holes.
-  assign constraints =<< resumeUneval h expr' =<< use constraints
+  xs <- use constraints
+  xs' <- ask <&> runReaderT @_ @[] do
+    x <- mfold xs
+    resumeUneval h expr' x
+  updateConstraints xs'
   assign mainCtx =<< traverse (resume $ Map.singleton h expr') =<< use mainCtx
-  -- Make sure every hole has constraints. ('Informativeness restriction')
-  ks <- Map.keysSet <$> use constraints
-  cs <- Map.keysSet <$> use contexts
-  guard $ ks == cs
   return expr'
 
 computeBlocking :: MonadReader Mod m =>
