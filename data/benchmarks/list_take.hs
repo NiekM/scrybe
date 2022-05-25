@@ -1,8 +1,18 @@
-import Prelude (foldList, elimNat)
+import Prelude (elimNat)
 
--- TODO: somewhere this also reaches a diverging unevaluation.
+-- MODEL:
+-- take n xs = foldList (const Nothing) (\x r m -> elimNat (Just x) r m) xs n
+
+-- TODO: how to handle this recursive pattern nicely?
+-- NOTE: this is really similar to index.
 take :: Nat -> List a -> List a
-take = {}
+-- NOTE: this diverges, but synthesis also does not know how to introduce the
+-- correct recursion scheme.
+-- take = {}
+-- NOTE: this one does synthesize, but takes very long
+-- take n xs = foldList {} {} xs n
+-- NOTE: Using flip is way faster
+take = flip (foldList {} {})
 
 assert take \0 [] -> []
 assert take \0 [1] -> []

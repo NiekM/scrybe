@@ -65,6 +65,17 @@ type SynMonad s m =
 -- another helper function such as 'map_unit = map (const Unit)', the resulting
 -- unification error would stop synthesis from occuring altogether.
 
+-- TODO: implement a function that reads and type checks the program correctly,
+-- without leaking type information between functions. To what extend do we
+-- consider the toplevel functions part of the global/local environment? It is
+-- not great to mix the current local scope (based on unevaluation constraints
+-- from the assertions) with the semi-local scope of toplevel functions (which
+-- might still contain holes and are not necessarily globally available in
+-- every hole context). The resulting function should be somewhat similar to
+-- the fromDefs function in Language.Live.hs, in that it folds over all the
+-- toplevel definitions.
+-- ALTERNATIVELY: implement full let polymorphism.
+
 init :: SynMonad s m => Defs Unit -> m (Term Hole)
 init defs = do
   let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
