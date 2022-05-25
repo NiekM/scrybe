@@ -450,7 +450,7 @@ data Import = MkImport
   , expose :: Maybe [Var]
   } deriving (Eq, Ord, Show)
 
-data Assert = MkAssert Var Example
+data Assert = MkAssert (Term Hole) Example
   deriving (Eq, Ord, Show)
 
 constructors :: Datatype -> [(Ctr, Poly)]

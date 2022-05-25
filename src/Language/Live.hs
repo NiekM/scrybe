@@ -255,4 +255,9 @@ resumeUneval h e un = do
   y <- for (Map.delete h un) $ unevalsFill $ Map.singleton h e
   mfold $ mergeUneval [x, y]
 
+unevalAssert :: MonadUneval m => Map Var Result -> Assert -> m Uneval
+unevalAssert env (MkAssert e ex) = do
+  r <- eval env e
+  uneval r ex
+
 -- }}}

@@ -18,7 +18,7 @@ data SynState = SynState
   , _synFillings    :: Map Hole (Term Hole)
   , _synFresh       :: FreshState
   , _synMainCtx     :: Map Var Result
-  , _synExamples    :: [(Var, Example)]
+  , _synExamples    :: [Assert]
   , _synWeights     :: Map Var Int
   }
 
@@ -34,7 +34,7 @@ instance HasFreshState SynState where freshState = synFresh
 
 class    HasMainCtx a        where mainCtx :: Lens' a (Map Var Result)
 instance HasMainCtx SynState where mainCtx = synMainCtx
-class    HasExamples a        where examples :: Lens' a [(Var, Example)]
+class    HasExamples a        where examples :: Lens' a [Assert]
 instance HasExamples SynState where examples = synExamples
 class    HasWeights a        where weights :: Lens' a (Map Var Int)
 instance HasWeights SynState where weights = synWeights
@@ -84,7 +84,8 @@ init defs = do
   let addBinding (MkBinding a x) = Let a x
   (x, _, ctx) <-
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
-  let ts = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
+  ts <- mapM refresh . Map.fromList $ signatures defs <&>
+    \(MkSignature a t) -> (a, t)
   th <- unifies $ collect x & mapMaybe \a -> do
     Annot (Lam v _) (Arr t _) <- Just a
     Poly _ u <- Map.lookup v ts
@@ -95,17 +96,14 @@ init defs = do
     Scoped m (Hole h) -> do
       assign mainCtx m
       modifying contexts $ Map.delete h
-      let xs = asserts defs <&> \(MkAssert a ex) -> (a, ex)
-      assign examples xs
+      assign examples $ asserts defs
       -- NOTE: we explicitly run the reader transformer, so that we can
       -- instantiate the MonadPlus constraint to list, avoiding the mixing of
       -- two different types of nondeterminism, namely the nondeterministic
       -- unevaluation constraints and the nondeterminism of the synthesis
       -- procedure.
       as <- ask <&> runReaderT do
-        mergeUneval <$> for xs \(a, ex) -> do
-          r <- eval m (Var a)
-          uneval r ex
+        mergeUneval <$> for (asserts defs) (unevalAssert m)
       -- TODO: perhaps we should not remove constraints that do not conform to
       -- the informativeness restriction, as long as we don't introduce new
       -- refinements like that.
@@ -137,9 +135,9 @@ tryFilling h e = do
   return expr'
 
 computeBlocking :: MonadReader Mod m =>
-  Map Var Result -> Var -> Example -> m (Maybe Hole)
-computeBlocking env a (Lams vs _) = do
-  v <- eval env $ Var a
+  Map Var Result -> Assert -> m (Maybe Hole)
+computeBlocking env (MkAssert e (Lams vs _)) = do
+  v <- eval env e
   r <- resume mempty $ apps v (upcast <$> vs)
   return $ blocking r
 
@@ -147,7 +145,7 @@ step :: SynMonad s m => m ()
 step = do
   -- Pick one hole and remove it. TODO: not just pick the first hole.
   ctx <- use mainCtx
-  hs <- use examples >>= mapM (uncurry $ computeBlocking ctx)
+  hs <- use examples >>= mapM (computeBlocking ctx)
   hole <- mfold $ foldr (<|>) Nothing hs
   HoleCtx t env <- mfold . Map.lookup hole =<< use contexts
   modifying contexts $ Map.delete hole
