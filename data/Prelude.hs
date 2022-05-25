@@ -17,6 +17,10 @@ flip f x y = f y x
 compose :: (b -> c) -> (a -> b) -> (a -> c)
 compose f g x = f (g x)
 
+-- || Unit
+
+data Unit = Unit
+
 -- || Booleans
 
 data Bool = False | True
@@ -126,16 +130,19 @@ foldList n c = fix \go l -> case l of
   Nil -> n
   Cons h t -> c h (go t)
 
-foldr :: (a -> b -> b) -> b -> List a -> b
-foldr f e = foldList e f
-
 paraList :: b -> (a -> List a -> b -> b) -> List a -> b
 paraList n c = fix \go l -> case l of
   Nil -> n
   Cons h t -> c h t (go t)
 
+mapList :: (a -> b) -> List a -> List b
+mapList f = foldList [] (\x -> Cons (f x))
+
+foldr :: (a -> b -> b) -> b -> List a -> b
+foldr f e = foldList e f
+
 map :: (a -> b) -> List a -> List b
-map f = foldList [] (\x -> Cons (f x))
+map = mapList
 
 append :: List a -> List a -> List a
 append xs ys = foldList ys Cons xs
@@ -184,7 +191,7 @@ zip :: List a -> List b -> List (Pair a b)
 zip = foldList (const []) \x r -> elimList [] \y ys -> Cons (Pair x y) (r ys)
 
 zipWith :: (a -> b -> c) -> List a -> List b -> List c
-zipWith f xs ys = map (uncurry f) (zip xs ys)
+zipWith f xs ys = mapList (uncurry f) (zip xs ys)
 
 -- || Coproducts
 
@@ -200,3 +207,23 @@ elimEither :: (a -> c) -> (b -> c) -> Either a b -> c
 elimEither l r e = case e of
   Left x -> l x
   Right y -> r y
+
+-- || Trees
+
+data Tree a = Leaf | Node (Tree a) a (Tree a)
+
+leaf :: Tree a
+leaf = Leaf
+
+node :: Tree a -> a -> Tree a -> Tree a
+node = Node
+
+elimTree :: a -> (Tree b -> b -> Tree b -> a) -> Tree b -> a
+elimTree e f t = case t of
+  Leaf -> e
+  Node l x r -> f l x r
+
+foldTree :: b -> (b -> a -> b -> b) -> Tree a -> b
+foldTree e f = fix \go t -> case t of
+  Leaf -> e
+  Node l x r -> f (go l) x (go r)
