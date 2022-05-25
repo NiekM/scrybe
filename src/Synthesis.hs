@@ -49,13 +49,21 @@ type SynMonad s m =
   , HasCtxs s, HasCstr s, HasFill s, HasMainCtx s, HasExamples s, HasWeights s
   )
 
--- TODO: figure out why the unevaluation of 'foldList {} (\x r -> r) {}' onto
--- some examples, like '\[] -> 0', diverges.
+-- TODO: figure out how to deal with diverging unevaluation, such as that of
+-- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
+-- example 'mult 0 {0} <= 0'.
 -- NOTE: it seems to keep trying to merge more and more elaborate examples
 -- This seems to be a very specific example where unevaluation diverges, which
 -- is usually not encountered during synthesis, but only in these specific
--- circumstances? TODO: test that this is the same for older versions of
--- unevaluation.
+-- circumstances?
+
+-- TODO: make sure that local type unifications don't leak to other places. For
+-- example, when synthesizing 'map', we might define 'map_succ' (a helper
+-- function for assertions) as 'map Succ', but this instantiates the type
+-- variables of 'map' to 'Nat', which is incorrect. Not only does this lead to
+-- the type incorrect synthesis of 'map' specialized to 'Succ', but if we had
+-- another helper function such as 'map_unit = map (const Unit)', the resulting
+-- unification error would stop synthesis from occuring altogether.
 
 init :: SynMonad s m => Defs Unit -> m (Term Hole)
 init defs = do
@@ -134,6 +142,7 @@ step = do
   modifying contexts $ Map.delete hole
   e <- join $ mfold
     -- For concrete types, try the corresponding constructors.
+    -- TODO: check if constructors are introduced correctly, see list_map.hs
     [ case t of
       Apps (Ctr d) _ -> do
         (_, cs) <- mfold . Map.lookup d . data_ =<< ask
@@ -151,6 +160,8 @@ step = do
       ps <- funs_ <$> ask
       ws <- Map.keysSet <$> use weights
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs $ Map.restrictKeys ps ws
+      -- TODO: replace removal by something more sensible
+      modifying weights $ Map.delete v
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     ]
   (hf, _) <- check env e $ Poly [] t
