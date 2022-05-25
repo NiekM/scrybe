@@ -18,8 +18,14 @@ import qualified RIO.Set as Set
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
 
-instance Parse (Expr l) => IsString (Expr l) where fromString = fromStr
-instance IsString Poly where fromString = fromStr
+newtype Parseable a = Parseable a
+
+instance Parse a => IsString (Parseable a) where
+  fromString = Parseable . fromStr
+
+deriving via Parseable (Expr l) instance Parse (Expr l) => IsString (Expr l)
+deriving via Parseable Poly     instance IsString Poly
+deriving via Parseable Assert   instance IsString Assert
 
 prelude :: Mod
 prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
@@ -61,6 +67,9 @@ eval' e = runReader (eval mempty e) prelude
 
 uneval' :: Result -> Example -> [Uneval]
 uneval' r e = tryTC (uneval r e)
+
+assert' :: Assert -> [Uneval]
+assert' = tryTC . unevalAssert mempty
 
 read :: Parse a => String -> Defs a
 read s = let file = unsafePerformIO $ readFileUtf8 s in

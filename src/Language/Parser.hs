@@ -250,13 +250,13 @@ instance Parse Import where
     ]
 
 instance Parse Assert where
-  parser = MkAssert <$ key "assert" <*> parser <* op "<==" <*> parser
+  parser = MkAssert <$> parser <* op "<==" <*> parser
 
 instance Parse a => Parse (Def a) where
   parser = choice
     [ Datatype <$> parser
     , Import <$> parser
-    , Assert <$> parser
+    , Assert <$ key "assert" <*> parser
     , do
       x <- parser
       choice
