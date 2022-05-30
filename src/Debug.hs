@@ -77,18 +77,8 @@ read s = let file = unsafePerformIO $ readFileUtf8 s in
     Just x -> x
     Nothing -> error "Could not parse file"
 
-final :: SynState -> Bool
-final = null . view contexts
-
-synth :: Defs Unit -> [Map Hole (Term Hole)]
-synth d = go $ snd <$> trySyn @[] (init d)
-  where
-    go [] = []
-    go xs =
-      let (as, bs) = List.partition final xs
-          done = view fillings <$> as
-          rest = fmap (view _2) . runRWST @_ @() @_ step prelude =<< bs
-      in done ++ go rest
+synth' :: Defs Unit -> [Map Hole (Term Hole)]
+synth' = synth prelude
 
 test :: Term Hole -> Example -> [(Hole, Term Hole)] -> Doc ann
 test sk ex rs = pretty . tryUneval @[] $

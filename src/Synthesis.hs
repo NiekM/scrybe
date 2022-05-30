@@ -5,6 +5,7 @@ module Synthesis where
 import Import
 import Language
 import qualified RIO.Map as Map
+import qualified RIO.List as List
 
 type RefMonad s m =
   (TCMonad m, FreshHole m, FreshVar m, MonadState s m, HasCtxs s)
@@ -177,6 +178,19 @@ step = do
   expr <- tryFilling hole (strip hf)
   modifying fillings $ Map.insert hole expr
   return ()
+
+final :: SynState -> Bool
+final = null . view contexts
+
+synth :: Mod -> Defs Unit -> [Map Hole (Term Hole)]
+synth m d = go $ snd <$> runSyn @[] (init d) m
+  where
+    go [] = []
+    go xs =
+      let (as, bs) = List.partition final xs
+          done = view fillings <$> as
+          rest = fmap (view _2) . runRWST @_ @() @_ step m =<< bs
+      in done ++ go rest
 
 -- OLD {{{
 -- Synthesis state {{{

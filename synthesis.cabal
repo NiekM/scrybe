@@ -134,6 +134,7 @@ test-suite synthesis-test
   main-is: Spec.hs
   other-modules:
       SyntaxSpec
+      SynthesisSpec
       Paths_synthesis
   hs-source-dirs:
       test
