@@ -190,7 +190,7 @@ type Indet = Base (Term Hole) 'Ind
 -- expressions capturing the local scope.
 type Result = Expr 'Det
 
-newtype Scope = Scope { unScope :: Map Var Result } deriving (Eq, Ord)
+newtype Scope = Scope { unScope :: Map Var Result } deriving (Eq, Ord, Show)
 
 -- Morphisms {{{
 
@@ -601,8 +601,8 @@ instance (Pretty b, Pretty (Annot a b)) => Pretty (Annot (Maybe a) b) where
   pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a
 
 instance Pretty Scope where
-  pretty (Scope m) = align . P.list $ Map.assocs m <&> \(k, x) ->
-    pretty k <> ":" <+> align (pretty x)
+  pretty (Scope m) = align . sep . punctuate comma $ Map.assocs m <&>
+    \(k, x) -> pretty k <> ":" <+> align (pretty x)
 
 instance Pretty a => Pretty (Annot Scope a) where
   pretty (Annot x s) = pretty s <> pretty x
@@ -662,6 +662,11 @@ sLit p _ = \case
   List xs -> Just $ P.list (p 0 <$> xs)
   _ -> Nothing
 
+sRes :: HasHole l (Annot Scope Indet) => Sugar l ann
+sRes _ _ = \case
+  Hole (Annot e m) -> Just . parens $ pretty m <+> "|-" <+> pretty e
+  _ -> Nothing
+
 sExample :: Sugar 'Example ann
 sExample p i = \case
   Lam v (Lams vs x) -> Just . prettyParen (i > 0) $
@@ -690,7 +695,7 @@ instance Pretty Example where
   pretty = withSugar (sLit `orTry` sExample)
 
 instance Pretty Result where
-  pretty = withSugar sLit
+  pretty = withSugar (sLit `orTry` sRes)
 
 instance (Pretty (Ann a ('Term h)), Pretty h)
   => Pretty (Expr' ('Ann a) ('Term h)) where

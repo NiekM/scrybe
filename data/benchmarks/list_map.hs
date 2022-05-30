@@ -4,8 +4,8 @@ map :: (a -> b) -> List a -> List b
 map = {}
 
 assert map Succ []     <== []
-assert map Succ [0]    <== [1]
-assert map Succ [0, 0] <== [1, 1]
+-- assert map Succ [0]    <== [1]
+-- assert map Succ [0, 0] <== [1, 1]
 assert map Succ [1]    <== [2]
 assert map Succ [1, 1] <== [2, 2]
 
@@ -20,5 +20,5 @@ assert map Succ [1, 1] <== [2, 2]
 -- but also make the synthesis a little slower.
 
 -- assert map (const Unit) []     <== []
--- assert map (const Unit) [0]    <== [Unit]
--- assert map (const Unit) [0, 0] <== [Unit, Unit]
+assert map (const Unit) [0]    <== [Unit]
+assert map (const Unit) [0, 0] <== [Unit, Unit]

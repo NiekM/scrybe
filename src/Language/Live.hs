@@ -181,7 +181,7 @@ mergeUneval :: [Uneval] -> Maybe Uneval
 mergeUneval = mergeMaps $ mergeMap mergeEx
 
 checkLive :: MonadUneval m => Term Hole -> Constraint -> m Uneval
-checkLive e cs = do
+checkLive e cs =
   mfold . mergeUneval =<< for (Map.assocs cs) \(Scope m, ex) -> do
     x <- mfold . fromEx $ ex
     eval m e >>= flip uneval x

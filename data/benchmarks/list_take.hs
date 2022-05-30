@@ -14,15 +14,25 @@ take :: Nat -> List a -> List a
 -- NOTE: Using flip is way faster
 take = flip (foldList {} {})
 
+-- assert take 0 []        <== []
+-- assert take 0 [1]       <== []
+-- assert take 0 [0, 1]    <== []
+-- assert take 0 [1, 0, 1] <== []
+-- assert take 1 []        <== []
+-- assert take 1 [1]       <== [1]
+-- assert take 1 [0, 1]    <== [0]
+-- assert take 1 [1, 0, 1] <== [1]
+-- assert take 2 []        <== []
+-- assert take 2 [1]       <== [1]
+-- assert take 2 [0, 1]    <== [0, 1]
+-- assert take 2 [1, 0, 1] <== [1, 0]
+
+-- This smaller set of constraints is faster, but does not give the same set of
+-- solutions.
 assert take 0 []        <== []
 assert take 0 [1]       <== []
-assert take 0 [0, 1]    <== []
-assert take 0 [1, 0, 1] <== []
 assert take 1 []        <== []
 assert take 1 [1]       <== [1]
 assert take 1 [0, 1]    <== [0]
-assert take 1 [1, 0, 1] <== [1]
-assert take 2 []        <== []
 assert take 2 [1]       <== [1]
-assert take 2 [0, 1]    <== [0, 1]
 assert take 2 [1, 0, 1] <== [1, 0]

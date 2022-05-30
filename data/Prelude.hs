@@ -101,6 +101,12 @@ unfoldNat f x = case f x of
   Nothing -> Zero
   Just y -> Succ (unfoldNat f y)
 
+even :: Nat -> Bool
+even = foldNat True not
+
+odd :: Nat -> Bool
+odd = foldNat False not
+
 plus :: Nat -> Nat -> Nat
 plus n = foldNat n Succ
 
