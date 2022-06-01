@@ -4,6 +4,7 @@ module Synthesis where
 
 import Import
 import Language
+import Nondet
 import qualified RIO.Map as Map
 import qualified RIO.List as List
 
@@ -43,7 +44,7 @@ instance ExpandHole Hole Synth where
     modifying contexts $ Map.insert h ctx'
     return (xs, h)
 
-liftUneval :: Int -> Uneval a -> Synth [a]
+liftUneval :: Int -> Uneval a -> Synth (Nondet a)
 liftUneval fuel x = runReaderT x . (`UnevalInput` fuel) <$> view env
 
 -- TODO: figure out how to deal with diverging unevaluation, such as that of
@@ -99,12 +100,17 @@ init defs = do
       -- two different types of nondeterminism, namely the nondeterministic
       -- unevaluation constraints and the nondeterminism of the synthesis
       -- procedure.
-      as <- liftUneval 1000 $
-        mergeUneval <$> for (asserts defs) (unevalAssert m)
+      -- TODO: note that the position of liftUneval determines which parts of
+      -- the computation use the same fuel. Perhaps the fuel should be renewed
+      -- for each assertion?
+      as <- liftUneval 1000 $ -- TODO: find reasonable fuel
+        mergeConstraints <$> for (asserts defs) (unevalAssert m)
       -- TODO: perhaps we should not remove constraints that do not conform to
       -- the informativeness restriction, as long as we don't introduce new
       -- refinements like that.
-      updateConstraints $ catMaybes as
+      -- TODO: how do we deal with running out of fuel? Can we still have
+      -- assertions at some nodes of the computation?
+      updateConstraints $ catMaybes (either error id . runNondet $ as)
       return y
     _ -> error "Should never happen"
 
@@ -124,10 +130,14 @@ tryFilling h e = do
   let expr' = over holes fst expr
   -- Resume unevaluation by refining with a constructor applied to holes.
   xs <- use constraints
-  xs' <- (flip UnevalInput 1000 <$> ask) <&> runReaderT @_ @[] do
+  -- TODO: again here, maybe we should have separate fuel for each
+  -- resumeUneval?
+  xs' <- liftUneval 1000 do -- TODO: find reasonable fuel
     x <- mfold xs
     resumeUneval (Map.singleton h expr') x
-  updateConstraints xs'
+  -- TODO: how should we handle running out of fuel here? Probably just ignore
+  -- the hole filling altogether.
+  updateConstraints $ either error id $ runNondet xs'
   use mainCtx
     >>= traverse (liftEval . resume (Map.singleton h expr'))
     >>= assign mainCtx

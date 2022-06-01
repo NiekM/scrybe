@@ -7,6 +7,7 @@ module Debug where
 
 import Import
 import Language
+import Nondet
 import Synthesis
 import qualified RIO.Text as T
 import System.IO.Unsafe
@@ -55,10 +56,10 @@ instance Pretty SynState where
 eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude
 
-uneval' :: Result -> Example -> [Constraints]
+uneval' :: Result -> Example -> Nondet Constraints
 uneval' r e = runReaderT (uneval r e) (UnevalInput prelude 1000)
 
-assert' :: Assert -> [Constraints]
+assert' :: Assert -> Nondet Constraints
 assert' = flip runReaderT (UnevalInput prelude 1000) . unevalAssert mempty
 
 read :: Parse a => String -> Defs a

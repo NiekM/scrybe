@@ -2,7 +2,8 @@
 
 module Language.Live where
 
-import Import hiding (reverse)
+import Import
+import Nondet
 import Language.Syntax
 import qualified RIO.Map as Map
 import Control.Monad.Reader
@@ -181,7 +182,7 @@ makeLenses ''UnevalInput
 instance HasEnv UnevalInput where
   env = unevalEnv
 
-type Uneval = ReaderT UnevalInput []
+type Uneval = ReaderT UnevalInput Nondet
 
 instance LiftEval Uneval where
   liftEval = magnify env . mapReaderT mfold
@@ -190,12 +191,12 @@ instance LiftEval Uneval where
 type Constraint = Map Scope Ex
 type Constraints = Map Hole Constraint
 
-mergeUneval :: MonadPlus m => [Constraints] -> m Constraints
-mergeUneval = mfold . mergeMaps (mergeMap mergeEx)
+mergeConstraints :: MonadPlus m => [Constraints] -> m Constraints
+mergeConstraints = mfold . mergeMaps (mergeMap mergeEx)
 
 checkLive :: Term Hole -> Constraint -> Uneval Constraints
 checkLive e cs =
-  mergeUneval =<< for (Map.assocs cs) \(Scope m, ex) -> do
+  mergeConstraints =<< for (Map.assocs cs) \(Scope m, ex) -> do
     x <- mfold . fromEx $ ex
     r <- liftEval (eval m e)
     uneval r x
@@ -213,7 +214,7 @@ uneval = curry \case
   -- extensional in the sense that only their arguments are compared.
   (Apps (Ctr c) xs, Lams ys (Apps (Ctr d) zs))
     | c == d, length xs + length ys == length zs
-    -> mergeUneval =<< zipWithM uneval (xs ++ map upcast ys) zs
+    -> mergeConstraints =<< zipWithM uneval (xs ++ map upcast ys) zs
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
@@ -231,7 +232,7 @@ uneval = curry \case
     let prjs = [App (Prj c n) r | n <- [1..ar]]
     e' <- liftEval $ eval m e
     arm <- liftEval (resume mempty $ apps e' prjs) >>= flip uneval ex
-    mergeUneval [scrut, arm]
+    mergeConstraints [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a x), Lam v y) ->
@@ -254,7 +255,7 @@ resumeUneval hf old = do
   new <- sequence . toList $ Map.intersectionWith checkLive hf updated
   -- Combine the new constraints with the updated constraints, minus the filled
   -- holes.
-  mergeUneval $ Map.difference updated hf : new
+  mergeConstraints $ Map.difference updated hf : new
 
 unevalAssert :: Map Var Result -> Assert -> Uneval Constraints
 unevalAssert m (MkAssert e ex) = do

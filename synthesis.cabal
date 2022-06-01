@@ -34,6 +34,7 @@ library
       Language.Parser
       Language.Syntax
       Language.Type
+      Nondet
       Run
       Synthesis
       Types
