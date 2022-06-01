@@ -187,6 +187,11 @@ type Uneval = ReaderT UnevalInput Nondet
 instance LiftEval Uneval where
   liftEval = magnify env . mapReaderT mfold
 
+burnFuel :: Uneval a -> Uneval a
+burnFuel x = view unevalFuel >>= \case
+  n | n <= 0    -> fail "Out of fuel"
+    | otherwise -> local (set unevalFuel (n - 1)) x
+
 -- TODO: find some better names?
 type Constraint = Map Scope Ex
 type Constraints = Map Hole Constraint
@@ -224,7 +229,7 @@ uneval = curry \case
     cs <- view $ env . constructors -- TODO: something like view constructors
     let ar = arity . fromMaybe (error "Oh oh") . Map.lookup c $ cs
     uneval r $ apps (Ctr c) (replicate ar Top & ix (n - 1) .~ ex)
-  (App (Scoped m (Elim xs)) r, ex) -> do -- TODO: use fuel here and return a Nondet i.o. []
+  (App (Scoped m (Elim xs)) r, ex) -> burnFuel do
     (c, e) <- mfold xs
     cs <- view $ env . constructors
     let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs

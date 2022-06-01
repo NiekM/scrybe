@@ -100,17 +100,14 @@ init defs = do
       -- two different types of nondeterminism, namely the nondeterministic
       -- unevaluation constraints and the nondeterminism of the synthesis
       -- procedure.
-      -- TODO: note that the position of liftUneval determines which parts of
-      -- the computation use the same fuel. Perhaps the fuel should be renewed
-      -- for each assertion?
-      as <- liftUneval 1000 $ -- TODO: find reasonable fuel
-        mergeConstraints <$> for (asserts defs) (unevalAssert m)
-      -- TODO: perhaps we should not remove constraints that do not conform to
-      -- the informativeness restriction, as long as we don't introduce new
-      -- refinements like that.
+      -- TODO: find reasonable fuel
+      as <- sequence <$> for (asserts defs) (liftUneval 10 . unevalAssert m)
       -- TODO: how do we deal with running out of fuel? Can we still have
       -- assertions at some nodes of the computation?
-      updateConstraints $ catMaybes (either error id . runNondet $ as)
+      updateConstraints
+        $ fromMaybe (error "Conflicting assertions") . sequence
+        . either error (fmap mergeConstraints) . runNondet
+        $ as
       return y
     _ -> error "Should never happen"
 
@@ -130,11 +127,9 @@ tryFilling h e = do
   let expr' = over holes fst expr
   -- Resume unevaluation by refining with a constructor applied to holes.
   xs <- use constraints
-  -- TODO: again here, maybe we should have separate fuel for each
-  -- resumeUneval?
-  xs' <- liftUneval 1000 do -- TODO: find reasonable fuel
+  xs' <- do -- TODO: find reasonable fuel
     x <- mfold xs
-    resumeUneval (Map.singleton h expr') x
+    liftUneval 20 $ resumeUneval (Map.singleton h expr') x
   -- TODO: how should we handle running out of fuel here? Probably just ignore
   -- the hole filling altogether.
   updateConstraints $ either error id $ runNondet xs'
