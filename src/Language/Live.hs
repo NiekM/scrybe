@@ -255,7 +255,7 @@ resumeUneval hf old = do
   new <- sequence . toList $ Map.intersectionWith checkLive hf updated
   -- Combine the new constraints with the updated constraints, minus the filled
   -- holes.
-  mergeConstraints $ Map.difference updated hf : new
+  mergeConstraints . fmap (Map.\\ hf) $ updated : new
 
 unevalAssert :: Map Var Result -> Assert -> Uneval Constraints
 unevalAssert m (MkAssert e ex) = do

@@ -5,6 +5,7 @@ import Control.Applicative
 
 newtype Nondet a = Nondet { runNondet :: Either String [a] }
   deriving stock (Functor, Foldable, Traversable)
+  deriving newtype (Eq, Ord, Show)
 
 instance Applicative Nondet where
   pure = Nondet . Right . pure

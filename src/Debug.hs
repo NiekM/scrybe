@@ -53,14 +53,17 @@ instance Pretty SynState where
     , "", "Fillings:", pretty $ view fillings st
     ]
 
+tryUneval :: Uneval a -> Nondet a
+tryUneval x = runReaderT x (UnevalInput prelude 1000)
+
 eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude
 
 uneval' :: Result -> Example -> Nondet Constraints
-uneval' r e = runReaderT (uneval r e) (UnevalInput prelude 1000)
+uneval' r e = tryUneval (uneval r e)
 
 assert' :: Assert -> Nondet Constraints
-assert' = flip runReaderT (UnevalInput prelude 1000) . unevalAssert mempty
+assert' = tryUneval . unevalAssert mempty
 
 read :: Parse a => String -> Defs a
 read s = let file = unsafePerformIO $ readFileUtf8 s in
