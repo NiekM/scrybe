@@ -12,7 +12,7 @@ spec :: Spec
 spec = do
   describe "benchmark" do
     pre <- runIO $ readFileUtf8 "data/prelude.hs"
-    let m :: Mod = fromMaybe undefined $ lexParse parser pre
+    let m = fromMaybe undefined $ lexParse parser pre
     let benchmarks = "data/benchmarks"
     fs <- runIO $ listDirectory benchmarks
     xs <- for fs \f -> do

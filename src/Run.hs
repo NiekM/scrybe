@@ -32,7 +32,7 @@ syntax t = case lexParse parser t of
 --       (y:) <$> climb ys
 
 readFiles :: String -> String -> String ->
-  RIO Application (Mod, Sketch, Ann Type ('Term Hole))
+  RIO Application (Env, Sketch, Ann Type ('Term Hole))
 readFiles file sketch model = do
   m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
   sk@(Sketch _ t _) <- syntax =<< readFileUtf8

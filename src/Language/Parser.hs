@@ -268,7 +268,7 @@ instance Parse a => Parse (Def a) where
 instance Parse a => Parse (Defs a) where
   parser = Defs . catMaybes <$> alt (optional parser) (single $ Newline 0)
 
-instance Parse Mod where
+instance Parse Env where
   parser = do
     defs <- parser
     guard . null $ imports defs

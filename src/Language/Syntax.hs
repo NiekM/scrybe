@@ -1,5 +1,5 @@
 {-# LANGUAGE RankNTypes, PolyKinds, UndecidableInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell, MultiParamTypeClasses #-}
 
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 module Language.Syntax
@@ -192,6 +192,9 @@ type Result = Expr 'Det
 
 newtype Scope = Scope { unScope :: Map Var Result } deriving (Eq, Ord, Show)
 
+scope :: Lens' Scope (Map Var Result)
+scope = lens unScope \_ a -> Scope a
+
 -- Morphisms {{{
 
 rec :: Traversal (Expr' r l) (Expr' r' l) (Rec r l) (Rec r' l)
@@ -350,6 +353,67 @@ pattern List xs <- (unList -> Just xs)
 
 -- }}}
 
+-- Helper functions {{{
+
+-- | Substitute variables in an expression without variables bindings according
+-- to a map of variable substitutions.
+subst :: (HasVar l v, Ord v, NoBind l) => Map v (Expr l) -> Expr l -> Expr l
+subst th = cataExpr \case
+  Var v | Just x <- Map.lookup v th -> x
+  e -> fixExpr e
+
+-- | Fill holes in an expression according to a map of hole fillings.
+fill :: (HasHole l h, Ord h) => Map h (Expr l) -> Expr l -> Expr l
+fill th = cataExpr \case
+  Hole h | Just x <- Map.lookup h th -> x
+  e -> fixExpr e
+
+freeVars :: Term h -> Set Var
+freeVars = cataExpr \case
+  Lam a x -> Set.delete a x
+  Var a -> Set.singleton a
+  x -> view rec x
+
+-- | All subexpressions, including the expression itself.
+dissect :: Expr l -> [Expr l]
+dissect = paraExpr \e -> (e:) . view rec
+
+-- | Remove all annotations from an expression.
+strip :: Ann a l -> Expr l
+strip = cataAnn (const fixExpr)
+
+-- | Gather all subexpressions along with their annotation.
+collect :: Ann a l -> [Annot a (Expr l)]
+collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
+
+-- | Uniquely number all holes in an expression.
+number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
+number = traverse \x -> (,x) <$> fresh
+
+-- Eta expansion {{{
+
+class ExpandHole h m where
+  expandHole :: h -> m ([(Var, Type)], h)
+
+instance FreshVar m => ExpandHole Type m where
+  expandHole (Args ts u) = (,u) <$> number ts
+
+instance FreshVar m => ExpandHole HoleCtx m where
+  expandHole (HoleCtx t vs) = do
+    (xs, u) <- expandHole t
+    return (xs, HoleCtx u (vs <> Map.fromList xs))
+
+etaExpand :: (Monad m, ExpandHole h m) => Term h -> m (Term h)
+etaExpand = cataExprM \case
+  Hole h -> do
+    (xs, h') <- expandHole h
+    return $ lams (fst <$> xs) (Hole h')
+  e -> fixExprM e
+
+-- }}}
+
+-- }}}
+
 -- Polytypes {{{
 
 data Poly = Poly [Free] Type
@@ -420,12 +484,6 @@ goalType = lens (\(HoleCtx t _) -> t) \(HoleCtx _ vs) t -> HoleCtx t vs
 localEnv :: Lens' HoleCtx (Map Var Type)
 localEnv = lens (\(HoleCtx _ vs) -> vs) \(HoleCtx t _) vs -> HoleCtx t vs
 
-class HasCtxs a where
-  contexts :: Lens' a (Map Hole HoleCtx)
-
-class HasFill a where
-  fillings :: Lens' a (Map Hole (Term Hole))
-
 substCtx :: Map Free Type -> HoleCtx -> HoleCtx
 substCtx th = over goalType (subst th) . over localEnv (subst th <$>)
 
@@ -453,10 +511,6 @@ data Import = MkImport
 data Assert = MkAssert (Term Hole) Example
   deriving (Eq, Ord, Show)
 
-constructors :: Datatype -> [(Ctr, Poly)]
-constructors (MkDatatype d as cs) = cs <&> second \ts ->
-  Poly as (arrs (ts ++ [apps (Ctr d) (Var <$> as)]))
-
 data Def a
   = Import Import
   | Signature Signature
@@ -468,8 +522,7 @@ data Def a
 newtype Defs a = Defs { getDefs :: [Def a] }
   deriving (Eq, Ord, Show)
 
-sepDefs :: Defs a ->
-  ([Import], [Signature], [Binding a], [Datatype], [Assert])
+sepDefs :: Defs a -> ([Import], [Signature], [Binding a], [Datatype], [Assert])
 sepDefs (Defs ds) = foldr go mempty ds where
   go = \case
     Import    i -> over _1 (i:)
@@ -498,92 +551,27 @@ arity (Poly _ (Args as _)) = length as
 
 type LiveEnv = Map Var Result
 
-data Mod = Mod
-  { funs_ :: Map Var Poly
-  , live_ :: Map Var Result
-  , data_ :: Map Ctr ([Free], [(Ctr, [Type])])
-  , ctrs_ :: Map Ctr Poly
+data Env = Env
+  { _functions    :: Map Var Poly
+  , _liveEnv      :: Map Var Result
+  , _dataTypes    :: Map Ctr ([Free], [(Ctr, [Type])])
+  , _constructors :: Map Ctr Poly
   } deriving (Eq, Ord)
 
-instance Semigroup Mod where
-  Mod a c e g <> Mod b d f h =
-    Mod (a <> b) (c <> d) (e <> f) (g <> h)
+makeLenses 'Env
 
-instance Monoid Mod where
-  mempty = Mod mempty mempty mempty mempty
+instance Semigroup Env where
+  Env a c e g <> Env b d f h =
+    Env (a <> b) (c <> d) (e <> f) (g <> h)
 
--- }}}
+instance Monoid Env where
+  mempty = Env mempty mempty mempty mempty
 
--- Helper functions {{{
+class HasEnv a where
+  env :: Lens' a Env
 
--- | Substitute variables in an expression without variables bindings according
--- to a map of variable substitutions.
-subst :: (HasVar l v, Ord v, NoBind l) => Map v (Expr l) -> Expr l -> Expr l
-subst th = cataExpr \case
-  Var v | Just x <- Map.lookup v th -> x
-  e -> fixExpr e
-
--- | Fill holes in an expression according to a map of hole fillings.
-fill :: (HasHole l h, Ord h) => Map h (Expr l) -> Expr l -> Expr l
-fill th = cataExpr \case
-  Hole h | Just x <- Map.lookup h th -> x
-  e -> fixExpr e
-
-freeVars :: Term h -> Set Var
-freeVars = cataExpr \case
-  Lam a x -> Set.delete a x
-  Var a -> Set.singleton a
-  x -> view rec x
-
--- | All subexpressions, including the expression itself.
-dissect :: Expr l -> [Expr l]
-dissect = paraExpr \e -> (e:) . view rec
-
--- | Remove all annotations from an expression.
-strip :: Ann a l -> Expr l
-strip = cataAnn (const fixExpr)
-
--- | Gather all subexpressions along with their annotation.
-collect :: Ann a l -> [Annot a (Expr l)]
-collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
-
--- | Uniquely number all holes in an expression.
-number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
-number = traverse \x -> (,x) <$> fresh
-
--- | Retrieve the context of a hole.
-getCtx :: (MonadFail m, MonadState s m, HasCtxs s) => Hole -> m HoleCtx
-getCtx h = use contexts >>=
-  maybe (fail $ "Missing holeCtx for hole " <> show h) return . Map.lookup h
-
--- Eta expansion {{{
-
-class ExpandHole h m where
-  expandHole :: h -> m ([(Var, Type)], h)
-
-instance FreshVar m => ExpandHole Type m where
-  expandHole (Args ts u) = (,u) <$> number ts
-
-instance FreshVar m => ExpandHole HoleCtx m where
-  expandHole (HoleCtx t vs) = do
-    (xs, u) <- expandHole t
-    return (xs, HoleCtx u (vs <> Map.fromList xs))
-
-instance (MonadFail m, FreshVar m, MonadState s m, HasCtxs s)
-  => ExpandHole Hole m where
-  expandHole h = do
-    (xs, ctx') <- getCtx h >>= expandHole
-    modifying contexts $ Map.insert h ctx'
-    return (xs, h)
-
-etaExpand :: (Monad m, ExpandHole h m) => Term h -> m (Term h)
-etaExpand = cataExprM \case
-  Hole h -> do
-    (xs, h') <- expandHole h
-    return $ lams (fst <$> xs) (Hole h')
-  e -> fixExprM e
-
--- }}}
+instance HasEnv Env where
+  env = id
 
 -- }}}
 
@@ -601,7 +589,7 @@ instance (Pretty b, Pretty (Annot a b)) => Pretty (Annot (Maybe a) b) where
   pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a
 
 instance Pretty Scope where
-  pretty (Scope m) = align . sep . punctuate comma $ Map.assocs m <&>
+  pretty (Scope m) = parens . align . sep . punctuate comma $ Map.assocs m <&>
     \(k, x) -> pretty k <> ":" <+> align (pretty x)
 
 instance Pretty a => Pretty (Annot Scope a) where

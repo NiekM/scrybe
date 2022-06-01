@@ -1,8 +1,11 @@
+{-# LANGUAGE TemplateHaskell#-}
+
 module Language.Live where
 
 import Import hiding (reverse)
 import Language.Syntax
 import qualified RIO.Map as Map
+import Control.Monad.Reader
 
 {-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
 pattern Scoped :: LiveEnv -> Indet -> Expr' r 'Det
@@ -29,11 +32,19 @@ pattern Indet i <- (indet -> Just i) where
 
 -- Live evaluation {{{
 
-eval :: MonadReader Mod m => LiveEnv -> Term Hole -> m Result
+type Eval = Reader Env
+
+runEval :: Env -> Eval a -> a
+runEval = flip runReader
+
+class LiftEval m where
+  liftEval :: Eval a -> m a
+
+eval :: LiveEnv -> Term Hole -> Eval Result
 eval loc = \case
   Var v -> do
-    env <- live_ <$> ask
-    maybe undefined return $ Map.lookup v (loc <> env)
+    rs <- view liveEnv
+    maybe undefined return $ Map.lookup v (loc <> rs)
   App f x -> do
     f' <- eval loc f
     x' <- eval loc x
@@ -43,17 +54,10 @@ eval loc = \case
   -- Indeterminate results
   Indet i -> return $ Scoped loc i
 
-evalApp :: MonadReader Mod m => Result -> Result -> m Result
+evalApp :: Result -> Result -> Eval Result
 evalApp f x = case f of
   App Fix (Scoped m (Lam g (Indet e))) ->
     evalApp (Scoped (Map.insert g f m) e) x
-  -- NOTE: this performs only a single recursive step, which is not entirely in
-  -- line with evaluation semantics but is nice for testing functions that
-  -- would loop infinitely. This also allows functions defined as a fixed point
-  -- to not use the recursive argument, which is useful for automatic insertion
-  -- of fixed points in let desugaring. Eventually this should be replaced by a
-  -- lazy form of live evaluation.
-  -- Fix | Scoped m (Lam g e) <- x -> eval (Map.insert g (App f x) m) e
   Scoped m (Lam a y) -> eval (Map.insert a x m) y
   Scoped m (Elim xs)
     | Apps (Ctr c) as <- x
@@ -69,11 +73,11 @@ evalApp f x = case f of
 -- TODO: Note that resumption loops forever if the hole fillings are (mutually)
 -- recursive. An alternative would be to only allow resumption of one hole at a
 -- time.
-resume :: MonadReader Mod m => Map Hole (Term Hole) -> Result -> m Result
+resume :: Map Hole (Term Hole) -> Result -> Eval Result
 resume hf = cataExprM \case
   App f x -> evalApp f x
-  Ctr c -> return $ Ctr c
-  Fix -> return Fix
+  Ctr c   -> return $ Ctr c
+  Fix     -> return Fix
   Prj c n -> return $ Prj c n
   -- Indeterminate results
   Scoped m (Hole h)
@@ -92,31 +96,30 @@ blocking = cataExpr \case
 -- }}}
 
 -- TODO: type checking and imports
-fromDefs :: Defs Void -> Mod
-fromDefs defs = foldl' fromSigs bindMod ss
+fromDefs :: Defs Void -> Env
+fromDefs defs = foldl' fromSigs bindEnv ss
   where
-    dataMod :: Mod
-    dataMod = foldl' fromData mempty ds
+    dataEnv :: Env
+    dataEnv = foldl' fromData mempty ds
 
-    bindMod :: Mod
-    bindMod = foldl' fromBind dataMod bs
+    bindEnv :: Env
+    bindEnv = foldl' fromBind dataEnv bs
 
-    fromData :: Mod -> Datatype -> Mod
+    fromData :: Env -> Datatype -> Env
     fromData m (MkDatatype t as cs) = m
-      { data_ = Map.insert t (as, cs) (data_ m)
-      , ctrs_ = Map.union cs' (ctrs_ m)
-      } where
+      & over dataTypes (Map.insert t (as, cs))
+      & over constructors (Map.union cs')
+      where
         t' = apps (Ctr t) (Var <$> as)
         cs' = Map.fromList cs <&> \ts -> Poly as $ arrs $ ts ++ [t']
 
-    fromBind :: Mod -> Binding Void -> Mod
+    fromBind :: Env -> Binding Void -> Env
     fromBind m (MkBinding x e) =
-      let live = live_ m
-          r = runReader (eval mempty (over holes absurd e)) m
-      in m { live_ = Map.insert x r live }
+      let r = runReader (eval mempty (over holes absurd e)) m
+      in m & over liveEnv (Map.insert x r)
 
-    fromSigs :: Mod -> Signature -> Mod
-    fromSigs m (MkSignature x t) = m { funs_ = Map.insert x t (funs_ m) }
+    fromSigs :: Env -> Signature -> Env
+    fromSigs m (MkSignature x t) = m & over functions (Map.insert x t)
 
     (_, ss, bs, ds, _) = sepDefs defs
 
@@ -166,32 +169,43 @@ fromEx = \case
 
 -- }}}
 
-type Constraint = Map Scope Ex
-
-class HasCstr a where
-  constraints :: Lens' a [Uneval]
-
-type Uneval = Map Hole Constraint
-
 -- Live unevaluation {{{
 
-type MonadUneval m = (MonadPlus m, MonadReader Mod m)
+data UnevalInput = UnevalInput
+  { _unevalEnv  :: Env
+  , _unevalFuel :: Int
+  } deriving (Eq, Ord)
 
-mergeUneval :: [Uneval] -> Maybe Uneval
-mergeUneval = mergeMaps $ mergeMap mergeEx
+makeLenses ''UnevalInput
 
-checkLive :: MonadUneval m => Term Hole -> Constraint -> m Uneval
+instance HasEnv UnevalInput where
+  env = unevalEnv
+
+type Uneval = ReaderT UnevalInput []
+
+instance LiftEval Uneval where
+  liftEval = magnify env . mapReaderT mfold
+
+-- TODO: find some better names?
+type Constraint = Map Scope Ex
+type Constraints = Map Hole Constraint
+
+mergeUneval :: MonadPlus m => [Constraints] -> m Constraints
+mergeUneval = mfold . mergeMaps (mergeMap mergeEx)
+
+checkLive :: Term Hole -> Constraint -> Uneval Constraints
 checkLive e cs =
-  mfold . mergeUneval =<< for (Map.assocs cs) \(Scope m, ex) -> do
+  mergeUneval =<< for (Map.assocs cs) \(Scope m, ex) -> do
     x <- mfold . fromEx $ ex
-    eval m e >>= flip uneval x
+    r <- liftEval (eval m e)
+    uneval r x
 
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
 -- the recursive argument to Nothing. This makes many things more messy
 -- unfortunately.
 -- TODO: add fuel (probably using a FuelMonad or something, so that we can
 -- leave it out as well)
-uneval :: MonadUneval m => Result -> Example -> m Uneval
+uneval :: Result -> Example -> Uneval Constraints
 uneval = curry \case
   -- Top always succeeds.
   (_, Top) -> return mempty
@@ -199,25 +213,25 @@ uneval = curry \case
   -- extensional in the sense that only their arguments are compared.
   (Apps (Ctr c) xs, Lams ys (Apps (Ctr d) zs))
     | c == d, length xs + length ys == length zs
-    -> mfold . mergeUneval =<< zipWithM uneval (xs ++ map upcast ys) zs
+    -> mergeUneval =<< zipWithM uneval (xs ++ map upcast ys) zs
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
     return $ Map.singleton h $ Map.singleton (Scope m) $ toEx $ lams vs ex
   (App (Prj c n) r, ex) -> do
-    cs <- ctrs_ <$> ask
+    cs <- view $ env . constructors -- TODO: something like view constructors
     let ar = arity . fromMaybe (error "Oh oh") . Map.lookup c $ cs
     uneval r $ apps (Ctr c) (replicate ar Top & ix (n - 1) .~ ex)
-  (App (Scoped m (Elim xs)) r, ex) -> do
+  (App (Scoped m (Elim xs)) r, ex) -> do -- TODO: use fuel here and return a Nondet i.o. []
     (c, e) <- mfold xs
-    cs <- ctrs_ <$> ask
+    cs <- view $ env . constructors
     let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
     scrut <- uneval r (apps (Ctr c) (replicate ar Top))
     let prjs = [App (Prj c n) r | n <- [1..ar]]
-    e' <- eval m e
-    arm <- resume mempty (apps e' prjs) >>= flip uneval ex
-    mfold $ mergeUneval [scrut, arm]
+    e' <- liftEval $ eval m e
+    arm <- liftEval (resume mempty $ apps e' prjs) >>= flip uneval ex
+    mergeUneval [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a x), Lam v y) ->
@@ -227,37 +241,24 @@ uneval = curry \case
     uneval (Scoped (Map.insert f r m) e) ex
   _ -> mzero
 
--- TODO: simplify these helper functions
-
-unevalEx :: MonadUneval m => Result -> Ex -> m Uneval
-unevalEx r ex = mfold . mergeUneval =<< for (fromEx ex) (uneval r)
-
-unevals :: MonadUneval m => Term Hole -> Constraint -> m Uneval
-unevals e cs = mfold . mergeUneval =<< for (Map.assocs cs)
-  \(Scope s, x) -> eval s e >>= flip unevalEx x
-
-unevalsFill :: MonadUneval m =>
-  Map Hole (Term Hole) -> Constraint -> m Constraint
-unevalsFill hf cs = do
-  bar <- for (Map.assocs cs) \(Scope s, x) -> do
-    s' <- mapM (resume hf) s
-    return $ Map.singleton (Scope s') x
-  mfold $ mergeMaps mergeEx bar
-
 -- TODO: test or prove that this is the correct unevaluation equivalent of
 -- resumption, i.e. that resuming and then unevaluation is equivalent to
 -- unevaluating and then "un-resuming".
-resumeUneval :: MonadUneval m => Hole -> Term Hole -> Uneval -> m Uneval
-resumeUneval h e un = do
-  c <- mfold $ Map.lookup h un
-  -- TODO: should we call unevalsFill on c?
-  x <- unevalsFill (Map.singleton h e) c >>= unevals e
-  y <- for (Map.delete h un) $ unevalsFill $ Map.singleton h e
-  mfold $ mergeUneval [x, y]
+resumeUneval :: Map Hole (Term Hole) -> Constraints -> Uneval Constraints
+resumeUneval hf old = do
+  -- Update the old constraints by resuming their local scopes and then
+  -- merging them.
+  updated <- mfold . mapM (mergeFromAssocs mergeEx) =<< for old \c ->
+    forOf (each . _1 . scope) (Map.assocs c) $ mapM (liftEval . resume hf)
+  -- Compute the new constraints that arise from filling each hole.
+  new <- sequence . toList $ Map.intersectionWith checkLive hf updated
+  -- Combine the new constraints with the updated constraints, minus the filled
+  -- holes.
+  mergeUneval $ Map.difference updated hf : new
 
-unevalAssert :: MonadUneval m => Map Var Result -> Assert -> m Uneval
-unevalAssert env (MkAssert e ex) = do
-  r <- eval env e
+unevalAssert :: Map Var Result -> Assert -> Uneval Constraints
+unevalAssert m (MkAssert e ex) = do
+  r <- liftEval $ eval m e
   uneval r ex
 
 -- }}}

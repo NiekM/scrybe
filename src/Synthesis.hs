@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell#-}
+{-# LANGUAGE TemplateHaskell, MultiParamTypeClasses #-}
 
 module Synthesis where
 
@@ -7,20 +7,17 @@ import Language
 import qualified RIO.Map as Map
 import qualified RIO.List as List
 
-type RefMonad s m =
-  (TCMonad m, FreshHole m, FreshVar m, MonadState s m, HasCtxs s)
-
 -- TODO: maybe we also want to keep track of a list of possible refinements
 -- e.g. [Term Unit]
 -- TODO: keep track of the current result to compute the blocking hole.
 data SynState = SynState
-  { _synContexts    :: Map Hole HoleCtx
-  , _synConstraints :: [Uneval]
-  , _synFillings    :: Map Hole (Term Hole)
-  , _synFresh       :: FreshState
-  , _synMainCtx     :: Map Var Result
-  , _synExamples    :: [Assert]
-  , _synWeights     :: Map Var Int
+  { _contexts    :: Map Hole HoleCtx
+  , _constraints :: [Constraints]
+  , _fillings    :: Map Hole (Term Hole)
+  , _freshSt     :: FreshState
+  , _mainCtx     :: Map Var Result
+  , _examples    :: [Assert]
+  , _weights     :: Map Var Int
   }
 
 makeLenses ''SynState
@@ -28,27 +25,26 @@ makeLenses ''SynState
 emptySynState :: SynState
 emptySynState = SynState mempty mempty mempty mkFreshState mempty [] mempty
 
-instance HasCtxs SynState where contexts = synContexts
-instance HasCstr SynState where constraints = synConstraints
-instance HasFill SynState where fillings = synFillings
-instance HasFreshState SynState where freshState = synFresh
+instance HasFreshState SynState where freshState = freshSt
 
-class    HasMainCtx a        where mainCtx :: Lens' a (Map Var Result)
-instance HasMainCtx SynState where mainCtx = synMainCtx
-class    HasExamples a        where examples :: Lens' a [Assert]
-instance HasExamples SynState where examples = synExamples
-class    HasWeights a        where weights :: Lens' a (Map Var Int)
-instance HasWeights SynState where weights = synWeights
+type Synth = RWST Env () SynState []
 
-runSyn :: Monad m => RWST Mod () SynState m a -> Mod -> m (a, SynState)
-runSyn tc m = do
-  (x, s, _) <- runRWST tc m emptySynState
-  return (x, s)
+instance LiftEval Synth where
+  liftEval x = runIdentity . runReaderT x <$> view env
 
-type SynMonad s m =
-  ( FreshVar m, FreshHole m, TCMonad m, MonadPlus m, MonadState s m
-  , HasCtxs s, HasCstr s, HasFill s, HasMainCtx s, HasExamples s, HasWeights s
-  )
+-- | Retrieve the context of a hole.
+getCtx :: Hole -> Synth HoleCtx
+getCtx h = use contexts >>=
+  maybe (fail $ "Missing holeCtx for hole " <> show h) return . Map.lookup h
+
+instance ExpandHole Hole Synth where
+  expandHole h = do
+    (xs, ctx') <- getCtx h >>= expandHole
+    modifying contexts $ Map.insert h ctx'
+    return (xs, h)
+
+liftUneval :: Int -> Uneval a -> Synth [a]
+liftUneval fuel x = runReaderT x . (`UnevalInput` fuel) <$> view env
 
 -- TODO: figure out how to deal with diverging unevaluation, such as that of
 -- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
@@ -77,7 +73,7 @@ type SynMonad s m =
 -- toplevel definitions.
 -- ALTERNATIVELY: implement full let polymorphism.
 
-init :: SynMonad s m => Defs Unit -> m (Term Hole)
+init :: Defs Unit -> Synth (Term Hole)
 init defs = do
   let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
   -- TODO: determine weights based on something
@@ -87,13 +83,13 @@ init defs = do
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
   ts <- mapM refresh . Map.fromList $ signatures defs <&>
     \(MkSignature a t) -> (a, t)
-  th <- unifies $ collect x & mapMaybe \a -> do
+  th <- failMaybe . unifies $ collect x & mapMaybe \a -> do
     Annot (Lam v _) (Arr t _) <- Just a
     Poly _ u <- Map.lookup v ts
     return (u, t)
   assign contexts $ substCtx th <$> ctx
   y <- etaExpand (strip x)
-  eval mempty y >>= \case
+  liftEval (eval mempty y) >>= \case
     Scoped m (Hole h) -> do
       assign mainCtx m
       modifying contexts $ Map.delete h
@@ -103,7 +99,7 @@ init defs = do
       -- two different types of nondeterminism, namely the nondeterministic
       -- unevaluation constraints and the nondeterminism of the synthesis
       -- procedure.
-      as <- ask <&> runReaderT do
+      as <- liftUneval 1000 $
         mergeUneval <$> for (asserts defs) (unevalAssert m)
       -- TODO: perhaps we should not remove constraints that do not conform to
       -- the informativeness restriction, as long as we don't introduce new
@@ -112,7 +108,7 @@ init defs = do
       return y
     _ -> error "Should never happen"
 
-updateConstraints :: SynMonad s m => [Uneval] -> m ()
+updateConstraints :: [Constraints] -> Synth ()
 updateConstraints xs = do
   cs <- Map.keysSet <$> use contexts
   -- Make sure every hole has constraints. ('Informativeness restriction')
@@ -120,7 +116,7 @@ updateConstraints xs = do
   guard . not . null $ ys
   assign constraints ys
 
-tryFilling :: SynMonad s m => Hole -> Term HoleCtx -> m (Term Hole)
+tryFilling :: Hole -> Term HoleCtx -> Synth (Term Hole)
 tryFilling h e = do
   -- Eta expand expression and compute new type contexts.
   expr <- etaExpand e >>= traverseOf holes \ctx -> (,ctx) <$> fresh
@@ -128,53 +124,54 @@ tryFilling h e = do
   let expr' = over holes fst expr
   -- Resume unevaluation by refining with a constructor applied to holes.
   xs <- use constraints
-  xs' <- ask <&> runReaderT @_ @[] do
+  xs' <- (flip UnevalInput 1000 <$> ask) <&> runReaderT @_ @[] do
     x <- mfold xs
-    resumeUneval h expr' x
+    resumeUneval (Map.singleton h expr') x
   updateConstraints xs'
-  assign mainCtx =<< traverse (resume $ Map.singleton h expr') =<< use mainCtx
+  use mainCtx
+    >>= traverse (liftEval . resume (Map.singleton h expr'))
+    >>= assign mainCtx
   return expr'
 
-computeBlocking :: MonadReader Mod m =>
-  Map Var Result -> Assert -> m (Maybe Hole)
-computeBlocking env (MkAssert e (Lams vs _)) = do
-  v <- eval env e
+computeBlocking :: Map Var Result -> Assert -> Eval (Maybe Hole)
+computeBlocking rs (MkAssert e (Lams vs _)) = do
+  v <- eval rs e
   r <- resume mempty $ apps v (upcast <$> vs)
   return $ blocking r
 
-step :: SynMonad s m => m ()
+step :: Synth ()
 step = do
   -- Pick one hole and remove it. TODO: not just pick the first hole.
   ctx <- use mainCtx
-  hs <- use examples >>= mapM (computeBlocking ctx)
+  hs <- use examples >>= mapM (liftEval . computeBlocking ctx)
   hole <- mfold $ foldr (<|>) Nothing hs
-  HoleCtx t env <- mfold . Map.lookup hole =<< use contexts
+  HoleCtx t loc <- mfold . Map.lookup hole =<< use contexts
   modifying contexts $ Map.delete hole
   e <- join $ mfold
     -- For concrete types, try the corresponding constructors.
     -- TODO: check if constructors are introduced correctly, see list_map.hs
     [ case t of
       Apps (Ctr d) _ -> do
-        (_, cs) <- mfold . Map.lookup d . data_ =<< ask
+        (_, cs) <- mfold . Map.lookup d =<< view dataTypes
         (c, ts) <- mfold cs
         return $ apps (Ctr c) (Hole (Unit ()) <$ ts)
       _ -> mzero
     -- TODO: make sure that recursive functions do not loop infinitely.
     -- For local variables, introduce a hole for every argument.
     , do
-      (v, Args ts _) <- mfold $ Map.assocs env
+      (v, Args ts _) <- mfold $ Map.assocs loc
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.
     , do
-      ps <- funs_ <$> ask
+      fs <- view functions
       ws <- Map.keysSet <$> use weights
-      (v, Poly _ (Args ts _)) <- mfold $ Map.assocs $ Map.restrictKeys ps ws
+      (v, Poly _ (Args ts _)) <- mfold $ Map.assocs $ Map.restrictKeys fs ws
       -- TODO: replace removal by something more sensible
       modifying weights $ Map.delete v
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     ]
-  (hf, _) <- check env e $ Poly [] t
+  (hf, _) <- check loc e $ Poly [] t
   expr <- tryFilling hole (strip hf)
   modifying fillings $ Map.insert hole expr
   return ()
@@ -182,8 +179,8 @@ step = do
 final :: SynState -> Bool
 final = null . view contexts
 
-synth :: Mod -> Defs Unit -> [Map Hole (Term Hole)]
-synth m d = go $ snd <$> runSyn @[] (init d) m
+synth :: Env -> Defs Unit -> [Map Hole (Term Hole)]
+synth m d = go $ view _2 <$> runRWST (init d) m emptySynState
   where
     go [] = []
     go xs =
@@ -191,272 +188,3 @@ synth m d = go $ snd <$> runSyn @[] (init d) m
           done = view fillings <$> as
           rest = fmap (view _2) . runRWST @_ @() @_ step m =<< bs
       in done ++ go rest
-
--- OLD {{{
--- Synthesis state {{{
-
----- TODO: factor out EvalState
-
---data SynState = SynState
---  { _holeCtxs  :: Map Hole HoleCtx
---  , _env       :: Env
---  , _concepts  :: MultiSet Concept
---  , _fresh     :: FreshState
---  }
-
---instance HasCtxs SynState where
---  holeCtxs = lens _holeCtxs \x y -> x { _holeCtxs = y }
-
---instance HasEnv SynState where
---  environment = lens _env \x y -> x { _env = y }
-
---instance HasConcepts SynState where
---  concepts = lens _concepts \x y -> x { _concepts = y }
-
---instance HasFreshState SynState where
---  freshState = lens _fresh \x y -> x { _fresh = y }
-
---mkSynState :: Env -> MultiSet Concept -> SynState
---mkSynState e c = SynState mempty e c mkFreshState
-
---runSyn :: Monad m => RWST Mod () SynState m a ->
---  Mod -> SynState -> m (a, SynState)
---runSyn tc m g = do
---  (x, s, _) <- runRWST tc m g
---  return (x, s)
-
---evalSyn :: Monad m => RWST Mod () SynState m a ->
---  Mod -> SynState -> m a
---evalSyn tc m g = fst <$> runSyn tc m g
-
----- }}}
-
----- TODO: does init make sense? Maybe we should just have a module as input
----- and compute the GenState
---init :: SynMonad s m => Sketch -> m (Term Hole)
---init (Sketch _ t e) = do
---  (expr, _, ctx) <- check' e t
---  assign holeCtxs ctx
---  etaExpand $ strip expr
-
---step :: SynMonad s m => Term Hole -> m (Term Hole)
---step expr = do
---  i <- selectFirst
---  hf <- pick i
---  return $ fill (Map.singleton i hf) expr
-
---type SynMonad s m =
---  ( TCMonad m, MonadPlus m, FreshVar m
---  , MonadState s m, HasEnv s, HasConcepts s, HasCtxs s
---  )
-
----- Refinements {{{
-
----- This synthesis technique remembers every possible refinement for each hole,
----- and then prunes those that are conflicting when making a choice.
-
----- TODO: implement weighted search over the search space using a priority
----- queue. Perhaps weights should be adjustable, e.g. the weight of a function
----- could be lowered after usage, depending on how often we still expect the
----- function to appear.
-
---data Ref = Ref (Term Type) (Map Free Type)
---  deriving (Eq, Ord, Show)
-
---type Refs = Map Hole [Ref]
-
---restrictRef :: Map Free Type -> Ref -> Maybe Ref
---restrictRef th1 (Ref x th2) = do
---  th3 <- combine th1 th2
---  return $ Ref (over holes (subst th3) x) th3
-
---globals' :: (MonadState s m, HasEnv s, FreshFree m) => m [(Var, Poly)]
---globals' = do
---  xs <- Map.assocs <$> use environment
---  for xs \(x, (p, _)) -> do
---    q <- refresh p
---    return (x, q)
-
---refs :: (FreshFree m, MonadState s m, HasEnv s) => HoleCtx -> m [Ref]
---refs (HoleCtx t vs) = do
---  gs <- globals'
---  let ls = Map.assocs vs <&> second (Poly [])
---  return do
---    (x, Poly as (Args args res)) <- gs <> ls
---    case unify res t of
---      Nothing -> []
---      Just th -> do
---        let e = apps (Var x) (Hole . subst th <$> args)
---        let th' = Map.withoutKeys th $ Set.fromList as
---        [Ref e th']
-
---pick' :: SynMonad s m => Hole -> Ref -> Refs -> m (Term Hole, Refs)
---pick' h (Ref e th) rss = do
---  applySubst th -- TODO: is this needed?
---  -- Select and remove the holeCtx
---  ctx <- getCtx h
---  modifying holeCtxs $ Map.delete h
---  -- Process and eta expand refinement
---  x <- etaExpand =<< forOf holes e \u -> introduceHole (set goal u ctx)
---  let hs = Set.fromList $ toListOf holes x
---  -- Select holeCtxs of the new holes
---  ctxs' <- flip Map.restrictKeys hs <$> use holeCtxs
---  -- Compute all new refinements and restrict previous refinements
---  rss' <- traverse refs ctxs'
---  let rss'' = mapMaybe (restrictRef th) <$> Map.delete h rss
---  return (x, rss' <> rss'')
-
---next' :: SynMonad s m => Term Hole -> Refs -> m (Hole, Ref, Term Hole, Refs)
---next' e rss = do
---  (h, rs) <- mfold . Map.assocs $ rss
---  r <- mfold rs
---  (x, rss') <- pick' h r rss
---  return (h, r, fill (Map.singleton h x) e, rss')
-
---init' :: SynMonad s m => Sketch -> m (Hole, Ref, Term Hole, Refs)
---init' (Sketch _ t e) = do
---  (expr, _, ctx) <- check' e t
---  assign holeCtxs ctx
---  x <- etaExpand $ strip expr
---  use holeCtxs >>= traverse refs >>= next' x
-
---step' :: SynMonad s m => (Hole, Ref, Term Hole, Refs)
---  -> m (Hole, Ref, Term Hole, Refs)
---step' (_, _, e, rss) = next' e rss
-
----- }}}
-
---type HoleFilling = (Term Type, Type)
-
----- | Select the first hole to fill.
---selectFirst :: (MonadPlus m, MonadState s m, HasCtxs s) => m Hole
---selectFirst = use holeCtxs >>= fmap fst . mfold . Set.minView . Map.keysSet
-
----- | Try to select a valid hole filling for a hole.
---pick :: SynMonad s m => Hole -> m (Term Hole)
---pick h = do
---  -- Choose hole fillings from either local or global variables.
---  (hf, cs) <- locals h <|> globals <|> constructs
---  -- Check if the hole fillings fit.
---  e <- fillHole h hf
---  -- Remove the used concepts.
---  modifying concepts (`sub` fromSet cs)
---  -- Remove functions from the environment that use removed concepts
---  cs' <- use concepts
---  modifying environment . restrict $ Map.keysSet cs'
---  return e
-
----- | Performs type substitutions in holes and local variables.
---applySubst :: (MonadState s m, HasCtxs s) => Map Free Type -> m ()
---applySubst th = modifying holeCtxs . fmap $ over goal (subst th)
-
----- | Try and fill a hole using a hole filling.
---fillHole :: SynMonad s m => Hole -> HoleFilling -> m (Term Hole)
---fillHole h (e, t) = do
---  ctx <- getCtx h
---  -- Check if the hole filling fits.
---  th <- unify t (view goal ctx)
---  -- Introduce holes in the sketch.
---  x <- forOf holes e \u -> introduceHole (set goal u ctx)
---  -- Apply type substitutions to all relevant types.
---  applySubst th
---  -- Close the current hole.
---  modifying holeCtxs $ Map.delete h
---  -- Do postprocessing of the hole filling.
---  etaExpand x
-
----- | Introduce a new hole.
---introduceHole :: (FreshHole m, MonadState s m, HasCtxs s) => HoleCtx -> m Hole
---introduceHole ctx = do
---  h <- fresh
---  modifying holeCtxs $ Map.insert h ctx
---  return h
-
----- | Compute hole fillings from global variables.
---globals :: (MonadPlus m, FreshFree m, MonadState s m, HasEnv s) =>
---  m (HoleFilling, Set Concept)
---globals = do
---  (x, (t, c)) <- mfold . Map.assocs =<< use environment
---  u <- instantiateFresh t
---  return (fullyApply (Var x, u), c)
-
----- | Compute hole fillings from local variables.
---locals :: (MonadFail m, MonadPlus m, MonadState s m, HasCtxs s) =>
---  Hole -> m (HoleFilling, Set Concept)
---locals h = do
---  HoleCtx _ vs <- getCtx h
---  (v, t) <- mfold $ Map.assocs vs
---  return (fullyApply (Var v, t), Set.empty)
-
----- | Compute hole fillings from available language constructs.
----- TODO: I guess this is mzero for PointFree, and just pattern matching for
----- eta-long. Explicit lambda's could be used by a less restrictive synthesis
----- technique. Perhaps we should not try to generate language constructs
----- directly, but rather use eliminators, folds and fixpoints. However, it is
----- still useful to describe the associated holes fillings to trace student
----- solutions.
---constructs :: MonadPlus m => m (HoleFilling, Set Concept)
---constructs = mzero -- TODO
-
----- TODO: this does not take into account the fact that expressions might have a
----- polymorphic return type, i.e. might take any number of arguments given the
----- right instantiations.
---fullyApply :: HoleFilling -> HoleFilling
---fullyApply (e, Args ts u) = (apps e (Hole <$> ts), u)
-
-
----- TODO: this file is getting pretty messy, do some cleanup
-
----- NOTE: this variant of pick ignores concepts so that the same expression can
----- be used multiple times.
----- | Try to select a valid hole filling for a hole.
---pick'' :: SynMonad s m => Hole -> m (Term Hole)
---pick'' h = do
---  -- Choose hole fillings from either local or global variables.
---  (hf, _) <- locals h <|> globals <|> constructs
---  -- Check if the hole fillings fit.
---  fillHole h hf
-
----- TODO: replace fuel with a priority search queue.
----- NOTE: we expect that the expression is already eta-expanded when we start
----- guessing.
---guessUpTo :: SynMonad s m => Int -> HoleCtx -> m (Term Hole)
---guessUpTo i ctx = do
---  h <- fresh
---  assign holeCtxs $ Map.singleton h ctx
---  msum $ flip guessExact h <$> [1..i]
-
----- TODO: use some form of dynamic programming to reuse previously computed
----- results.
----- NOTE: each hole filling contributes 1 to the total size and the remaining
----- size is distributed over newly introduced holes.
---guessExact :: SynMonad s m => Int -> Hole -> m (Term Hole)
---guessExact 0 _ = mzero
---guessExact i h = do
---  hf <- pick'' h
---  -- TODO: this would be easier if we return a list of hole fillings instead of
---  -- an expression.
---  let hs = toListOf holes hf
---  case length hs of
---    -- NOTE: we only accept expresions of the exact size, to guarantee that we
---    -- do not generate the same expression more than once.
---    0 | i == 1 -> return hf
---    n -> do
---      is <- distr (i - 1) n
---      xs <- forM (zip is hs) \(i', h') -> (h',) <$> guessExact i' h'
---      return $ fill (Map.fromList xs) hf
-
----- TODO: implement this example using a file:
----- pretty$trySyn' @[] prelude'$solve "(\\xs -> { }) [1,2,3]" "List Nat" "[2,3,4]"
-----
----- e.g.
-----
----- import Prelude (map, succ)
-----
----- addOne :: List Nat -> List Nat
----- addOne xs = {0}
-----
----- assert 0 \[] -> []
----- assert 0 \[0,0] -> [1,1]
----- assert 0 \[1,2,3] -> [2,3,4]
--- }}}

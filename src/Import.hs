@@ -14,6 +14,7 @@ module Import
   , failMaybe
   , mergeMap
   , mergeMaps
+  , mergeFromAssocs
   , search
   , todo
   , TODO
@@ -62,6 +63,10 @@ mergeMap f x y = sequence $ Map.unionWith
 mergeMaps :: (Monad m, Foldable f, Ord k) => (v -> v -> m v) ->
   f (Map k v) -> m (Map k v)
 mergeMaps f = foldl' (\x y -> x >>= mergeMap f y) $ return mempty
+
+mergeFromAssocs :: (Monad m, Foldable f, Functor f, Ord k) =>
+  (v -> v -> m v) -> f (k, v) -> m (Map k v)
+mergeFromAssocs f = mergeMaps f . fmap (uncurry Map.singleton)
 
 search :: forall a r w s. Monoid w =>
   (a -> RWST r w s [] a) -> a -> RWST r w s Tree a
