@@ -54,7 +54,7 @@ instance Pretty SynState where
     ]
 
 tryUneval :: Uneval a -> Nondet a
-tryUneval x = runReaderT x (UnevalInput prelude 1000)
+tryUneval x = view _1 <$> runRWST x prelude 1000
 
 eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude

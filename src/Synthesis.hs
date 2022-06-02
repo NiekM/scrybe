@@ -45,7 +45,7 @@ instance ExpandHole Hole Synth where
     return (xs, h)
 
 liftUneval :: Int -> Uneval a -> Synth (Nondet a)
-liftUneval fuel x = runReaderT x . (`UnevalInput` fuel) <$> view env
+liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
 
 -- TODO: figure out how to deal with diverging unevaluation, such as that of
 -- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
@@ -125,9 +125,9 @@ tryFilling h e = do
   let expr' = over holes fst expr
   -- Resume unevaluation by refining with a constructor applied to holes.
   xs <- use constraints
-  xs' <- do -- TODO: find reasonable fuel
+  xs' <- liftUneval 40 do -- TODO: find reasonable fuel
     x <- mfold xs
-    liftUneval 20 $ resumeUneval (Map.singleton h expr') x
+    resumeUneval (Map.singleton h expr') x
   -- TODO: how should we handle running out of fuel here?
   updateConstraints $ either error id $ runNondet xs'
   use mainCtx

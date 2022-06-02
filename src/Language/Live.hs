@@ -172,25 +172,15 @@ fromEx = \case
 
 -- Live unevaluation {{{
 
-data UnevalInput = UnevalInput
-  { _unevalEnv  :: Env
-  , _unevalFuel :: Int
-  } deriving (Eq, Ord)
-
-makeLenses ''UnevalInput
-
-instance HasEnv UnevalInput where
-  env = unevalEnv
-
-type Uneval = ReaderT UnevalInput Nondet
+type Uneval = RWST Env () Int Nondet
 
 instance LiftEval Uneval where
-  liftEval = magnify env . mapReaderT mfold
+  liftEval x = ask <&> runReader x
 
-burnFuel :: Uneval a -> Uneval a
-burnFuel x = view unevalFuel >>= \case
+burnFuel :: Uneval ()
+burnFuel = get >>= \case
   n | n <= 0    -> fail "Out of fuel"
-    | otherwise -> local (set unevalFuel (n - 1)) x
+    | otherwise -> put (n - 1)
 
 -- TODO: find some better names?
 type Constraint = Map Scope Ex
@@ -212,7 +202,7 @@ checkLive e cs =
 -- TODO: add fuel (probably using a FuelMonad or something, so that we can
 -- leave it out as well)
 uneval :: Result -> Example -> Uneval Constraints
-uneval = curry \case
+uneval result example = burnFuel >> case (result, example) of
   -- Top always succeeds.
   (_, Top) -> return mempty
   -- Constructors are handled as opaque functions and their unevaluation is
@@ -229,7 +219,7 @@ uneval = curry \case
     cs <- view $ env . constructors -- TODO: something like view constructors
     let ar = arity . fromMaybe (error "Oh oh") . Map.lookup c $ cs
     uneval r $ apps (Ctr c) (replicate ar Top & ix (n - 1) .~ ex)
-  (App (Scoped m (Elim xs)) r, ex) -> burnFuel do
+  (App (Scoped m (Elim xs)) r, ex) -> do
     (c, e) <- mfold xs
     cs <- view $ env . constructors
     let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
