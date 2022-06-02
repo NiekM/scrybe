@@ -101,13 +101,11 @@ init defs = do
       -- unevaluation constraints and the nondeterminism of the synthesis
       -- procedure.
       -- TODO: find reasonable fuel
-      as <- sequence <$> for (asserts defs) (liftUneval 10 . unevalAssert m)
+      as <- liftUneval 1000 $ -- TODO: find reasonable fuel
+        mergeConstraints <$> for (asserts defs) (unevalAssert m)
       -- TODO: how do we deal with running out of fuel? Can we still have
       -- assertions at some nodes of the computation?
-      updateConstraints
-        $ fromMaybe (error "Conflicting assertions") . sequence
-        . either error (fmap mergeConstraints) . runNondet
-        $ as
+      updateConstraints $ catMaybes (either error id . runNondet $ as)
       return y
     _ -> error "Should never happen"
 
@@ -130,8 +128,7 @@ tryFilling h e = do
   xs' <- do -- TODO: find reasonable fuel
     x <- mfold xs
     liftUneval 20 $ resumeUneval (Map.singleton h expr') x
-  -- TODO: how should we handle running out of fuel here? Probably just ignore
-  -- the hole filling altogether.
+  -- TODO: how should we handle running out of fuel here?
   updateConstraints $ either error id $ runNondet xs'
   use mainCtx
     >>= traverse (liftEval . resume (Map.singleton h expr'))
@@ -191,5 +188,5 @@ synth m d = go $ view _2 <$> runRWST (init d) m emptySynState
     go xs =
       let (as, bs) = List.partition final xs
           done = view fillings <$> as
-          rest = fmap (view _2) . runRWST @_ @() @_ step m =<< bs
+          rest = fmap (view _2) . runRWST step m =<< bs
       in done ++ go rest

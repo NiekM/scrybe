@@ -9,10 +9,7 @@ index :: Nat -> List a -> Maybe a
 -- NOTE: this diverges, but synthesis also does not know how to introduce the
 -- correct recursion scheme.
 -- index = {}
--- NOTE: this one does synthesize, but takes very long
--- index n xs = foldList {} {} xs n
--- NOTE: Using flip is way faster
-index = flip (foldList {} {})
+index n xs = foldList {} {} xs n
 
 -- assert index 0 []        <== Nothing
 -- assert index 0 [1]       <== Just 1
