@@ -3,7 +3,14 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: monus-weighted-search-0.1.0.0@sha256:7a0a5b36544067d774fce8d267eb0b23eb76ce46b6ca3e4446a78617765450c6,5012
+    pantry-tree:
+      size: 1542
+      sha256: 2e60df574c3e65085ec503c2c3c229dec40ccebee184394f4165c5576fa1e08c
+  original:
+    hackage: monus-weighted-search-0.1.0.0
 snapshots:
 - completed:
     size: 587819

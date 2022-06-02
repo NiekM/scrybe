@@ -75,6 +75,7 @@ library
     , containers
     , megaparsec
     , microlens-platform
+    , monus-weighted-search
     , mtl
     , prettyprinter
     , psqueues
@@ -121,6 +122,7 @@ executable synthesis-exe
     , containers
     , megaparsec
     , microlens-platform
+    , monus-weighted-search
     , mtl
     , optparse-simple
     , prettyprinter
@@ -173,6 +175,7 @@ test-suite synthesis-test
     , hspec
     , megaparsec
     , microlens-platform
+    , monus-weighted-search
     , mtl
     , prettyprinter
     , psqueues

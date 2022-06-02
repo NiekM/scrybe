@@ -1,12 +1,9 @@
-{-# LANGUAGE TemplateHaskell#-}
-
 module Language.Live where
 
 import Import
 import Nondet
 import Language.Syntax
 import qualified RIO.Map as Map
-import Control.Monad.Reader
 
 {-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
 pattern Scoped :: LiveEnv -> Indet -> Expr' r 'Det

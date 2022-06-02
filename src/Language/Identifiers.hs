@@ -9,6 +9,7 @@ module Language.Identifiers
   where
 
 import Import
+import Control.Monad.State
 
 newtype Hole = MkHole Int
   deriving stock (Eq, Ord, Read, Show)
@@ -85,4 +86,11 @@ instance (Monoid w, HasFreshState s, Monad m)
   fresh = freeId <$> fresh' freshFree
 instance (Monoid w, HasFreshState s, Monad m)
   => MonadFresh Var (RWST r w s m) where
+  fresh = varId <$> fresh' freshVar
+
+instance (HasFreshState s, Monad m) => MonadFresh Hole (StateT s m) where
+  fresh = fresh' freshHole
+instance (HasFreshState s, Monad m) => MonadFresh Free (StateT s m) where
+  fresh = freeId <$> fresh' freshFree
+instance (HasFreshState s, Monad m) => MonadFresh Var (StateT s m) where
   fresh = varId <$> fresh' freshVar

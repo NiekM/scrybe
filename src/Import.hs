@@ -15,7 +15,6 @@ module Import
   , mergeMap
   , mergeMaps
   , mergeFromAssocs
-  , search
   , todo
   , TODO
   , distr
@@ -26,7 +25,6 @@ import RIO.Text (unpack)
 import RIO.List
 import qualified RIO.Map as Map
 import Prettyprinter
-import Data.Tree
 import Control.Monad.RWS hiding (local)
 import Lens.Micro.Platform
 
@@ -67,12 +65,6 @@ mergeMaps f = foldl' (\x y -> x >>= mergeMap f y) $ return mempty
 mergeFromAssocs :: (Monad m, Foldable f, Functor f, Ord k) =>
   (v -> v -> m v) -> f (k, v) -> m (Map k v)
 mergeFromAssocs f = mergeMaps f . fmap (uncurry Map.singleton)
-
-search :: forall a r w s. Monoid w =>
-  (a -> RWST r w s [] a) -> a -> RWST r w s Tree a
-search step init = RWST \r s -> go r (init, s, mempty) where
-  go :: r -> (a, s, w) -> Tree (a, s, w)
-  go r (x, s, w) = Node (x, s, w) (go r <$> runRWST (step x) r s)
 
 {-# WARNING TODO "TODO left in code" #-}
 type family TODO :: k where { }

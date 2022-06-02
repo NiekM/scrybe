@@ -3,7 +3,6 @@ module SynthesisSpec where
 import Import
 import Synthesis
 import Test.Hspec
-import Language.Syntax
 import Language.Parser
 import RIO.FilePath
 import RIO.Directory
@@ -20,7 +19,7 @@ spec = do
       let x = fromMaybe undefined . lexParse parser $ t
       return (f, x)
     for_ xs \(f, x) -> describe (takeBaseName f) do
-      let n = length $ synth m x
+      let n = length $ runSynth m (synth x)
       it ("synthesizes " <> show n <> " solution(s)") (n > 0)
 
 -- TODO: do benchmarking using the criterion package

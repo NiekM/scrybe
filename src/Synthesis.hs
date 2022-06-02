@@ -6,7 +6,9 @@ import Import
 import Language
 import Nondet
 import qualified RIO.Map as Map
-import qualified RIO.List as List
+import Control.Monad.Heap
+import Control.Monad.State
+import Data.Monus.Dist
 
 -- TODO: maybe we also want to keep track of a list of possible refinements
 -- e.g. [Term Unit]
@@ -26,9 +28,13 @@ makeLenses ''SynState
 emptySynState :: SynState
 emptySynState = SynState mempty mempty mempty mkFreshState mempty [] mempty
 
-instance HasFreshState SynState where freshState = freshSt
+runSynth :: Env -> Synth a -> Heap Dist a
+runSynth m x = fst <$> runReaderT (runStateT x emptySynState) m
 
-type Synth = RWST Env () SynState []
+instance HasFreshState SynState where
+  freshState = freshSt
+
+type Synth = StateT SynState (ReaderT Env (Heap Dist))
 
 instance LiftEval Synth where
   liftEval x = runIdentity . runReaderT x <$> view env
@@ -73,6 +79,11 @@ liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
 -- the fromDefs function in Language.Live.hs, in that it folds over all the
 -- toplevel definitions.
 -- ALTERNATIVELY: implement full let polymorphism.
+
+-- TODO: perhaps Nondet should be a wrapper around Heap providing this
+-- MonadFail instance.
+instance MonadFail (Heap w) where
+  fail _ = mzero
 
 init :: Defs Unit -> Synth (Term Hole)
 init defs = do
@@ -174,6 +185,8 @@ step = do
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     ]
   (hf, _) <- check loc e $ Poly [] t
+  -- TODO: find better weights than just number of holes.
+  tell $ fromIntegral $ length (toListOf holes e)
   expr <- tryFilling hole (strip hf)
   modifying fillings $ Map.insert hole expr
   return ()
@@ -181,12 +194,11 @@ step = do
 final :: SynState -> Bool
 final = null . view contexts
 
-synth :: Env -> Defs Unit -> [Map Hole (Term Hole)]
-synth m d = go $ view _2 <$> runRWST (init d) m emptySynState
-  where
-    go [] = []
-    go xs =
-      let (as, bs) = List.partition final xs
-          done = view fillings <$> as
-          rest = fmap (view _2) . runRWST step m =<< bs
-      in done ++ go rest
+synth :: Defs Unit -> Synth (Map Hole (Term Hole))
+synth d = init d >> go where
+  go :: Synth (Map Hole (Term Hole))
+  go = do
+    st <- get
+    if final st
+      then use fillings
+      else step >> go

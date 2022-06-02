@@ -14,6 +14,9 @@ import System.IO.Unsafe
 import Prettyprinter
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
+import Control.Monad.Heap
+import Control.Monad.State
+import Data.Monus.Dist
 
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
@@ -71,5 +74,5 @@ read s = let file = unsafePerformIO $ readFileUtf8 s in
     Just x -> x
     Nothing -> error "Could not parse file"
 
-synth' :: Defs Unit -> [Map Hole (Term Hole)]
-synth' = synth prelude
+synth' :: String -> Doc ann
+synth' = pretty . fmap snd . best . runSynth prelude . synth . read
