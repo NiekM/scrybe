@@ -1,9 +1,7 @@
 import Prelude (elimBool)
 
--- TODO: xor needs 2 elimBools
 xor :: Bool -> Bool -> Bool
--- xor = {}
-xor x y = elimBool {} {} {}
+xor = {}
 
 assert xor True  True  <== False
 assert xor True  False <== True

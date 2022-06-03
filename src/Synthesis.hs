@@ -136,7 +136,7 @@ tryFilling h e = do
   let expr' = over holes fst expr
   -- Resume unevaluation by refining with a constructor applied to holes.
   xs <- use constraints
-  xs' <- liftUneval 40 do -- TODO: find reasonable fuel
+  xs' <- liftUneval 100 do -- TODO: find reasonable fuel
     x <- mfold xs
     resumeUneval (Map.singleton h expr') x
   -- TODO: how should we handle running out of fuel here?
@@ -178,15 +178,15 @@ step = do
     -- explicitly imported.
     , do
       fs <- view functions
-      ws <- Map.keysSet <$> use weights
-      (v, Poly _ (Args ts _)) <- mfold $ Map.assocs $ Map.restrictKeys fs ws
-      -- TODO: replace removal by something more sensible
-      modifying weights $ Map.delete v
+      ws <- use weights
+      (v, (Poly _ (Args ts _), w)) <- mfold $ Map.assocs $
+        Map.intersectionWith (,) fs ws
+      -- TODO: do we update the weights?
+      tell $ fromIntegral $ w + length ts
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     ]
   (hf, _) <- check loc e $ Poly [] t
   -- TODO: find better weights than just number of holes.
-  tell $ fromIntegral $ length (toListOf holes e)
   expr <- tryFilling hole (strip hf)
   modifying fillings $ Map.insert hole expr
   return ()

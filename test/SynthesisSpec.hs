@@ -6,6 +6,7 @@ import Test.Hspec
 import Language.Parser
 import RIO.FilePath
 import RIO.Directory
+import Control.Monad.Heap
 
 spec :: Spec
 spec = do
@@ -19,7 +20,6 @@ spec = do
       let x = fromMaybe undefined . lexParse parser $ t
       return (f, x)
     for_ xs \(f, x) -> describe (takeBaseName f) do
-      let n = length $ runSynth m (synth x)
-      it ("synthesizes " <> show n <> " solution(s)") (n > 0)
+      it "synthesizes" . isJust . best . runSynth m $ synth x
 
 -- TODO: do benchmarking using the criterion package

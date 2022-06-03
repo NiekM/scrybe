@@ -15,8 +15,6 @@ import Prettyprinter
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import Control.Monad.Heap
-import Control.Monad.State
-import Data.Monus.Dist
 
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
