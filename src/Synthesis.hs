@@ -12,13 +12,12 @@ import Data.Monus.Dist
 
 -- TODO: maybe we also want to keep track of a list of possible refinements
 -- e.g. [Term Unit]
--- TODO: keep track of the current result to compute the blocking hole.
 data SynState = SynState
   { _contexts    :: Map Hole HoleCtx
   , _constraints :: [Constraints]
   , _fillings    :: Map Hole (Term Hole)
   , _freshSt     :: FreshState
-  , _mainCtx     :: Map Var Result
+  , _mainScope   :: Map Var Result
   , _examples    :: [Assert]
   , _weights     :: Map Var Int
   }
@@ -103,7 +102,7 @@ init defs = do
   y <- etaExpand (strip x)
   liftEval (eval mempty y) >>= \case
     Scoped m (Hole h) -> do
-      assign mainCtx m
+      assign mainScope m
       modifying contexts $ Map.delete h
       assign examples $ asserts defs
       -- NOTE: we explicitly run the reader transformer, so that we can
@@ -112,7 +111,7 @@ init defs = do
       -- unevaluation constraints and the nondeterminism of the synthesis
       -- procedure.
       -- TODO: find reasonable fuel
-      as <- liftUneval 1000 $ -- TODO: find reasonable fuel
+      as <- liftUneval 100 $ -- TODO: find reasonable fuel
         mergeConstraints <$> for (asserts defs) (unevalAssert m)
       -- TODO: how do we deal with running out of fuel? Can we still have
       -- assertions at some nodes of the computation?
@@ -128,38 +127,14 @@ updateConstraints xs = do
   guard . not . null $ ys
   assign constraints ys
 
-tryFilling :: Hole -> Term HoleCtx -> Synth (Term Hole)
-tryFilling h e = do
-  -- Eta expand expression and compute new type contexts.
-  expr <- etaExpand e >>= traverseOf holes \ctx -> (,ctx) <$> fresh
-  modifying contexts (<> Map.fromList (toListOf holes expr))
-  let expr' = over holes fst expr
-  -- Resume unevaluation by refining with a constructor applied to holes.
-  xs <- use constraints
-  xs' <- liftUneval 100 do -- TODO: find reasonable fuel
-    x <- mfold xs
-    resumeUneval (Map.singleton h expr') x
-  -- TODO: how should we handle running out of fuel here?
-  updateConstraints $ either error id $ runNondet xs'
-  use mainCtx
-    >>= traverse (liftEval . resume (Map.singleton h expr'))
-    >>= assign mainCtx
-  return expr'
-
 computeBlocking :: Map Var Result -> Assert -> Eval (Maybe Hole)
 computeBlocking rs (MkAssert e (Lams vs _)) = do
   v <- eval rs e
   r <- resume mempty $ apps v (upcast <$> vs)
   return $ blocking r
 
-step :: Synth ()
-step = do
-  -- Pick one hole and remove it. TODO: not just pick the first hole.
-  ctx <- use mainCtx
-  hs <- use examples >>= mapM (liftEval . computeBlocking ctx)
-  hole <- mfold $ foldr (<|>) Nothing hs
-  HoleCtx t loc <- mfold . Map.lookup hole =<< use contexts
-  modifying contexts $ Map.delete hole
+refinements :: HoleCtx -> Synth (Term HoleCtx)
+refinements (HoleCtx t ctx) = do
   e <- join $ mfold
     -- For concrete types, try the corresponding constructors.
     -- TODO: check if constructors are introduced correctly, see list_map.hs
@@ -172,7 +147,7 @@ step = do
     -- TODO: make sure that recursive functions do not loop infinitely.
     -- For local variables, introduce a hole for every argument.
     , do
-      (v, Args ts _) <- mfold $ Map.assocs loc
+      (v, Args ts _) <- mfold $ Map.assocs ctx
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.
@@ -185,11 +160,43 @@ step = do
       tell $ fromIntegral $ w + length ts
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     ]
-  (hf, _) <- check loc e $ Poly [] t
-  -- TODO: find better weights than just number of holes.
-  expr <- tryFilling hole (strip hf)
-  modifying fillings $ Map.insert hole expr
-  return ()
+  (e', _) <- check ctx e $ Poly [] t
+  return $ strip e'
+
+step :: Map Hole (Term Hole) -> Synth ()
+step hf = do
+  -- Pick one blocking hole and remove it.
+  s <- use mainScope
+  hs <- use examples >>= mapM (liftEval . computeBlocking s)
+  hole <- mfold $ foldr (<|>) Nothing hs
+  ctx <- mfold . Map.lookup hole =<< use contexts
+  modifying contexts $ Map.delete hole
+  -- Find a refinement to extend the hole filling.
+  ref <- refinements ctx
+  expr <- etaExpand ref >>= traverseOf holes \c -> (,c) <$> fresh
+  modifying contexts (<> Map.fromList (toListOf holes expr))
+  let hf' = Map.insert hole (over holes fst expr) hf
+  -- Try unevaluation resumption. TODO: find a reasonable fuel
+  -- If there is too much non-determinism, fill another hole before
+  -- unevaluating.
+  cs <- use constraints
+  if length cs > 64
+    then step hf'
+    else liftUneval 64 (mfold cs >>= resumeUneval hf') >>= \case
+    Nondet (Right cs') -> do
+      updateConstraints cs'
+      use mainScope
+        >>= traverse (liftEval . resume hf')
+        >>= assign mainScope
+      modifying fillings (<> hf')
+    -- TODO: what to do if unevaluation diverges? It seems that filling a hole
+    -- never really fixes the problem because the same amount of fuel is
+    -- needed.
+    -- We can never know if unevaluation actually diverges, but if it takes too
+    -- much fuel we should recurse with more fuel, but at a higher weight, so
+    -- that a correct solution can still be found, but diverging solutions do
+    -- not stop larger (possibly correct) solutions from being tried.
+    Nondet (Left err) -> error err
 
 final :: SynState -> Bool
 final = null . view contexts
@@ -201,4 +208,4 @@ synth d = init d >> go where
     st <- get
     if final st
       then use fillings
-      else step >> go
+      else step mempty >> go
