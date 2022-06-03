@@ -150,6 +150,9 @@ foldr f e = foldList e f
 map :: (a -> b) -> List a -> List b
 map = mapList
 
+filter :: (a -> Bool) -> List a -> List a
+filter p = foldList [] (\x r -> elimBool r (Cons x r) (p x))
+
 append :: List a -> List a -> List a
 append xs ys = foldList ys Cons xs
 
@@ -161,6 +164,9 @@ sum = foldList 0 plus
 
 product :: List Nat -> Nat
 product = foldList 1 mult
+
+drop :: Nat -> List a -> List a
+drop = foldNat id (\r -> elimList [] (\x xs -> r xs))
 
 insert :: Nat -> List Nat -> List Nat
 insert n = paraList [n] \x xs r -> case compareNat n x of
