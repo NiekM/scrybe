@@ -186,8 +186,8 @@ type Constraints = Map Hole Constraint
 mergeConstraints :: MonadPlus m => [Constraints] -> m Constraints
 mergeConstraints = mfold . mergeMaps (mergeMap mergeEx)
 
-checkLive :: Term Hole -> Constraint -> Uneval Constraints
-checkLive e cs =
+live :: Term Hole -> Constraint -> Uneval Constraints
+live e cs =
   mergeConstraints =<< for (Map.assocs cs) \(Scope m, ex) -> do
     x <- mfold . fromEx $ ex
     r <- liftEval (eval m e)
@@ -196,10 +196,8 @@ checkLive e cs =
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
 -- the recursive argument to Nothing. This makes many things more messy
 -- unfortunately.
--- TODO: add fuel (probably using a FuelMonad or something, so that we can
--- leave it out as well)
 uneval :: Result -> Example -> Uneval Constraints
-uneval result example = burnFuel >> case (result, example) of
+uneval = curry \case
   -- Top always succeeds.
   (_, Top) -> return mempty
   -- Constructors are handled as opaque functions and their unevaluation is
@@ -216,7 +214,7 @@ uneval result example = burnFuel >> case (result, example) of
     cs <- view $ env . constructors -- TODO: something like view constructors
     let ar = arity . fromMaybe (error "Oh oh") . Map.lookup c $ cs
     uneval r $ apps (Ctr c) (replicate ar Top & ix (n - 1) .~ ex)
-  (App (Scoped m (Elim xs)) r, ex) -> do
+  (App (Scoped m (Elim xs)) r, ex) -> burnFuel >> do
     (c, e) <- mfold xs
     cs <- view $ env . constructors
     let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
@@ -228,11 +226,20 @@ uneval result example = burnFuel >> case (result, example) of
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a x), Lam v y) ->
-    checkLive x $ Map.singleton (Scope $ Map.insert a (upcast v) m) (toEx y)
+    live x $ Map.singleton (Scope $ Map.insert a (upcast v) m) (toEx y)
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
     uneval (Scoped (Map.insert f r m) e) ex
   _ -> mzero
+
+-- TODO: Perhaps throw away normal checkLive in favor of this
+resumeLive :: Map Hole (Term Hole) -> Term Hole -> Constraint ->
+  Uneval Constraints
+resumeLive hf e cs =
+  mergeConstraints =<< for (Map.assocs cs) \(Scope m, ex) -> do
+    x <- mfold . fromEx $ ex
+    r <- liftEval (eval m e >>= resume hf)
+    uneval r x
 
 -- TODO: test or prove that this is the correct unevaluation equivalent of
 -- resumption, i.e. that resuming and then unevaluation is equivalent to
@@ -244,7 +251,8 @@ resumeUneval hf old = do
   updated <- mfold . mapM (mergeFromAssocs mergeEx) =<< for old \c ->
     forOf (each . _1 . scope) (Map.assocs c) $ mapM (liftEval . resume hf)
   -- Compute the new constraints that arise from filling each hole.
-  new <- sequence . toList $ Map.intersectionWith checkLive hf updated
+  -- TODO: check that this line is correct now. Can we optimize it?
+  new <- sequence . toList $ Map.intersectionWith (resumeLive hf) hf updated
   -- Combine the new constraints with the updated constraints, minus the filled
   -- holes.
   mergeConstraints . fmap (Map.\\ hf) $ updated : new

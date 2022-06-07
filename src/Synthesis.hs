@@ -133,6 +133,10 @@ computeBlocking rs (MkAssert e (Lams vs _)) = do
   r <- resume mempty $ apps v (upcast <$> vs)
   return $ blocking r
 
+-- TODO: should we have a weight here? Giving a weight of 1 to
+-- constructors and variables makes the benchmarks an order of
+-- magnitude slower! The weight of global variables should probably be scaled
+-- further compared to constructors and local variables.
 refinements :: HoleCtx -> Synth (Term HoleCtx)
 refinements (HoleCtx t ctx) = do
   e <- join $ mfold
@@ -176,27 +180,23 @@ step hf = do
   expr <- etaExpand ref >>= traverseOf holes \c -> (,c) <$> fresh
   modifying contexts (<> Map.fromList (toListOf holes expr))
   let hf' = Map.insert hole (over holes fst expr) hf
-  -- Try unevaluation resumption. TODO: find a reasonable fuel
-  -- If there is too much non-determinism, fill another hole before
-  -- unevaluating.
+  use mainScope
+    >>= traverse (liftEval . resume hf')
+    >>= assign mainScope
+  modifying fillings (<> hf')
   cs <- use constraints
-  if length cs > 64
-    then step hf'
-    else liftUneval 64 (mfold cs >>= resumeUneval hf') >>= \case
-    Nondet (Right cs') -> do
-      updateConstraints cs'
-      use mainScope
-        >>= traverse (liftEval . resume hf')
-        >>= assign mainScope
-      modifying fillings (<> hf')
-    -- TODO: what to do if unevaluation diverges? It seems that filling a hole
-    -- never really fixes the problem because the same amount of fuel is
-    -- needed.
-    -- We can never know if unevaluation actually diverges, but if it takes too
-    -- much fuel we should recurse with more fuel, but at a higher weight, so
-    -- that a correct solution can still be found, but diverging solutions do
-    -- not stop larger (possibly correct) solutions from being tried.
-    Nondet (Left err) -> error err
+  -- TODO: find a good amount of fuel and amount of ND allowed.
+  liftUneval 8 (mfold cs >>= resumeUneval hf') >>= \case
+    Nondet (Right cs')
+      -- If there is too much non-determinism, fill another hole before
+      -- unevaluating.
+      | length cs' > 16 -> traceM "Too much ND!" >> step hf'
+      | otherwise -> updateConstraints cs'
+    -- When running out of fuel, fill another hole before unevaluating.
+    Nondet (Left _) -> traceM "Out of fuel" >> step hf'
+
+-- TODO: add a testsuite testing the equivalence of different kinds and
+-- combinations of (un)evaluation resumptions.
 
 final :: SynState -> Bool
 final = null . view contexts
