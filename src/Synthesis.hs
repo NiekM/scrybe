@@ -164,6 +164,8 @@ refinements (HoleCtx t ctx) = do
       tell $ fromIntegral $ w + length ts
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     ]
+  -- TODO: in replicate, the second argument has type `a`, but shouldn't unify
+  -- with type `Nat`.
   (e', _) <- check ctx e $ Poly [] t
   return $ strip e'
 

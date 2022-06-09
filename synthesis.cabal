@@ -78,7 +78,6 @@ library
     , monus-weighted-search
     , mtl
     , prettyprinter
-    , psqueues
     , rio >=0.1.12.0
     , template-haskell
   default-language: Haskell2010
@@ -126,7 +125,6 @@ executable synthesis-exe
     , mtl
     , optparse-simple
     , prettyprinter
-    , psqueues
     , rio >=0.1.12.0
     , synthesis
     , template-haskell
@@ -178,7 +176,6 @@ test-suite synthesis-test
     , monus-weighted-search
     , mtl
     , prettyprinter
-    , psqueues
     , rio >=0.1.12.0
     , synthesis
     , template-haskell

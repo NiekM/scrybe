@@ -9,3 +9,8 @@
 ## Run tests
 
 `stack test`
+
+## Run profiling
+
+* `stack --profile build --ghc-options="-fprof-auto-top"`
+* `stack --profile exec -- synthesis-exe +RTS -p`

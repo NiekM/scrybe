@@ -22,7 +22,6 @@ dependencies:
 - monus-weighted-search
 - mtl
 - prettyprinter
-- psqueues
 - QuickCheck
 - rio >= 0.1.12.0
 - template-haskell
