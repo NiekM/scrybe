@@ -188,11 +188,11 @@ step hf = do
   modifying fillings (<> hf')
   cs <- use constraints
   -- TODO: find a good amount of fuel and amount of ND allowed.
-  liftUneval 8 (mfold cs >>= resumeUneval hf') >>= \case
+  liftUneval 16 (mfold cs >>= resumeUneval hf') >>= \case
     Nondet (Right cs')
       -- If there is too much non-determinism, fill another hole before
       -- unevaluating.
-      | length cs' > 16 -> traceM "Too much ND!" >> step hf'
+      | length cs' > 32 -> traceM "Too much ND!" >> step hf'
       | otherwise -> updateConstraints cs'
     -- When running out of fuel, fill another hole before unevaluating.
     Nondet (Left _) -> traceM "Out of fuel" >> step hf'

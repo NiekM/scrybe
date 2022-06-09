@@ -8,7 +8,13 @@
 
 ## Run tests
 
-`stack test`
+### Run all tests
+
+* `stack test`
+
+### Only benchmarks
+
+* `stack test --test-arguments='--match benchmark'`
 
 ## Run profiling
 

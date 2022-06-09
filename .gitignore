@@ -1,5 +1,6 @@
 *~
 *.swp
+*.prof
 tarballs/
 .stack-work/
 dist
