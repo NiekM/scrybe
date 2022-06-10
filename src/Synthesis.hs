@@ -127,11 +127,10 @@ updateConstraints xs = do
   guard . not . null $ ys
   assign constraints ys
 
-computeBlocking :: Map Var Result -> Assert -> Eval (Maybe Hole)
-computeBlocking rs (MkAssert e (Lams vs _)) = do
-  v <- eval rs e
-  r <- resume mempty $ apps v (upcast <$> vs)
-  return $ blocking r
+-- TODO: sometimes it's faster to introduce helper functions rather than
+-- eliminators/folds (e.g. introducing `not` in `nat_even`), but other times
+-- it is better to just intoduce the fold (e.g. introducing `append` in
+-- `tree_collect`)
 
 -- TODO: should we have a weight here? Giving a weight of 1 to
 -- constructors and variables makes the benchmarks an order of
@@ -173,19 +172,20 @@ step :: Map Hole (Term Hole) -> Synth ()
 step hf = do
   -- Pick one blocking hole and remove it.
   s <- use mainScope
-  hs <- use examples >>= mapM (liftEval . computeBlocking s)
-  hole <- mfold $ foldr (<|>) Nothing hs
+  rs <- use examples >>= mapM (liftEval . evalAssert s)
+  hole <- mfold $ foldr (<|>) Nothing (blocking . fst <$> rs)
   ctx <- mfold . Map.lookup hole =<< use contexts
   modifying contexts $ Map.delete hole
   -- Find a refinement to extend the hole filling.
   ref <- refinements ctx
   expr <- etaExpand ref >>= traverseOf holes \c -> (,c) <$> fresh
   modifying contexts (<> Map.fromList (toListOf holes expr))
-  let hf' = Map.insert hole (over holes fst expr) hf
+  let new = Map.singleton hole (over holes fst expr)
   use mainScope
-    >>= traverse (liftEval . resume hf')
+    >>= traverse (liftEval . resume new)
     >>= assign mainScope
-  modifying fillings (<> hf')
+  modifying fillings (<> new)
+  let hf' = hf <> new
   cs <- use constraints
   -- TODO: find a good amount of fuel and amount of ND allowed.
   liftUneval 16 (mfold cs >>= resumeUneval hf') >>= \case

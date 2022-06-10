@@ -85,6 +85,11 @@ resume hf = cataExprM \case
     m' <- mapM (resume hf) m
     return . Scoped m' $ over rec (fill hf) e
 
+evalAssert :: Map Var Result -> Assert -> Eval (Result, Example)
+evalAssert rs (MkAssert e (Lams vs ex)) = do
+  v <- eval rs e
+  fmap (,ex) . resume mempty $ apps v (upcast <$> vs)
+
 blocking :: Result -> Maybe Hole
 blocking = cataExpr \case
   Scoped _ (Hole h) -> Just h
