@@ -93,16 +93,23 @@ infer ts expr = do
         return (Var a `Annot` u, Map.empty)
     App f x -> do
       (f'@(Annot _ a), th1) <- f loc
-      (x'@(Annot _ b), th2) <- x loc
+      (x'@(Annot _ b), th2) <- x (subst th1 <$> loc)
       t <- Var <$> fresh
-      th3 <- failMaybe $ unify (subst th2 a) (Arr b t)
-      let th4 = th3 `compose` th2 `compose` th1
-      return (App f' x' `Annot` subst th4 t, th4)
+      let th3 = th2 `compose` th1
+      th4 <- failMaybe $ unify (subst th3 a) (Arr b t)
+      let th5 = th4 `compose` th3
+      return (App f' x' `Annot` subst th5 t, th5)
     Lam a x -> do
       t <- Var <$> fresh
+      -- traceShowM t
       (x'@(Annot _ u), th) <- x (Map.insert a t loc)
+      -- traceShowM . fmap pretty $ th
       let t' = subst th t
       return (Lam a x' `Annot` Arr t' u, th)
+    Let a x y -> do -- TODO: add let polymorphism
+      (x'@(Annot _ t1), th1) <- x loc
+      (y'@(Annot _ t2), th2) <- y (Map.insert a t1 . fmap (subst th1) $ loc)
+      return (Let a x' y' `Annot` t2, th2 `compose` th1)
     Elim xs -> do
       t <- Var <$> fresh
       u <- Var <$> fresh
@@ -111,7 +118,7 @@ infer ts expr = do
         (as, t1, u1, th1) <- r
         d <- failMaybe $ Map.lookup c cs
         Args args res <- instantiateFresh d
-        (y'@(Annot _ t2), th2) <- y loc
+        (y'@(Annot _ t2), th2) <- y (subst th1 <$> loc)
         -- Check that the constructor type matches the scrutinee.
         th3 <- failMaybe $ unify res t1
         -- Check that the branch type matches the resulting type.

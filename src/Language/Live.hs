@@ -20,7 +20,7 @@ indet = \case
   Elim xs -> Just $ Elim xs
   _ -> Nothing
 
-{-# COMPLETE Indet, Var, App, Ctr, Fix #-}
+{-# COMPLETE Indet, Var, App, Ctr, Let, Fix #-}
 pattern Indet :: Indet -> Term Hole
 pattern Indet i <- (indet -> Just i) where
   Indet = \case
@@ -47,6 +47,9 @@ eval loc = \case
     f' <- eval loc f
     x' <- eval loc x
     evalApp f' x'
+  Let a x y -> do
+    x' <- eval loc x
+    eval (Map.insert a x' loc) y
   Ctr c -> return $ Ctr c
   Fix -> return Fix
   -- Indeterminate results

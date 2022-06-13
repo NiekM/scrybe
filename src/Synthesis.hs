@@ -89,15 +89,14 @@ init defs = do
   let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
   -- TODO: determine weights based on something
   assign weights $ Map.fromList ((,1) <$> ws)
-  let addBinding (MkBinding a x) = Let a x
+  let addBinding (MkBinding a x) y = Let a x y
   (x, _, ctx) <-
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
   ts <- mapM refresh . Map.fromList $ signatures defs <&>
     \(MkSignature a t) -> (a, t)
-  th <- failMaybe . unifies $ collect x & mapMaybe \a -> do
-    Annot (Lam v _) (Arr t _) <- Just a
-    Poly _ u <- Map.lookup v ts
-    return (u, t)
+  fs <- failMaybe $ view localEnv . fst <$> Map.maxView ctx
+  th <- failMaybe . unifies $
+    Map.intersectionWith (,) fs (ts <&> \(Poly _ u) -> u)
   assign contexts $ substCtx th <$> ctx
   y <- etaExpand (strip x)
   liftEval (eval mempty y) >>= \case
