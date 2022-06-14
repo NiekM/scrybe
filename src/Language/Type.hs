@@ -26,7 +26,7 @@ type Unify = Map Free Type
 
 -- TODO: Add unit tests to test type unification, inference and checking
 
--- | Unify two expressions, by checking if their holes can be filled such that
+-- | Unify two monotypes, by checking if their holes can be filled such that
 -- they are equivalent.
 unify :: Type -> Type -> Maybe Unify
 unify t u = case (t, u) of
@@ -71,7 +71,7 @@ type TCMonad m = (FreshFree m, MonadFail m, MonadReader Env m)
 
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a cataExprM?
-infer :: TCMonad m => Map Var Type -> Term Unit ->
+infer :: TCMonad m => Map Var Poly -> Term Unit ->
   m (Ann Type ('Term HoleCtx), Unify)
 infer ts expr = do
   cs <- view constructors
@@ -84,7 +84,8 @@ infer ts expr = do
       t <- failMaybe $ Map.lookup c cs
       u <- instantiateFresh t
       return (Annot (Ctr c) u, Map.empty)
-    Var a | Just t <- Map.lookup a loc ->
+    Var a | Just p <- Map.lookup a loc -> do
+      t <- instantiateFresh p
       return (Var a `Annot` t, Map.empty)
     Var a -> case Map.lookup a fs of
       Nothing -> fail $ "Variable not in scope: " <> show a
@@ -102,13 +103,14 @@ infer ts expr = do
     Lam a x -> do
       t <- Var <$> fresh
       -- traceShowM t
-      (x'@(Annot _ u), th) <- x (Map.insert a t loc)
+      (x'@(Annot _ u), th) <- x (Map.insert a (Mono t) loc)
       -- traceShowM . fmap pretty $ th
       let t' = subst th t
       return (Lam a x' `Annot` Arr t' u, th)
     Let a x y -> do -- TODO: add let polymorphism
       (x'@(Annot _ t1), th1) <- x loc
-      (y'@(Annot _ t2), th2) <- y (Map.insert a t1 . fmap (subst th1) $ loc)
+      let loc' = Map.insert a (poly t1) $ subst th1 <$> loc
+      (y'@(Annot _ t2), th2) <- y loc'
       return (Let a x' y' `Annot` t2, th2 `compose` th1)
     Elim xs -> do
       t <- Var <$> fresh
@@ -130,9 +132,9 @@ infer ts expr = do
       t <- Var <$> fresh
       return (Fix `Annot` Arr (Arr t t) t, mempty)
 
-  return (over holesAnn (substCtx th) $ mapAnn (subst th) e, th)
+  return (subst th e, th)
 
-infer' :: (TCMonad m, FreshHole m) => Map Var Type -> Term Unit ->
+infer' :: (TCMonad m, FreshHole m) => Map Var Poly -> Term Unit ->
   m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 infer' ts e = do
   (x, th) <- infer ts e
@@ -141,15 +143,15 @@ infer' ts e = do
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
-check :: TCMonad m => Map Var Type -> Term Unit -> Poly ->
+check :: TCMonad m => Map Var Poly -> Term Unit -> Poly ->
   m (Ann Type ('Term HoleCtx), Unify)
 check ts e p = do
   (e'@(Annot _ u), th1) <- infer ts e
   th2 <- failMaybe $ unify (freeze p) u
   let th3 = compose th2 th1
-  return (over holesAnn (substCtx th3) $ mapAnn (subst th3) e', th3)
+  return (subst th3 e', th3)
 
-check' :: (TCMonad m, FreshHole m) => Map Var Type -> Term Unit -> Poly ->
+check' :: (TCMonad m, FreshHole m) => Map Var Poly -> Term Unit -> Poly ->
   m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 check' ts e t = do
   (x, th) <- check ts e t

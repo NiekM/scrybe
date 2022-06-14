@@ -92,12 +92,15 @@ init defs = do
   let addBinding (MkBinding a x) y = Let a x y
   (x, _, ctx) <-
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
-  ts <- mapM refresh . Map.fromList $ signatures defs <&>
-    \(MkSignature a t) -> (a, t)
+  let ss = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
   fs <- failMaybe $ view localEnv . fst <$> Map.maxView ctx
   th <- failMaybe . unifies $
-    Map.intersectionWith (,) fs (ts <&> \(Poly _ u) -> u)
-  assign contexts $ substCtx th <$> ctx
+    Map.intersectionWith (,) (fs <&> \(Poly _ t) -> t) (ss <&> \(Poly _ u) -> u)
+  let ctx' = ctx <&>
+        over goalType freezeAll
+        . over localEnv (instantiate th <$>)
+        . subst th
+  assign contexts ctx'
   y <- etaExpand (strip x)
   liftEval (eval mempty y) >>= \case
     Scoped m (Hole h) -> do
@@ -149,7 +152,7 @@ refinements (HoleCtx t ctx) = do
     -- TODO: make sure that recursive functions do not loop infinitely.
     -- For local variables, introduce a hole for every argument.
     , do
-      (v, Args ts _) <- mfold $ Map.assocs ctx
+      (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       return $ apps (Var v) (Hole (Unit ()) <$ ts)
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.

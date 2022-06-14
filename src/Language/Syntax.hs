@@ -361,12 +361,20 @@ pattern List xs <- (unList -> Just xs)
 
 -- Helper functions {{{
 
--- | Substitute variables in an expression without variables bindings according
--- to a map of variable substitutions.
-subst :: (HasVar l v, Ord v, NoBind l) => Map v (Expr l) -> Expr l -> Expr l
-subst th = cataExpr \case
-  Var v | Just x <- Map.lookup v th -> x
-  e -> fixExpr e
+class Subst a where
+  subst :: Map Free Type -> a -> a
+
+instance Subst Type where
+  subst th = cataExpr \case
+    Var v | Just x <- Map.lookup v th -> x
+    e -> fixExpr e
+
+instance Subst Poly where
+  subst th (Poly as t) =
+    Poly as $ subst (Map.withoutKeys th (Set.fromList as)) t
+
+instance (Subst t, Subst a) => Subst (Ann t ('Term a)) where
+  subst th = over holesAnn (subst th) . mapAnn (subst th)
 
 -- | Fill holes in an expression according to a map of hole fillings.
 fill :: (HasHole l h, Ord h) => Map h (Expr l) -> Expr l -> Expr l
@@ -407,7 +415,7 @@ instance FreshVar m => ExpandHole Type m where
 instance FreshVar m => ExpandHole HoleCtx m where
   expandHole (HoleCtx t vs) = do
     (xs, u) <- expandHole t
-    return (xs, HoleCtx u (vs <> Map.fromList xs))
+    return (xs, HoleCtx u (vs <> (Mono <$> Map.fromList xs)))
 
 etaExpand :: (Monad m, ExpandHole h m) => Term h -> m (Term h)
 etaExpand = cataExprM \case
@@ -424,6 +432,9 @@ etaExpand = cataExprM \case
 
 data Poly = Poly [Free] Type
   deriving (Eq, Ord, Show)
+
+pattern Mono :: Type -> Poly
+pattern Mono t = Poly [] t
 
 -- | Turn a monotype into a polytype by quantifying all its free variables.
 poly :: Type -> Poly
@@ -442,6 +453,11 @@ alphaEq (Poly as t) (Poly bs u) = do
 freeze :: Poly -> Type
 freeze (Poly as t) = flip cataExpr t \case
   Var v | v `elem` as, MkFree c <- v -> Ctr (MkCtr c)
+  e -> fixExpr e
+
+freezeAll :: Type -> Type
+freezeAll = cataExpr \case
+  Var (MkFree c) -> Ctr (MkCtr c)
   e -> fixExpr e
 
 -- TODO: instantiation should also be able to introduce new type variables,
@@ -481,17 +497,17 @@ ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
 
-data HoleCtx = HoleCtx Type (Map Var Type)
+data HoleCtx = HoleCtx Type (Map Var Poly)
   deriving (Eq, Ord, Show)
 
 goalType :: Lens' HoleCtx Type
 goalType = lens (\(HoleCtx t _) -> t) \(HoleCtx _ vs) t -> HoleCtx t vs
 
-localEnv :: Lens' HoleCtx (Map Var Type)
+localEnv :: Lens' HoleCtx (Map Var Poly)
 localEnv = lens (\(HoleCtx _ vs) -> vs) \(HoleCtx t _) vs -> HoleCtx t vs
 
-substCtx :: Map Free Type -> HoleCtx -> HoleCtx
-substCtx th = over goalType (subst th) . over localEnv (subst th <$>)
+instance Subst HoleCtx where
+  subst th = over goalType (subst th) . over localEnv (subst th <$>)
 
 data Sketch = Sketch Var Poly (Term Unit)
   deriving (Eq, Ord, Show)
