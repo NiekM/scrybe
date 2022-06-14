@@ -455,6 +455,11 @@ freeze (Poly as t) = flip cataExpr t \case
   Var v | v `elem` as, MkFree c <- v -> Ctr (MkCtr c)
   e -> fixExpr e
 
+freezeUnbound :: Poly -> Poly
+freezeUnbound (Poly as t) = Poly as $ flip cataExpr t \case
+  Var v | v `notElem` as, MkFree c <- v -> Ctr (MkCtr c)
+  e -> fixExpr e
+
 freezeAll :: Type -> Type
 freezeAll = cataExpr \case
   Var (MkFree c) -> Ctr (MkCtr c)

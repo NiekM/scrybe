@@ -96,9 +96,10 @@ init defs = do
   fs <- failMaybe $ view localEnv . fst <$> Map.maxView ctx
   th <- failMaybe . unifies $
     Map.intersectionWith (,) (fs <&> \(Poly _ t) -> t) (ss <&> \(Poly _ u) -> u)
+  -- TODO: make sure the correct variables are frozen!
   let ctx' = ctx <&>
         over goalType freezeAll
-        . over localEnv (instantiate th <$>)
+        . over localEnv (freezeUnbound . instantiate th <$>)
         . subst th
   assign contexts ctx'
   y <- etaExpand (strip x)
