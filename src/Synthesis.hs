@@ -108,11 +108,6 @@ init defs = do
       assign mainScope m
       modifying contexts $ Map.delete h
       assign examples $ asserts defs
-      -- NOTE: we explicitly run the reader transformer, so that we can
-      -- instantiate the MonadPlus constraint to list, avoiding the mixing of
-      -- two different types of nondeterminism, namely the nondeterministic
-      -- unevaluation constraints and the nondeterminism of the synthesis
-      -- procedure.
       -- TODO: find reasonable fuel
       as <- liftUneval 100 $ -- TODO: find reasonable fuel
         mergeConstraints <$> for (asserts defs) (unevalAssert m)
