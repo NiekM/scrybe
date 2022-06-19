@@ -7,6 +7,7 @@ module Import
   , module RIO.Text
   , module Control.Monad.RWS
   , module Lens.Micro.Platform
+  , module Data.Functor.Compose
   , Pretty(..)
   , unsnoc
   , maximumDef
@@ -27,6 +28,7 @@ import qualified RIO.Map as Map
 import Prettyprinter
 import Control.Monad.RWS hiding (local)
 import Lens.Micro.Platform
+import Data.Functor.Compose
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case

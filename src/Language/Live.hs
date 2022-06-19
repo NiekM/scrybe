@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 module Language.Live where
 
 import Import
@@ -157,13 +158,25 @@ instance (Ord k, PartialSemigroup v) => PartialSemigroup (Map k v) where
 instance (Ord k, PartialSemigroup v) => PartialMonoid (Map k v) where
   pempty = Map.empty
 
+instance PartialSemigroup (f (g a)) => PartialSemigroup (Compose f g a) where
+  Compose x <?> Compose y = Compose <$> x <?> y
+
+instance PartialMonoid (f (g a)) => PartialMonoid (Compose f g a) where
+  pempty = Compose pempty
+
 zipMerge :: PartialSemigroup a => [a] -> [a] -> Maybe [a]
 zipMerge xs ys
   | length xs == length ys = zipWithM (<?>) xs ys
   | otherwise = Nothing
 
 pfold :: (Foldable f, PartialMonoid a) => f a -> Maybe a
-pfold = foldr (\x r -> r >>= (x <?>)) $ Just pempty
+pfold = pfoldMap id
+
+pfoldMap :: (Foldable f, PartialMonoid m) => (a -> m) -> f a -> Maybe m
+pfoldMap f = Just pempty & foldr \x r -> r >>= (f x <?>)
+
+pfoldMap' :: (Foldable f, PartialMonoid m) => (a -> m) -> f a -> Maybe m
+pfoldMap' f = Just pempty & foldl' \r x -> r >>= (<?> f x)
 
 data Ex
   = ExFun (Map Value Ex)
@@ -181,6 +194,9 @@ instance PartialSemigroup Ex where
 instance PartialMonoid Ex where
   pempty = ExTop
 
+instance Pretty Ex where
+  pretty = pretty . fromEx
+
 toEx :: Example -> Ex
 toEx = \case
   Top -> ExTop
@@ -189,7 +205,7 @@ toEx = \case
   _ -> error "Incorrect example"
 
 fromExamples :: [Example] -> Maybe Ex
-fromExamples = Just ExTop & foldl' \r x -> r >>= (toEx x <?>)
+fromExamples = pfoldMap' toEx
 
 fromEx :: Ex -> [Example]
 fromEx = \case
@@ -297,23 +313,43 @@ unevalAssert m (MkAssert e ex) = do
 -- }}}
 
 -- Deterministic Constraints
-type DC_ = Tree (Hole, Ctr) (Map (Hole, Scope) Ex)
-
-data Tree k v
+data Tree m v
   = Node v
-  | Branch (Map k (Tree k v))
-  deriving (Eq, Ord, Show)
+  | Branch (m (Tree m v))
   deriving (Functor, Foldable, Traversable)
 
-treeAssocs :: Tree k v -> [([k], v)]
-treeAssocs = \case
-  Node a -> [([], a)]
-  Branch xs -> Map.assocs xs >>= \(k, t) -> first (k:) <$> treeAssocs t
+deriving instance (Eq v, Eq (m (Tree m v))) => Eq (Tree m v)
+deriving instance (Ord v, Ord (m (Tree m v))) => Ord (Tree m v)
+deriving instance (Show v, Show (m (Tree m v))) => Show (Tree m v)
+deriving instance (Read v, Read (m (Tree m v))) => Read (Tree m v)
 
-treeGrow :: [k] -> Tree k v -> Tree k v
+instance (Pretty (m (Tree m v)), Pretty v) => Pretty (Tree m v) where
+  pretty = \case
+    Node a -> pretty a
+    Branch xs -> pretty xs
+
+withKeys :: Tree (Map k) v -> Tree (Map k) ([k], v)
+withKeys = \case
+  Node a -> Node ([], a)
+  Branch xs -> Branch $ Map.mapWithKey (\k -> (first (k:) <$>) . withKeys) xs
+
+type Map2 k l = Compose (Map k) (Map l)
+
+withKeys2 :: Tree (Map2 k l) v -> Tree (Map2 k l) ([(k, l)], v)
+withKeys2 = \case
+  Node a -> Node ([], a)
+  Branch (Compose xs) -> Branch . Compose $ xs &
+    Map.mapWithKey \k -> Map.mapWithKey \l -> (first ((k,l):) <$>) . withKeys2
+
+treeGrow :: [k] -> Tree (Map k) v -> Tree (Map k) v
 treeGrow ks t = foldr (\k -> Branch . Map.singleton k) t ks
 
-instance (Ord k, PartialSemigroup v) => PartialSemigroup (Tree k v) where
+treeGrow2 :: [(k, l)] -> Tree (Map2 k l) v -> Tree (Map2 k l) v
+treeGrow2 ks t = foldr
+  (\(k, l) -> Branch . Compose . Map.singleton k . Map.singleton l) t ks
+
+instance (Traversable m, PartialSemigroup (m (Tree m v)), PartialSemigroup v)
+  => PartialSemigroup (Tree m v) where
   Node x <?> Node y = Node <$> x <?> y
   Node x <?> Branch ys
     | null ys = Just $ Node x
@@ -323,106 +359,89 @@ instance (Ord k, PartialSemigroup v) => PartialSemigroup (Tree k v) where
     | otherwise = mapM (<?> y) (Branch xs)
   Branch xs <?> Branch ys = Branch <$> xs <?> ys
 
-instance (Ord k, PartialSemigroup v) => PartialMonoid (Tree k v) where
+instance (Traversable m, PartialMonoid (m (Tree m v)), PartialSemigroup v)
+  => PartialMonoid (Tree m v) where
   pempty = Branch pempty
 
-___mergeAll :: [Maybe DC_] -> Maybe DC_
-___mergeAll = sequence >=> pfold
+fromScope :: v -> [(k, l)] -> Tree (Map2 k l) v
+fromScope y = Node y & foldr \(a, b) ->
+  Branch . Compose . Map.singleton a . Map.singleton b
 
-___mergeAlt :: [Maybe DC_] -> Maybe DC_
-___mergeAlt cs = case catMaybes cs of
+-- TODO: perhaps for the Hole & Ctr we also want two composed maps
+type Cs = Tree (Map (Hole, Ctr)) (Tree (Map2 Var Result) (Map Hole Ex))
+
+__mergeAll :: [Maybe Cs] -> Maybe Cs
+__mergeAll = sequence >=> pfold
+
+__mergeAlt :: [Maybe Cs] -> Maybe Cs
+__mergeAlt cs = case catMaybes cs of
   [] -> Nothing
   ds -> pfold ds
 
-___uneval :: Result -> Ex -> Eval (Maybe DC_)
-___uneval = curry \case
+__uneval :: Result -> Ex -> Eval (Maybe Cs)
+__uneval = curry \case
   -- Top always succeeds.
   (_, ExTop) -> return . Just $ Branch mempty
   -- Constructors are handled as opaque functions and their unevaluation is
   -- extensional in the sense that only their arguments are compared.
   (Apps (Ctr c) xs, ExCtr d ys) -- TODO: should we include Lams here as well?
     | c == d, length xs == length ys
-    -> ___mergeAll <$> zipWithM ___uneval xs ys
+    -> __mergeAll <$> zipWithM __uneval xs ys
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) -> do
     let ex' = foldr (\v -> ExFun . Map.singleton v) ex vs
-    return . Just . Node $ Map.singleton (h, m) ex'
+    return . Just . Node $ fromScope (Map.singleton h ex') (reverse m)
   (App (Prj c n) r, ex) -> do
     cs <- view $ env . constructors -- TODO: something like view constructors
     let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
-    ___uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
+    __uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (App (Scoped m (Elim xs)) r, ex) -> do
     cs <- view $ env . constructors
+    -- TODO: computing the blocking hole here is incorrect for e.g.
+    -- `plus {0} (plus {1} {2}) <== 1`, as {2} is always considered the
+    -- blocking hole.
     let b = fromMaybe undefined $ blocking r
-    ___mergeAlt <$> for xs \(c, e) -> do
+    __mergeAlt <$> for xs \(c, e) -> do
       let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
-      scrut <- ___uneval r . ExCtr c $ replicate ar ExTop
+      scrut <- __uneval r . ExCtr c $ replicate ar ExTop
       let prjs = [App (Prj c n) r | n <- [1..ar]]
       e' <- eval m e
-      arm <- resume mempty (apps e' prjs) >>= flip ___uneval ex
-      return . fmap (Branch . Map.singleton (b, c)) . ___mergeAll $ [scrut, arm]
+      arm <- resume mempty (apps e' prjs) >>= flip __uneval ex
+      return . fmap (Branch . Map.singleton (b, c)) . __mergeAll $ [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a e), ExFun xs) ->
-    ___mergeAll <$> for (Map.assocs xs) \(v, ex) -> do
+    __mergeAll <$> for (Map.assocs xs) \(v, ex) -> do
       r <- eval ((a, upcast v) : m) e
-      ___uneval r ex
+      __uneval r ex
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    ___uneval (Scoped ((f, r) : m) e) ex
+    __uneval (Scoped ((f, r) : m) e) ex
   _ -> return Nothing
 
--- -- TODO: test or prove that this is the correct unevaluation equivalent of
--- -- resumption, i.e. that resuming and then unevaluation is equivalent to
--- -- unevaluating and then "un-resuming".
--- ___resumeUneval :: Map Hole (Term Hole) -> DC_ -> Eval (Maybe DC_)
--- ___resumeUneval hf old = do
---   foo <- for (treeAssocs old) \(t, xs) -> do
---     let t' = filter ((`Map.notMember` hf) . fst) t
---     let ys = Map.assocs xs
---     let zs =
---           [ (h1, s3, ex1, ex2)
---           | ((h1, s1), ex1) <- ys
---           , ((h2, s2), ex2) <- ys
---           , h1 == h2
---           , Just s3 <- return $ mergeMap (\x y -> if x == y then Just x else Nothing) s1 s2
---           ]
---     _
---     bar <- for (Map.assocs xs) \((h, m), ex) -> do
---       m' <- mapM (resume hf) m
---       fmap (treeGrow t') <$> case Map.lookup h hf of
---         Nothing -> return . Just . Node $ Map.singleton (h, m') ex
---         Just e -> do
---           r <- eval m' e >>= resume hf
---           ___uneval r ex
---     -- TODO: fix incorrect merging of examples that are not compatible:
---     -- zipWith (\x y -> plus {0} {1}) [0,1] [2,3] <== [2,4]
---     -- resuming uneval with `{0} |-> x` does not yet check compatibility of
---     -- different local scopes. It should probably take the cross product of all
---     -- computations, remove those with conflicting scopes, and then merge.
---     return $ traceShow (bar) $ traceShow ("combined: " <> pretty (___mergeAll bar)) $ ___mergeAll bar
---   return . ___mergeAlt $ {- traceShow (pretty foo) $ -} toList foo
+mergeTree :: Tree (Map2 Var Result) [Maybe Cs] -> Maybe Cs
+mergeTree = \case
+  Node a -> __mergeAll a
+  Branch (Compose xs) ->
+    -- NOTE: differing variables should be combined (__mergeAll)
+    -- whereas differing values should be considered separately (__mergeAlt)
+    __mergeAll . toList $ fmap (__mergeAlt . toList . fmap mergeTree) xs
 
--- -- TODO: test or prove that this is the correct unevaluation equivalent of
--- -- resumption, i.e. that resuming and then unevaluation is equivalent to
--- -- unevaluating and then "un-resuming".
--- ___resumeUneval :: Map Hole (Term Hole) -> DC_ -> Eval (Maybe DC_)
--- ___resumeUneval hf old = do
---   foo <- for (treeAssocs old) \(t, xs) -> do
---     let t' = filter ((`Map.notMember` hf) . fst) t
---     bar <- for (Map.assocs xs) \((h, m), ex) -> do
---       m' <- mapM (resume hf) m
---       fmap (treeGrow t') <$> case Map.lookup h hf of
---         Nothing -> return . Just . Node $ Map.singleton (h, m') ex
---         Just e -> do
---           r <- eval m' e >>= resume hf
---           ___uneval r ex
---     -- TODO: fix incorrect merging of examples that are not compatible:
---     -- zipWith (\x y -> plus {0} {1}) [0,1] [2,3] <== [2,4]
---     -- resuming uneval with `{0} |-> x` does not yet check compatibility of
---     -- different local scopes. It should probably take the cross product of all
---     -- computations, remove those with conflicting scopes, and then merge.
---     return $ traceShow (bar) $ traceShow ("combined: " <> pretty (___mergeAll bar)) $ ___mergeAll bar
---   return . ___mergeAlt $ {- traceShow (pretty foo) $ -} toList foo
+-- TODO: test or prove that this is the correct unevaluation equivalent of
+-- resumption, i.e. that resuming and then unevaluation is equivalent to
+-- unevaluating and then "un-resuming".
+__resumeUneval :: Map Hole (Term Hole) -> Cs -> Eval (Maybe Cs)
+__resumeUneval hf old = do
+  __mergeAlt . toList <$> for (withKeys old) \(t, xs) -> do
+    let t' = filter ((`Map.notMember` hf) . fst) t
+    mergeTree <$> for (withKeys2 xs) \(m, ys) -> do
+      m' <- traverseOf (each . _2) (resume hf) m
+      for (Map.assocs ys) \(h, ex) -> do
+        fmap (treeGrow t') <$> case Map.lookup h hf of
+          Nothing ->
+            return . Just . Node . treeGrow2 m' . Node $ Map.singleton h ex
+          Just e -> do
+            r <- eval m' e >>= resume hf
+            __uneval r ex
