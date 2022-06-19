@@ -6,8 +6,8 @@ import Language.Syntax
 import qualified RIO.Map as Map
 
 {-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
-pattern Scoped :: LiveEnv -> Indet -> Expr' r 'Det
-pattern Scoped m e = Hole (Annot e (Scope m))
+pattern Scoped :: Scope -> Indet -> Expr' r 'Det
+pattern Scoped m e = Hole (Annot e m)
 
 {-# COMPLETE Top, App, Ctr, Lam #-}
 pattern Top :: Example
@@ -38,18 +38,18 @@ runEval = flip runReader
 class LiftEval m where
   liftEval :: Eval a -> m a
 
-eval :: LiveEnv -> Term Hole -> Eval Result
+eval :: Scope -> Term Hole -> Eval Result
 eval loc = \case
   Var v -> do
-    rs <- view liveEnv
-    maybe undefined return $ Map.lookup v (loc <> rs)
+    rs <- view scope
+    maybe undefined return $ lookup v (loc <> rs)
   App f x -> do
     f' <- eval loc f
     x' <- eval loc x
     evalApp f' x'
   Let a x y -> do
     x' <- eval loc x
-    eval (Map.insert a x' loc) y
+    eval ((a, x') : loc) y
   Ctr c -> return $ Ctr c
   Fix -> return Fix
   -- Indeterminate results
@@ -58,12 +58,12 @@ eval loc = \case
 evalApp :: Result -> Result -> Eval Result
 evalApp f x = case f of
   App Fix (Scoped m (Lam g (Indet e))) ->
-    evalApp (Scoped (Map.insert g f m) e) x
-  Scoped m (Lam a y) -> eval (Map.insert a x m) y
+    evalApp (Scoped ((g, f) : m) e) x
+  Scoped m (Lam a y) -> eval ((a, x) : m) y
   Scoped m (Elim xs)
     | Apps (Ctr c) as <- x
     , Just (Lams bs y) <- lookup c xs
-    -> eval (Map.fromList (zip bs as) <> m) y
+    -> eval (zip bs as <> m) y
   -- NOTE: not sure if this is necessary, but simplifying away projections when
   -- possible leads to more readible unevaluation results.
   Prj c n -> resume mempty x >>= \case
@@ -85,10 +85,10 @@ resume hf = cataExprM \case
     | Just x <- Map.lookup h hf
     , x /= Hole h -> resume hf =<< eval m x
   Scoped m e -> do
-    m' <- mapM (resume hf) m
+    m' <- traverseOf (each . _2) (resume hf) m
     return . Scoped m' $ over rec (fill hf) e
 
-evalAssert :: Map Var Result -> Assert -> Eval (Result, Example)
+evalAssert :: Scope -> Assert -> Eval (Result, Example)
 evalAssert rs (MkAssert e (Lams vs ex)) = do
   v <- eval rs e
   fmap (,ex) . resume mempty $ apps v (upcast <$> vs)
@@ -122,7 +122,7 @@ fromDefs defs = foldl' fromSigs bindEnv ss
     fromBind :: Env -> Binding Void -> Env
     fromBind m (MkBinding x e) =
       let r = runReader (eval mempty (over holes absurd e)) m
-      in m & over liveEnv (Map.insert x r)
+      in m & over scope ((x, r):)
 
     fromSigs :: Env -> Signature -> Env
     fromSigs m (MkSignature x t) = m & over functions (Map.insert x t)
@@ -220,7 +220,7 @@ mergeConstraints = mfold . mergeMaps (<?>)
 
 live :: Term Hole -> Constraint -> Uneval Constraints
 live e cs =
-  mergeConstraints =<< for (Map.assocs cs) \(Scope m, ex) -> do
+  mergeConstraints =<< for (Map.assocs cs) \(m, ex) -> do
     x <- mfold . fromEx $ ex
     r <- liftEval (eval m e)
     uneval r x
@@ -241,7 +241,7 @@ uneval = curry \case
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
-    return $ Map.singleton h $ Map.singleton (Scope m) $ toEx $ lams vs ex
+    return $ Map.singleton h $ Map.singleton m $ toEx $ lams vs ex
   (App (Prj c n) r, ex) -> do
     cs <- view $ env . constructors -- TODO: something like view constructors
     let ar = arity . fromMaybe (error "Oh oh") . Map.lookup c $ cs
@@ -258,17 +258,17 @@ uneval = curry \case
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a x), Lam v y) ->
-    live x $ Map.singleton (Scope $ Map.insert a (upcast v) m) (toEx y)
+    live x $ Map.singleton ((a, upcast v) : m) (toEx y)
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    uneval (Scoped (Map.insert f r m) e) ex
+    uneval (Scoped ((f, r) : m) e) ex
   _ -> mzero
 
 -- TODO: Perhaps throw away normal checkLive in favor of this
 resumeLive :: Map Hole (Term Hole) -> Term Hole -> Constraint ->
   Uneval Constraints
 resumeLive hf e cs =
-  mergeConstraints =<< for (Map.assocs cs) \(Scope m, ex) -> do
+  mergeConstraints =<< for (Map.assocs cs) \(m, ex) -> do
     x <- mfold . fromEx $ ex
     r <- liftEval (eval m e >>= resume hf)
     uneval r x
@@ -281,7 +281,7 @@ resumeUneval hf old = do
   -- Update the old constraints by resuming their local scopes and then
   -- merging them.
   updated <- mfold . mapM (mergeFromAssocs (<?>)) =<< for old \c ->
-    forOf (each . _1 . scope) (Map.assocs c) $ mapM (liftEval . resume hf)
+    forOf (each . _1) (Map.assocs c) $ traverseOf (each . _2) (liftEval . resume hf)
   -- Compute the new constraints that arise from filling each hole.
   -- TODO: check that this line is correct now. Can we optimize it?
   new <- sequence . toList $ Map.intersectionWith (resumeLive hf) hf updated
@@ -289,7 +289,7 @@ resumeUneval hf old = do
   -- holes.
   mergeConstraints . fmap (Map.\\ hf) $ updated : new
 
-unevalAssert :: Map Var Result -> Assert -> Uneval Constraints
+unevalAssert :: Scope -> Assert -> Uneval Constraints
 unevalAssert m (MkAssert e ex) = do
   r <- liftEval $ eval m e
   uneval r ex
@@ -297,13 +297,21 @@ unevalAssert m (MkAssert e ex) = do
 -- }}}
 
 -- Deterministic Constraints
-type DC_ = Tree (Hole, Ctr) (Map (Hole, Map Var Result) Ex)
+type DC_ = Tree (Hole, Ctr) (Map (Hole, Scope) Ex)
 
 data Tree k v
   = Node v
   | Branch (Map k (Tree k v))
   deriving (Eq, Ord, Show)
   deriving (Functor, Foldable, Traversable)
+
+treeAssocs :: Tree k v -> [([k], v)]
+treeAssocs = \case
+  Node a -> [([], a)]
+  Branch xs -> Map.assocs xs >>= \(k, t) -> first (k:) <$> treeAssocs t
+
+treeGrow :: [k] -> Tree k v -> Tree k v
+treeGrow ks t = foldr (\k -> Branch . Map.singleton k) t ks
 
 instance (Ord k, PartialSemigroup v) => PartialSemigroup (Tree k v) where
   Node x <?> Node y = Node <$> x <?> y
@@ -359,20 +367,12 @@ ___uneval = curry \case
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a e), ExFun xs) ->
     ___mergeAll <$> for (Map.assocs xs) \(v, ex) -> do
-      r <- eval (Map.insert a (upcast v) m) e
+      r <- eval ((a, upcast v) : m) e
       ___uneval r ex
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    ___uneval (Scoped (Map.insert f r m) e) ex
+    ___uneval (Scoped ((f, r) : m) e) ex
   _ -> return Nothing
-
-treeAssocs :: Tree k v -> [([k], v)]
-treeAssocs = \case
-  Node a -> [([], a)]
-  Branch xs -> Map.assocs xs >>= \(k, t) -> first (k:) <$> treeAssocs t
-
-treeGrow :: [k] -> Tree k v -> Tree k v
-treeGrow ks t = foldr (\k -> Branch . Map.singleton k) t ks
 
 -- -- TODO: test or prove that this is the correct unevaluation equivalent of
 -- -- resumption, i.e. that resuming and then unevaluation is equivalent to

@@ -193,10 +193,7 @@ type Indet = Base (Term Hole) 'Ind
 -- expressions capturing the local scope.
 type Result = Expr 'Det
 
-newtype Scope = Scope { unScope :: Map Var Result } deriving (Eq, Ord, Show)
-
-scope :: Lens' Scope (Map Var Result)
-scope = lens unScope \_ a -> Scope a
+type Scope = [(Var, Result)]
 
 -- Morphisms {{{
 
@@ -580,7 +577,7 @@ type LiveEnv = Map Var Result
 
 data Env = Env
   { _functions    :: Map Var Poly
-  , _liveEnv      :: Map Var Result
+  , _scope        :: Scope
   , _dataTypes    :: Map Ctr ([Free], [(Ctr, [Type])])
   , _constructors :: Map Ctr Poly
   } deriving (Eq, Ord)
@@ -614,10 +611,6 @@ instance Pretty Poly where
 
 instance (Pretty b, Pretty (Annot a b)) => Pretty (Annot (Maybe a) b) where
   pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a
-
-instance Pretty Scope where
-  pretty (Scope m) = parens . align . sep . punctuate comma $ Map.assocs m <&>
-    \(k, x) -> pretty k <> ":" <+> align (pretty x)
 
 instance Pretty a => Pretty (Annot Scope a) where
   pretty (Annot x s) = pretty s <> pretty x

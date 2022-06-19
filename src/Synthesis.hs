@@ -17,7 +17,7 @@ data SynState = SynState
   , _constraints :: [Constraints]
   , _fillings    :: Map Hole (Term Hole)
   , _freshSt     :: FreshState
-  , _mainScope   :: Map Var Result
+  , _mainScope   :: Scope
   , _examples    :: [Assert]
   , _weights     :: Map Var Int
   }
@@ -180,7 +180,7 @@ step hf = do
   modifying contexts (<> Map.fromList (toListOf holes expr))
   let new = Map.singleton hole (over holes fst expr)
   use mainScope
-    >>= traverse (liftEval . resume new)
+    >>= traverseOf (each . _2) (liftEval . resume new)
     >>= assign mainScope
   modifying fillings (<> new)
   let hf' = hf <> new
