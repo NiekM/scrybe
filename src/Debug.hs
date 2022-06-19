@@ -34,14 +34,14 @@ prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
     Just x -> x
     Nothing -> error "Could not parse prelude"
 
--- instance (Pretty a, Pretty b) => Pretty (Map a b) where
---   pretty m = align . Prettyprinter.list $ Map.assocs m <&> \(k, x) ->
---     pretty k <> ":" <+> align (pretty x)
+instance (Pretty a, Pretty b) => Pretty (Map a b) where
+  pretty m = align . Prettyprinter.list $ Map.assocs m <&> \(k, x) ->
+    pretty k <> ":" <+> align (pretty x)
 
--- instance (Pretty k, Pretty v) => Pretty (Tree k v) where
---   pretty = \case
---     Node a -> pretty a
---     Branch xs -> pretty xs
+instance (Pretty k, Pretty v) => Pretty (Tree k v) where
+  pretty = \case
+    Node a -> pretty a
+    Branch xs -> pretty xs
 
 instance Pretty a => Pretty (Set a) where
   pretty = pretty . Set.toList
@@ -49,8 +49,8 @@ instance Pretty a => Pretty (Set a) where
 instance Pretty HoleCtx where
   pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs
 
--- instance Pretty Ex where
---   pretty = pretty . fromEx
+instance Pretty Ex where
+  pretty = pretty . fromEx
 
 instance Pretty SynState where
   pretty st = align $ vsep
@@ -70,11 +70,6 @@ uneval' r e = tryUneval (uneval r e)
 
 assert' :: Assert -> Nondet Constraints
 assert' = tryUneval . unevalAssert mempty
-
-_assert' :: Assert -> Cs
-_assert' (MkAssert e ex) = runEval prelude do
-  r <- eval mempty e
-  _uneval r (toEx ex)
 
 read :: Parse a => String -> Defs a
 read s = let file = unsafePerformIO $ readFileUtf8 s in

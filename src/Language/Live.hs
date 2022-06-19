@@ -3,7 +3,6 @@ module Language.Live where
 import Import
 import Nondet
 import Language.Syntax
-import Prettyprinter (list, align, (<+>))
 import qualified RIO.Map as Map
 
 {-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
@@ -143,20 +142,44 @@ downcast = cataExprM \case
 
 -- Merged examples {{{
 
+class PartialSemigroup a where
+  (<?>) :: a -> a -> Maybe a
+
+-- | Laws
+-- - pempty <?> x = Just x
+-- - x <?> pempty = Just x
+class PartialSemigroup a => PartialMonoid a where
+  pempty :: a
+
+instance (Ord k, PartialSemigroup v) => PartialSemigroup (Map k v) where
+  (<?>) = mergeMap (<?>)
+
+instance (Ord k, PartialSemigroup v) => PartialMonoid (Map k v) where
+  pempty = Map.empty
+
+zipMerge :: PartialSemigroup a => [a] -> [a] -> Maybe [a]
+zipMerge xs ys
+  | length xs == length ys = zipWithM (<?>) xs ys
+  | otherwise = Nothing
+
+pfold :: (Foldable f, PartialMonoid a) => f a -> Maybe a
+pfold = foldr (\x r -> r >>= (x <?>)) $ Just pempty
+
 data Ex
   = ExFun (Map Value Ex)
   | ExCtr Ctr [Ex]
   | ExTop
   deriving (Eq, Ord, Show)
 
-mergeEx :: Ex -> Ex -> Maybe Ex
-mergeEx = curry \case
-  (ExTop, ex) -> Just ex
-  (ex, ExTop) -> Just ex
-  (ExFun fs, ExFun gs) -> ExFun <$> mergeMap mergeEx fs gs
-  (ExCtr c xs, ExCtr d ys) | c == d, length xs == length ys ->
-    ExCtr c <$> zipWithM mergeEx xs ys
-  _ -> Nothing
+instance PartialSemigroup Ex where
+  ExTop <?> ex = Just ex
+  ex <?> ExTop = Just ex
+  ExFun fs <?> ExFun gs = ExFun <$> fs <?> gs
+  ExCtr c xs <?> ExCtr d ys | c == d = ExCtr c <$> zipMerge xs ys
+  _ <?> _ = Nothing
+
+instance PartialMonoid Ex where
+  pempty = ExTop
 
 toEx :: Example -> Ex
 toEx = \case
@@ -166,7 +189,7 @@ toEx = \case
   _ -> error "Incorrect example"
 
 fromExamples :: [Example] -> Maybe Ex
-fromExamples = Just ExTop & foldl' \r x -> r >>= mergeEx (toEx x)
+fromExamples = Just ExTop & foldl' \r x -> r >>= (toEx x <?>)
 
 fromEx :: Ex -> [Example]
 fromEx = \case
@@ -193,7 +216,7 @@ type Constraint = Map Scope Ex
 type Constraints = Map Hole Constraint
 
 mergeConstraints :: MonadPlus m => [Constraints] -> m Constraints
-mergeConstraints = mfold . mergeMaps (mergeMap mergeEx)
+mergeConstraints = mfold . mergeMaps (<?>)
 
 live :: Term Hole -> Constraint -> Uneval Constraints
 live e cs =
@@ -257,7 +280,7 @@ resumeUneval :: Map Hole (Term Hole) -> Constraints -> Uneval Constraints
 resumeUneval hf old = do
   -- Update the old constraints by resuming their local scopes and then
   -- merging them.
-  updated <- mfold . mapM (mergeFromAssocs mergeEx) =<< for old \c ->
+  updated <- mfold . mapM (mergeFromAssocs (<?>)) =<< for old \c ->
     forOf (each . _1 . scope) (Map.assocs c) $ mapM (liftEval . resume hf)
   -- Compute the new constraints that arise from filling each hole.
   -- TODO: check that this line is correct now. Can we optimize it?
@@ -273,16 +296,6 @@ unevalAssert m (MkAssert e ex) = do
 
 -- }}}
 
--- Examples
-type Examples = [Map Hole Ex]
-
--- TODO: does this example ever make sense?
--- TODO: should we use NonEmpty?
-mergeExamples :: Examples -> Examples -> Maybe Examples
-mergeExamples as bs = sequence do
-  a <- as
-  mergeMap mergeEx a <$> bs
-
 -- Deterministic Constraints
 type DC_ = Tree (Hole, Ctr) (Map (Hole, Map Var Result) Ex)
 
@@ -292,38 +305,26 @@ data Tree k v
   deriving (Eq, Ord, Show)
   deriving (Functor, Foldable, Traversable)
 
-instance (Pretty a, Pretty b) => Pretty (Map a b) where
-  pretty m = align . Prettyprinter.list $ Map.assocs m <&> \(k, x) ->
-    pretty k <> ":" <+> align (pretty x)
+instance (Ord k, PartialSemigroup v) => PartialSemigroup (Tree k v) where
+  Node x <?> Node y = Node <$> x <?> y
+  Node x <?> Branch ys
+    | null ys = Just $ Node x
+    | otherwise = mapM (x <?>) (Branch ys)
+  Branch xs <?> Node y
+    | null xs = Just $ Node y
+    | otherwise = mapM (<?> y) (Branch xs)
+  Branch xs <?> Branch ys = Branch <$> xs <?> ys
 
-instance (Pretty k, Pretty v) => Pretty (Tree k v) where
-  pretty = \case
-    Node a -> pretty a
-    Branch xs -> pretty xs
-
-instance Pretty Ex where
-  pretty = pretty . fromEx
-
-_mergeDC_ :: DC_ -> DC_ -> Maybe DC_
-_mergeDC_ (Node x) (Node y) = Node <$> mergeMap mergeEx x y
-_mergeDC_ (Branch (null -> True)) y = Just y
-_mergeDC_ x (Branch (null -> True)) = Just x
-_mergeDC_ (Node x) ys = mapM (mergeMap mergeEx x) ys
-_mergeDC_ xs (Node y) = mapM (mergeMap mergeEx y) xs
-_mergeDC_ (Branch xs) (Branch ys) = Branch <$> mergeMap _mergeDC_ xs ys
-
--- -- TODO: first just merge equal scopes
-___merge :: [DC_] -> Maybe DC_
-___merge = foldl' (\x y -> x >>= _mergeDC_ y) $ Just $ Branch mempty
--- ___merge ds = traceShow (pretty ds) $ foldl' (\x y -> x >>= _mergeDC_ y) (Just $ Branch mempty) ds
+instance (Ord k, PartialSemigroup v) => PartialMonoid (Tree k v) where
+  pempty = Branch pempty
 
 ___mergeAll :: [Maybe DC_] -> Maybe DC_
-___mergeAll = sequence >=> ___merge
+___mergeAll = sequence >=> pfold
 
 ___mergeAlt :: [Maybe DC_] -> Maybe DC_
 ___mergeAlt cs = case catMaybes cs of
   [] -> Nothing
-  ds -> ___merge ds
+  ds -> pfold ds
 
 ___uneval :: Result -> Ex -> Eval (Maybe DC_)
 ___uneval = curry \case
@@ -365,12 +366,6 @@ ___uneval = curry \case
     ___uneval (Scoped (Map.insert f r m) e) ex
   _ -> return Nothing
 
--- TODO: Perhaps throw away normal checkLive in favor of this
-___resumeLive :: Map Hole (Term Hole) -> Term Hole -> Constraint -> Eval (Maybe DC_)
-___resumeLive hf e cs = ___mergeAll <$> for (Map.assocs cs) \(Scope m, ex) -> do
-  r <- eval m e >>= resume hf
-  ___uneval r ex
-
 treeAssocs :: Tree k v -> [([k], v)]
 treeAssocs = \case
   Node a -> [([], a)]
@@ -379,168 +374,55 @@ treeAssocs = \case
 treeGrow :: [k] -> Tree k v -> Tree k v
 treeGrow ks t = foldr (\k -> Branch . Map.singleton k) t ks
 
--- TODO: test or prove that this is the correct unevaluation equivalent of
--- resumption, i.e. that resuming and then unevaluation is equivalent to
--- unevaluating and then "un-resuming".
-___resumeUneval :: Map Hole (Term Hole) -> DC_ -> Eval (Maybe DC_)
-___resumeUneval hf old = do
-  foo <- for (treeAssocs old) \(t, xs) -> do
-    let t' = filter ((`Map.notMember` hf) . fst) t
-    bar <- for (Map.assocs xs) \((h, m), ex) -> do
-      m' <- mapM (resume hf) m
-      fmap (treeGrow t') <$> case Map.lookup h hf of
-        Nothing -> return . Just . Node $ Map.singleton (h, m') ex
-        Just e -> do
-          r <- eval m' e >>= resume hf
-          ___uneval r ex
-    return $ ___mergeAll bar
-  return . ___mergeAlt $ toList foo
+-- -- TODO: test or prove that this is the correct unevaluation equivalent of
+-- -- resumption, i.e. that resuming and then unevaluation is equivalent to
+-- -- unevaluating and then "un-resuming".
+-- ___resumeUneval :: Map Hole (Term Hole) -> DC_ -> Eval (Maybe DC_)
+-- ___resumeUneval hf old = do
+--   foo <- for (treeAssocs old) \(t, xs) -> do
+--     let t' = filter ((`Map.notMember` hf) . fst) t
+--     let ys = Map.assocs xs
+--     let zs =
+--           [ (h1, s3, ex1, ex2)
+--           | ((h1, s1), ex1) <- ys
+--           , ((h2, s2), ex2) <- ys
+--           , h1 == h2
+--           , Just s3 <- return $ mergeMap (\x y -> if x == y then Just x else Nothing) s1 s2
+--           ]
+--     _
+--     bar <- for (Map.assocs xs) \((h, m), ex) -> do
+--       m' <- mapM (resume hf) m
+--       fmap (treeGrow t') <$> case Map.lookup h hf of
+--         Nothing -> return . Just . Node $ Map.singleton (h, m') ex
+--         Just e -> do
+--           r <- eval m' e >>= resume hf
+--           ___uneval r ex
+--     -- TODO: fix incorrect merging of examples that are not compatible:
+--     -- zipWith (\x y -> plus {0} {1}) [0,1] [2,3] <== [2,4]
+--     -- resuming uneval with `{0} |-> x` does not yet check compatibility of
+--     -- different local scopes. It should probably take the cross product of all
+--     -- computations, remove those with conflicting scopes, and then merge.
+--     return $ traceShow (bar) $ traceShow ("combined: " <> pretty (___mergeAll bar)) $ ___mergeAll bar
+--   return . ___mergeAlt $ {- traceShow (pretty foo) $ -} toList foo
 
 -- -- TODO: test or prove that this is the correct unevaluation equivalent of
 -- -- resumption, i.e. that resuming and then unevaluation is equivalent to
 -- -- unevaluating and then "un-resuming".
 -- ___resumeUneval :: Map Hole (Term Hole) -> DC_ -> Eval (Maybe DC_)
 -- ___resumeUneval hf old = do
---   foo <- for old \xs -> do
+--   foo <- for (treeAssocs old) \(t, xs) -> do
+--     let t' = filter ((`Map.notMember` hf) . fst) t
 --     bar <- for (Map.assocs xs) \((h, m), ex) -> do
 --       m' <- mapM (resume hf) m
---       case Map.lookup h hf of
+--       fmap (treeGrow t') <$> case Map.lookup h hf of
 --         Nothing -> return . Just . Node $ Map.singleton (h, m') ex
 --         Just e -> do
 --           r <- eval m' e >>= resume hf
 --           ___uneval r ex
---     return $ ___mergeAll bar
---   -- return . ___mergeAlt $ traceShow (pretty foo) $ toList foo
---   return . ___mergeAlt $ toList foo
-
--- Deterministic Constraints
-type DC = Maybe (Map [Ctr] (Map Hole (Map Var Result, Ex)))
-
--- -- TODO: first just merge equal scopes
-__merge :: [DC] -> DC
-__merge cs = do
-  ds <- sequence cs
-  flip mergeMaps ds $ mergeMap \(x, a) (y, b) -> do
-    guard (x == y)
-    (x,) <$> mergeEx a b
-
-__uneval :: Result -> Ex -> Eval DC
-__uneval = curry \case
-  -- Top always succeeds.
-  (_, ExTop) -> return $ Just mempty
-  -- Constructors are handled as opaque functions and their unevaluation is
-  -- extensional in the sense that only their arguments are compared.
-  (Apps (Ctr c) xs, ExCtr d ys) -- TODO: should we include Lams here as well?
-    | c == d, length xs == length ys
-    -> __merge <$> zipWithM __uneval xs ys
-  -- Holes are simply added to the environment, with their arguments as inputs.
-  -- The arguments should be values in order to obtain correct hole
-  -- constraints.
-  (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
-    return . Just . Map.singleton [] $ Map.singleton h
-      (m, foldr (\v -> ExFun . Map.singleton v) ex vs)
-  (App (Prj c n) r, ex) -> do
-    cs <- view $ env . constructors -- TODO: something like view constructors
-    let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
-    __uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
-  (App (Scoped m (Elim xs)) r, ex) -> do
-    cs <- view $ env . constructors
-    __merge . filter isJust <$> for xs \(c, e) -> do
-      let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
-      scrut <- __uneval r . ExCtr c $ replicate ar ExTop
-      let prjs = [App (Prj c n) r | n <- [1..ar]]
-      e' <- eval m e
-      arm <- resume mempty (apps e' prjs) >>= flip __uneval ex
-      return . fmap (Map.mapKeys (c:)) $ __merge [scrut, arm]
-  -- Functions should have both input and output, and evaluating their body on
-  -- this input should unevaluate onto the output example.
-  (Scoped m (Lam a e), ExFun xs) ->
-    __merge <$> for (Map.assocs xs) \(v, ex) -> do
-      r <- eval (Map.insert a (upcast v) m) e
-      __uneval r ex
-  -- Fixed points additionally add their own definition to the environment.
-  (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    __uneval (Scoped (Map.insert f r m) e) ex
-  _ -> return Nothing
-
--- Constraints
-type Cs = Maybe (Map Scope [Map Hole Ex])
-
--- -- TODO: first just merge equal scopes
-_merge :: [Cs] -> Cs
-_merge = sequence >=> mergeMaps mergeExamples
-
-_mergeAlt :: [Cs] -> Cs
-_mergeAlt cs = case catMaybes cs of
-  [] -> Nothing
-  xs -> Just $ Map.unionsWith (++) xs
-
-_uneval :: Result -> Ex -> Eval Cs
-_uneval = curry \case
-  -- Top always succeeds.
-  (_, ExTop) -> return $ Just mempty
-  -- Constructors are handled as opaque functions and their unevaluation is
-  -- extensional in the sense that only their arguments are compared.
-  (Apps (Ctr c) xs, ExCtr d ys) -- TODO: should we include Lams here as well?
-    | c == d, length xs == length ys
-    -> _merge <$> zipWithM _uneval xs ys
-  -- Holes are simply added to the environment, with their arguments as inputs.
-  -- The arguments should be values in order to obtain correct hole
-  -- constraints.
-  (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
-    return . Just . Map.singleton (Scope m) . return . Map.singleton h $
-      foldr (\v -> ExFun . Map.singleton v) ex vs
-  (App (Prj c n) r, ex) -> do
-    cs <- view $ env . constructors -- TODO: something like view constructors
-    let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
-    _uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
-  (App (Scoped m (Elim xs)) r, ex) -> do
-    cs <- view $ env . constructors
-    _mergeAlt <$> for xs \(c, e) -> do
-      let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
-      scrut <- _uneval r . ExCtr c $ replicate ar ExTop
-      let prjs = [App (Prj c n) r | n <- [1..ar]]
-      e' <- eval m e
-      arm <- resume mempty (apps e' prjs) >>= flip _uneval ex
-      return $ _merge [scrut, arm]
-  -- Functions should have both input and output, and evaluating their body on
-  -- this input should unevaluate onto the output example.
-  (Scoped m (Lam a e), ExFun xs) ->
-    _merge <$> for (Map.assocs xs) \(v, ex) -> do
-      r <- eval (Map.insert a (upcast v) m) e
-      _uneval r ex
-  -- Fixed points additionally add their own definition to the environment.
-  (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    _uneval (Scoped (Map.insert f r m) e) ex
-  _ -> return Nothing
-
--- TODO: Perhaps throw away normal checkLive in favor of this
-_resumeLive :: Map Hole (Term Hole) -> Term Hole -> Constraint -> Eval Cs
-_resumeLive hf e cs = _merge <$> for (Map.assocs cs) \(Scope m, ex) -> do
-  r <- eval m e >>= resume hf
-  _uneval r ex
-
-_removeHoles :: Set Hole -> Cs -> Cs
-_removeHoles = fmap . fmap . fmap . flip Map.withoutKeys
-
--- -- TODO: First fix bug in uneval, then check again if this is correct.
--- _resumeUneval :: Map Hole (Term Hole) -> Cs -> Eval Cs
--- _resumeUneval _ Nothing = return Nothing
--- _resumeUneval hf (Just old) = do
---   updated <- Map.fromListWith mergeExamples <$> for (Map.assocs old)
---     \(Scope m, xs) -> do
---       m' <- for m $ resume hf
---       return (Scope m', xs)
---   new <- for (Map.assocs updated) \(Scope m, xs) -> do
---     _mergeAlt <$> for xs \exs -> do
---       bar <- toList <$> for (Map.intersectionWith (,) hf exs) \(e, ex) -> do
---         r <- eval m e >>= resume hf
---         _uneval r ex
---       return $ _merge bar
---   let combined = _mergeAlt (Just updated : new)
---   return . _removeHoles (Map.keysSet hf) $ combined
-
-_unevalAssert :: Map Var Result -> Assert -> Eval Cs
-_unevalAssert m (MkAssert e ex) = do
-  r <- eval m e
-  _uneval r $ toEx ex
+--     -- TODO: fix incorrect merging of examples that are not compatible:
+--     -- zipWith (\x y -> plus {0} {1}) [0,1] [2,3] <== [2,4]
+--     -- resuming uneval with `{0} |-> x` does not yet check compatibility of
+--     -- different local scopes. It should probably take the cross product of all
+--     -- computations, remove those with conflicting scopes, and then merge.
+--     return $ traceShow (bar) $ traceShow ("combined: " <> pretty (___mergeAll bar)) $ ___mergeAll bar
+--   return . ___mergeAlt $ {- traceShow (pretty foo) $ -} toList foo

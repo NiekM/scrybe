@@ -51,6 +51,7 @@ failMaybe = \case
   Nothing -> fail ""
   Just x -> return x
 
+-- TODO: rename these unionWithM, unionsWithM and fromListM
 mergeMap :: (Monad m, Ord k) => (v -> v -> m v) ->
   Map k v -> Map k v -> m (Map k v)
 mergeMap f x y = sequence $ Map.unionWith
