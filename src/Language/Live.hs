@@ -234,47 +234,43 @@ type Constraints = Map Hole Constraint
 mergeConstraints :: MonadPlus m => [Constraints] -> m Constraints
 mergeConstraints = mfold . mergeMaps (<?>)
 
-live :: Term Hole -> Constraint -> Uneval Constraints
-live e cs =
-  mergeConstraints =<< for (Map.assocs cs) \(m, ex) -> do
-    x <- mfold . fromEx $ ex
-    r <- liftEval (eval m e)
-    uneval r x
-
 -- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
 -- the recursive argument to Nothing. This makes many things more messy
 -- unfortunately.
-uneval :: Result -> Example -> Uneval Constraints
+uneval :: Result -> Ex -> Uneval Constraints
 uneval = curry \case
   -- Top always succeeds.
-  (_, Top) -> return mempty
+  (_, ExTop) -> return mempty
   -- Constructors are handled as opaque functions and their unevaluation is
   -- extensional in the sense that only their arguments are compared.
-  (Apps (Ctr c) xs, Lams ys (Apps (Ctr d) zs))
-    | c == d, length xs + length ys == length zs
-    -> mergeConstraints =<< zipWithM uneval (xs ++ map upcast ys) zs
+  (Apps (Ctr c) xs, ExCtr d ys) -- TODO: should we include Lams here as well?
+    | c == d, length xs == length ys
+    -> mergeConstraints =<< zipWithM uneval xs ys
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
-  (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) ->
-    return $ Map.singleton h $ Map.singleton m $ toEx $ lams vs ex
+  (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) -> do
+    let ex' = foldr (\v -> ExFun . Map.singleton v) ex vs
+    return $ Map.singleton h $ Map.singleton m ex'
   (App (Prj c n) r, ex) -> do
     cs <- view $ env . constructors -- TODO: something like view constructors
-    let ar = arity . fromMaybe (error "Oh oh") . Map.lookup c $ cs
-    uneval r $ apps (Ctr c) (replicate ar Top & ix (n - 1) .~ ex)
+    let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
+    uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (App (Scoped m (Elim xs)) r, ex) -> burnFuel >> do
     (c, e) <- mfold xs
     cs <- view $ env . constructors
     let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
-    scrut <- uneval r (apps (Ctr c) (replicate ar Top))
+    scrut <- uneval r . ExCtr c $ replicate ar ExTop
     let prjs = [App (Prj c n) r | n <- [1..ar]]
     e' <- liftEval $ eval m e
     arm <- liftEval (resume mempty $ apps e' prjs) >>= flip uneval ex
     mergeConstraints [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
-  (Scoped m (Lam a x), Lam v y) ->
-    live x $ Map.singleton ((a, upcast v) : m) (toEx y)
+  (Scoped m (Lam a e), ExFun xs) ->
+    mergeConstraints =<< for (Map.assocs xs) \(v, ex) -> do
+      r <- liftEval $ eval ((a, upcast v) : m) e
+      uneval r ex
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
     uneval (Scoped ((f, r) : m) e) ex
@@ -285,9 +281,8 @@ resumeLive :: Map Hole (Term Hole) -> Term Hole -> Constraint ->
   Uneval Constraints
 resumeLive hf e cs =
   mergeConstraints =<< for (Map.assocs cs) \(m, ex) -> do
-    x <- mfold . fromEx $ ex
     r <- liftEval (eval m e >>= resume hf)
-    uneval r x
+    uneval r ex
 
 -- TODO: test or prove that this is the correct unevaluation equivalent of
 -- resumption, i.e. that resuming and then unevaluation is equivalent to
@@ -308,7 +303,7 @@ resumeUneval hf old = do
 unevalAssert :: Scope -> Assert -> Uneval Constraints
 unevalAssert m (MkAssert e ex) = do
   r <- liftEval $ eval m e
-  uneval r ex
+  uneval r $ toEx ex
 
 -- }}}
 

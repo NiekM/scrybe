@@ -61,7 +61,7 @@ eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude
 
 uneval' :: Result -> Example -> Nondet Constraints
-uneval' r e = tryUneval (uneval r e)
+uneval' r e = tryUneval (uneval r $ toEx e)
 
 assert' :: Assert -> Nondet Constraints
 assert' = tryUneval . unevalAssert mempty
