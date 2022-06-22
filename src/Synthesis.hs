@@ -180,7 +180,7 @@ step hf = do
   modifying contexts (<> Map.fromList (toListOf holes expr))
   let new = Map.singleton hole (over holes fst expr)
   use mainScope
-    >>= traverseOf (each . _2) (liftEval . resume new)
+    >>= mapM (liftEval . resume new)
     >>= assign mainScope
   modifying fillings (<> new)
   let hf' = hf <> new
@@ -190,7 +190,9 @@ step hf = do
     Nondet (Right cs')
       -- If there is too much non-determinism, fill another hole before
       -- unevaluating.
-      | length cs' > 32 -> traceM "Too much ND!" >> step hf'
+      | length cs' > 32 -> do
+        traceM "Too much ND!"
+        step hf'
       | otherwise -> updateConstraints cs'
     -- When running out of fuel, fill another hole before unevaluating.
     Nondet (Left _) -> traceM "Out of fuel" >> step hf'

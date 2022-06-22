@@ -193,7 +193,7 @@ type Indet = Base (Term Hole) 'Ind
 -- expressions capturing the local scope.
 type Result = Expr 'Det
 
-type Scope = [(Var, Result)]
+type Scope = Map Var Result
 
 -- Morphisms {{{
 
