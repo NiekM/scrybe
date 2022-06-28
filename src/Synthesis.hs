@@ -119,11 +119,12 @@ init defs = do
 
 updateConstraints :: [Constraints] -> Synth ()
 updateConstraints xs = do
+  let ys = nubOrd xs
   cs <- Map.keysSet <$> use contexts
   -- Make sure every hole has constraints. ('Informativeness restriction')
-  let ys = filter ((== cs) . Map.keysSet) xs
-  guard . not . null $ ys
-  assign constraints ys
+  let zs = filter ((== cs) . Map.keysSet) ys
+  guard . not . null $ zs
+  assign constraints zs
 
 -- TODO: sometimes it's faster to introduce helper functions rather than
 -- eliminators/folds (e.g. introducing `not` in `nat_even`), but other times

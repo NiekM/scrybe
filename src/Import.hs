@@ -9,6 +9,7 @@ module Import
   , module Lens.Micro.Platform
   , module Data.Functor.Compose
   , Pretty(..)
+  , Logic(..)
   , unsnoc
   , maximumDef
   , mfold
@@ -48,6 +49,19 @@ instance Pretty a => Pretty (Set a) where
 
 instance Display (Doc ann) where
   textDisplay = fromString . show
+
+data Logic a
+  = Pure a
+  | Conjunction [Logic a]
+  | Disjunction [Logic a]
+  deriving (Eq, Ord, Show, Read)
+  deriving (Functor, Foldable, Traversable)
+
+instance Pretty a => Pretty (Logic a) where
+  pretty = \case
+    Pure a -> pretty a
+    Conjunction xs -> "/\\" <+> align (pretty xs)
+    Disjunction xs -> "\\/" <+> align (pretty xs)
 
 unsnoc :: NonEmpty a -> ([a], a)
 unsnoc (x :| []) = ([], x)
