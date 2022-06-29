@@ -57,6 +57,18 @@ data Logic a
   deriving (Eq, Ord, Show, Read)
   deriving (Functor, Foldable, Traversable)
 
+-- TODO: check that these instances make sense
+instance Applicative Logic where
+  pure = Pure
+  Pure f <*> x = f <$> x
+  Conjunction fs <*> x = Conjunction $ fs <&> (<*> x)
+  Disjunction fs <*> x = Disjunction $ fs <&> (<*> x)
+
+instance Monad Logic where
+  Pure x >>= f = f x
+  Conjunction xs >>= f = Conjunction $ xs <&> (>>= f)
+  Disjunction xs >>= f = Disjunction $ xs <&> (>>= f)
+
 instance Pretty a => Pretty (Logic a) where
   pretty = \case
     Pure a -> pretty a

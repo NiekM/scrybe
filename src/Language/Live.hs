@@ -231,6 +231,13 @@ burnFuel = get >>= \case
 type Constraint = Map Scope Ex
 type Constraints = Map Hole Constraint
 
+ctrArity :: MonadReader Env m => Ctr -> m Int
+ctrArity c = do
+  cs <- view $ env . constructors
+  case Map.lookup c cs of
+    Nothing -> error $ "Unknown constructor " <> show c
+    Just d -> return $ arity d
+
 -- Non-normalizing variant of uneval
 un :: Result -> Ex -> Eval (Logic Constraints)
 un = curry \case
@@ -248,12 +255,10 @@ un = curry \case
     let ex' = foldr (\v -> ExFun . Map.singleton v) ex vs
     return . Pure $ Map.singleton h $ Map.singleton m ex'
   (App (Prj c n) r, ex) -> do
-    cs <- view $ env . constructors -- TODO: something like view constructors
-    let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
+    ar <- ctrArity c
     un r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (App (Scoped m (Elim xs)) r, ex) -> Disjunction <$> for xs \(c, e) -> do
-    cs <- view $ env . constructors
-    let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
+    ar <- ctrArity c
     scrut <- un r . ExCtr c $ replicate ar ExTop
     let prjs = [App (Prj c n) r | n <- [1..ar]]
     e' <- eval m e
@@ -270,77 +275,63 @@ un = curry \case
     un (Scoped (Map.insert f r m) e) ex
   _ -> return $ Disjunction []
 
+reLive :: Map Hole (Term Hole) -> Term Hole -> Constraint ->
+  Eval (Logic Constraints)
+reLive hf e cs = Conjunction <$> for (Map.assocs cs) \(m, ex) -> do
+  r <- eval m e >>= resume hf
+  un r ex
+
+re :: Map Hole (Term Hole) -> Logic Constraints -> Eval (Logic Constraints)
+re hf = fmap join . traverse \old -> do
+  -- Update the old constraints by resuming their local scopes and then
+  -- merging them.
+  foo <- mapM (mergeFromAssocs (<?>)) <$> for old \c ->
+    forOf (each . _1) (Map.assocs c) $ traverseOf each (resume hf)
+  case foo of
+    Nothing -> return $ Disjunction []
+    Just upd -> do
+      -- Compute the new constraints that arise from filling each hole.
+      new <- sequence . toList $ Map.intersectionWith (reLive hf) hf upd
+      -- Combine the new constraints with the updated constraints, minus the
+      -- filled holes.
+      return . fmap (Map.\\ hf) . Conjunction $ Pure upd : new
+
 mergeConstraints :: MonadPlus m => [Constraints] -> m Constraints
 mergeConstraints = mfold . mergeMaps (<?>)
 
--- TODO: maybe replace Lam by Fix and have Lam be a pattern synonym that sets
--- the recursive argument to Nothing. This makes many things more messy
--- unfortunately.
+dnf :: Logic a -> [[a]]
+dnf = \case
+  Pure a -> [[a]]
+  Conjunction xs -> concat <$> mapM dnf xs
+  Disjunction xs -> concat $ dnf <$> xs
+
+-- TODO: replace fuel burning with a simple check in Synthesis to see if the
+-- normalized constraint is too large. Then move all calls to mergeConstraints
+-- to Synthesis, as well as remove Uneval altogether.
 uneval :: Result -> Ex -> Uneval Constraints
-uneval = curry \case
-  -- Top always succeeds.
-  (_, ExTop) -> return mempty
-  -- Constructors are handled as opaque functions and their unevaluation is
-  -- extensional in the sense that only their arguments are compared.
-  (Apps (Ctr c) xs, ExCtr d ys) -- TODO: should we include Lams here as well?
-    | c == d, length xs == length ys
-    -> mergeConstraints =<< zipWithM uneval xs ys
-  -- Holes are simply added to the environment, with their arguments as inputs.
-  -- The arguments should be values in order to obtain correct hole
-  -- constraints.
-  (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) -> do
-    let ex' = foldr (\v -> ExFun . Map.singleton v) ex vs
-    return $ Map.singleton h $ Map.singleton m ex'
-  (App (Prj c n) r, ex) -> do
-    cs <- view $ env . constructors -- TODO: something like view constructors
-    let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
-    uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
-  (App (Scoped m (Elim xs)) r, ex) -> burnFuel >> do
-    (c, e) <- mfold xs
-    cs <- view $ env . constructors
-    let ar = arity . fromMaybe (error "Oh oh") $ Map.lookup c cs
-    scrut <- uneval r . ExCtr c $ replicate ar ExTop
-    let prjs = [App (Prj c n) r | n <- [1..ar]]
-    e' <- liftEval $ eval m e
-    arm <- liftEval (resume mempty $ apps e' prjs) >>= flip uneval ex
-    mergeConstraints [scrut, arm]
-  -- Functions should have both input and output, and evaluating their body on
-  -- this input should unevaluate onto the output example.
-  (Scoped m (Lam a e), ExFun xs) ->
-    mergeConstraints =<< for (Map.assocs xs) \(v, ex) -> do
-      r <- liftEval $ eval (Map.insert a (upcast v) m) e
-      uneval r ex
-  -- Fixed points additionally add their own definition to the environment.
-  (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    uneval (Scoped (Map.insert f r m) e) ex
-  _ -> mzero
+uneval r ex = do
+  l <- liftEval $ un r ex
+  for_ (dnf l) $ const burnFuel
+  xs <- mfold $ dnf l
+  mergeConstraints xs
 
--- TODO: Perhaps throw away normal checkLive in favor of this
-resumeLive :: Map Hole (Term Hole) -> Term Hole -> Constraint ->
-  Uneval Constraints
-resumeLive hf e cs = do
-  mergeConstraints =<< for (Map.assocs cs) \(m, ex) -> do
-    r <- liftEval (eval m e >>= resume hf)
-    uneval r ex
-
--- TODO: test or prove that this is the correct unevaluation equivalent of
--- resumption, i.e. that resuming and then unevaluation is equivalent to
--- unevaluating and then "un-resuming".
+-- TODO: fix tree_size.hs not working with this version
 resumeUneval :: Map Hole (Term Hole) -> Constraints -> Uneval Constraints
 resumeUneval hf old = do
-  -- Update the old constraints by resuming their local scopes and then
-  -- merging them.
-  upd <- mfold . mapM (mergeFromAssocs (<?>)) =<< for old \c ->
-    forOf (each . _1) (Map.assocs c) $ traverseOf each (liftEval . resume hf)
-  -- Compute the new constraints that arise from filling each hole.
-  new <- sequence . toList $ Map.intersectionWith (resumeLive hf) hf upd
-  -- Combine the new constraints with the updated constraints, minus the filled
-  -- holes.
-  mergeConstraints . fmap (Map.\\ hf) $ upd : new
+  l <- liftEval (re hf $ Pure old)
+  for_ (dnf l) $ const burnFuel
+  xs <- mfold $ dnf l
+  mergeConstraints xs
+
+unAssert :: Scope -> Assert -> Eval (Logic Constraints)
+unAssert m (MkAssert e ex) = do
+  r <- eval m e
+  un r $ toEx ex
 
 unevalAssert :: Scope -> Assert -> Uneval Constraints
-unevalAssert m (MkAssert e ex) = do
-  r <- liftEval $ eval m e
-  uneval r $ toEx ex
+unevalAssert m a = do
+  l <- liftEval (unAssert m a)
+  xs <- mfold $ dnf l
+  mergeConstraints xs
 
 -- }}}

@@ -187,7 +187,7 @@ step hf = do
   let hf' = hf <> new
   cs <- use constraints
   -- TODO: find a good amount of fuel and amount of ND allowed.
-  liftUneval 16 (mfold cs >>= resumeUneval hf') >>= \case
+  liftUneval 32 (mfold cs >>= resumeUneval hf') >>= \case
     Nondet (Right cs')
       -- If there is too much non-determinism, fill another hole before
       -- unevaluating.
