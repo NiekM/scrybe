@@ -4,7 +4,6 @@ module Synthesis where
 
 import Import
 import Language
-import Nondet
 import qualified RIO.Map as Map
 import Control.Monad.Heap
 import Control.Monad.State
@@ -14,7 +13,7 @@ import Data.Monus.Dist
 -- e.g. [Term Unit]
 data SynState = SynState
   { _contexts    :: Map Hole HoleCtx
-  , _constraints :: [Constraints]
+  , _constraints :: Logic Constraints
   , _fillings    :: Map Hole (Term Hole)
   , _freshSt     :: FreshState
   , _mainScope   :: Scope
@@ -25,7 +24,8 @@ data SynState = SynState
 makeLenses ''SynState
 
 emptySynState :: SynState
-emptySynState = SynState mempty mempty mempty mkFreshState mempty [] mempty
+emptySynState =
+  SynState mempty (Disjunction []) mempty mkFreshState mempty [] mempty
 
 runSynth :: Env -> Synth a -> Heap Dist a
 runSynth m x = fst <$> runReaderT (runStateT x emptySynState) m
@@ -48,9 +48,6 @@ instance ExpandHole Hole Synth where
     (xs, ctx') <- getCtx h >>= expandHole
     modifying contexts $ Map.insert h ctx'
     return (xs, h)
-
-liftUneval :: Int -> Uneval a -> Synth (Nondet a)
-liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
 
 -- TODO: figure out how to deal with diverging unevaluation, such as that of
 -- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
@@ -109,11 +106,11 @@ init defs = do
       modifying contexts $ Map.delete h
       assign examples $ asserts defs
       -- TODO: find reasonable fuel
-      as <- liftUneval 100 $ -- TODO: find reasonable fuel
-        mergeConstraints <$> for (asserts defs) (unevalAssert m)
+      updateConstraints =<< do
+        xs <- liftEval $ for (asserts defs) (unevalAssert m)
+        mfold . fmap mergeConstraints . dnf $ Conjunction xs
       -- TODO: how do we deal with running out of fuel? Can we still have
       -- assertions at some nodes of the computation?
-      updateConstraints $ catMaybes (either error id . runNondet $ as)
       return y
     _ -> error "Should never happen"
 
@@ -124,7 +121,7 @@ updateConstraints xs = do
   -- Make sure every hole has constraints. ('Informativeness restriction')
   let zs = filter ((== cs) . Map.keysSet) ys
   guard . not . null $ zs
-  assign constraints zs
+  assign constraints $ Disjunction . fmap Pure $ zs
 
 -- TODO: sometimes it's faster to introduce helper functions rather than
 -- eliminators/folds (e.g. introducing `not` in `nat_even`), but other times
@@ -186,17 +183,14 @@ step hf = do
   modifying fillings (<> new)
   let hf' = hf <> new
   cs <- use constraints
-  -- TODO: find a good amount of fuel and amount of ND allowed.
-  liftUneval 32 (mfold cs >>= resumeUneval hf') >>= \case
-    Nondet (Right cs')
-      -- If there is too much non-determinism, fill another hole before
-      -- unevaluating.
-      | length cs' > 32 -> do
-        traceM "Too much ND!"
-        step hf'
-      | otherwise -> updateConstraints cs'
-    -- When running out of fuel, fill another hole before unevaluating.
-    Nondet (Left _) -> traceM "Out of fuel" >> step hf'
+  disjunctions <- fmap dnf . liftEval $ resumeUneval hf' cs
+  -- TODO: find a good amount of disjunctions allowed.
+  if length disjunctions > 32
+    then do
+      traceM $ "Too many disjunctions: "
+        <> (fromString . show . length $ disjunctions)
+      step hf'
+    else updateConstraints $ disjunctions >>= mergeConstraints
 
 -- TODO: add a testsuite testing the equivalence of different kinds and
 -- combinations of (un)evaluation resumptions.

@@ -7,7 +7,6 @@ module Debug where
 
 import Import
 import Language
-import Nondet
 import Synthesis
 import qualified RIO.Text as T
 import System.IO.Unsafe
@@ -42,17 +41,14 @@ instance Pretty SynState where
     , "", "Fillings:", pretty $ view fillings st
     ]
 
-tryUneval :: Uneval a -> Nondet a
-tryUneval x = view _1 <$> runRWST x prelude 1000
-
 eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude
 
-uneval' :: Result -> Example -> Nondet Constraints
-uneval' r e = tryUneval (uneval r $ toEx e)
+uneval' :: Result -> Example -> Logic Constraints
+uneval' r e = runEval prelude (uneval r $ toEx e)
 
-assert' :: Assert -> Nondet Constraints
-assert' = tryUneval . unevalAssert mempty
+assert' :: Assert -> Logic Constraints
+assert' = runEval prelude . unevalAssert mempty
 
 read :: Parse a => String -> Defs a
 read s = let file = unsafePerformIO $ readFileUtf8 s in

@@ -2,7 +2,6 @@
 module Language.Live where
 
 import Import
-import Nondet
 import Language.Syntax
 import qualified RIO.Map as Map
 
@@ -217,16 +216,6 @@ fromEx = \case
 
 -- Live unevaluation {{{
 
-type Uneval = RWST Env () Int Nondet
-
-instance LiftEval Uneval where
-  liftEval x = ask <&> runReader x
-
-burnFuel :: Uneval ()
-burnFuel = get >>= \case
-  n | n <= 0    -> fail "Out of fuel"
-    | otherwise -> put (n - 1)
-
 -- TODO: find some better names?
 type Constraint = Map Scope Ex
 type Constraints = Map Hole Constraint
@@ -239,15 +228,15 @@ ctrArity c = do
     Just d -> return $ arity d
 
 -- Non-normalizing variant of uneval
-un :: Result -> Ex -> Eval (Logic Constraints)
-un = curry \case
+uneval :: Result -> Ex -> Eval (Logic Constraints)
+uneval = curry \case
   -- Top always succeeds.
   (_, ExTop) -> return $ Conjunction []
   -- Constructors are handled as opaque functions and their unevaluation is
   -- extensional in the sense that only their arguments are compared.
   (Apps (Ctr c) xs, ExCtr d ys) -- TODO: should we include Lams here as well?
     | c == d, length xs == length ys
-    -> Conjunction <$> zipWithM un xs ys
+    -> Conjunction <$> zipWithM uneval xs ys
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
@@ -256,33 +245,34 @@ un = curry \case
     return . Pure $ Map.singleton h $ Map.singleton m ex'
   (App (Prj c n) r, ex) -> do
     ar <- ctrArity c
-    un r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
+    uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (App (Scoped m (Elim xs)) r, ex) -> Disjunction <$> for xs \(c, e) -> do
     ar <- ctrArity c
-    scrut <- un r . ExCtr c $ replicate ar ExTop
+    scrut <- uneval r . ExCtr c $ replicate ar ExTop
     let prjs = [App (Prj c n) r | n <- [1..ar]]
     e' <- eval m e
-    arm <- resume mempty (apps e' prjs) >>= flip un ex
+    arm <- resume mempty (apps e' prjs) >>= flip uneval ex
     return $ Conjunction [scrut, arm]
   -- Functions should have both input and output, and evaluating their body on
   -- this input should unevaluate onto the output example.
   (Scoped m (Lam a e), ExFun xs) ->
     Conjunction <$> for (Map.assocs xs) \(v, ex) -> do
       r <- eval (Map.insert a (upcast v) m) e
-      un r ex
+      uneval r ex
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    un (Scoped (Map.insert f r m) e) ex
+    uneval (Scoped (Map.insert f r m) e) ex
   _ -> return $ Disjunction []
 
-reLive :: Map Hole (Term Hole) -> Term Hole -> Constraint ->
+resumeLive :: Map Hole (Term Hole) -> Term Hole -> Constraint ->
   Eval (Logic Constraints)
-reLive hf e cs = Conjunction <$> for (Map.assocs cs) \(m, ex) -> do
+resumeLive hf e cs = Conjunction <$> for (Map.assocs cs) \(m, ex) -> do
   r <- eval m e >>= resume hf
-  un r ex
+  uneval r ex
 
-re :: Map Hole (Term Hole) -> Logic Constraints -> Eval (Logic Constraints)
-re hf = fmap join . traverse \old -> do
+resumeUneval :: Map Hole (Term Hole) -> Logic Constraints ->
+  Eval (Logic Constraints)
+resumeUneval hf = fmap join . traverse \old -> do
   -- Update the old constraints by resuming their local scopes and then
   -- merging them.
   foo <- mapM (mergeFromAssocs (<?>)) <$> for old \c ->
@@ -291,13 +281,13 @@ re hf = fmap join . traverse \old -> do
     Nothing -> return $ Disjunction []
     Just upd -> do
       -- Compute the new constraints that arise from filling each hole.
-      new <- sequence . toList $ Map.intersectionWith (reLive hf) hf upd
+      new <- sequence . toList $ Map.intersectionWith (resumeLive hf) hf upd
       -- Combine the new constraints with the updated constraints, minus the
       -- filled holes.
       return . fmap (Map.\\ hf) . Conjunction $ Pure upd : new
 
-mergeConstraints :: MonadPlus m => [Constraints] -> m Constraints
-mergeConstraints = mfold . mergeMaps (<?>)
+mergeConstraints :: [Constraints] -> [Constraints]
+mergeConstraints = toList . mergeMaps (<?>)
 
 dnf :: Logic a -> [[a]]
 dnf = \case
@@ -305,33 +295,9 @@ dnf = \case
   Conjunction xs -> concat <$> mapM dnf xs
   Disjunction xs -> concat $ dnf <$> xs
 
--- TODO: replace fuel burning with a simple check in Synthesis to see if the
--- normalized constraint is too large. Then move all calls to mergeConstraints
--- to Synthesis, as well as remove Uneval altogether.
-uneval :: Result -> Ex -> Uneval Constraints
-uneval r ex = do
-  l <- liftEval $ un r ex
-  for_ (dnf l) $ const burnFuel
-  xs <- mfold $ dnf l
-  mergeConstraints xs
-
--- TODO: fix tree_size.hs not working with this version
-resumeUneval :: Map Hole (Term Hole) -> Constraints -> Uneval Constraints
-resumeUneval hf old = do
-  l <- liftEval (re hf $ Pure old)
-  for_ (dnf l) $ const burnFuel
-  xs <- mfold $ dnf l
-  mergeConstraints xs
-
-unAssert :: Scope -> Assert -> Eval (Logic Constraints)
-unAssert m (MkAssert e ex) = do
+unevalAssert :: Scope -> Assert -> Eval (Logic Constraints)
+unevalAssert m (MkAssert e ex) = do
   r <- eval m e
-  un r $ toEx ex
-
-unevalAssert :: Scope -> Assert -> Uneval Constraints
-unevalAssert m a = do
-  l <- liftEval (unAssert m a)
-  xs <- mfold $ dnf l
-  mergeConstraints xs
+  uneval r $ toEx ex
 
 -- }}}
