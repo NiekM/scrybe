@@ -234,7 +234,10 @@ uneval = curry \case
   (_, ExTop) -> return $ Conjunction []
   -- Constructors are handled as opaque functions and their unevaluation is
   -- extensional in the sense that only their arguments are compared.
-  (Apps (Ctr c) xs, ExCtr d ys) -- TODO: should we include Lams here as well?
+  (r@(Apps (Ctr _) _), ExFun ys)
+    -> Conjunction <$> for (Map.assocs ys) \(v, ex) ->
+      uneval (App r (upcast v)) ex
+  (Apps (Ctr c) xs, ExCtr d ys)
     | c == d, length xs == length ys
     -> Conjunction <$> zipWithM uneval xs ys
   -- Holes are simply added to the environment, with their arguments as inputs.
@@ -246,15 +249,14 @@ uneval = curry \case
   (App (Prj c n) r, ex) -> do
     ar <- ctrArity c
     uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
-  (App (Scoped m (Elim xs)) r, ex) -> Disjunction <$> for xs \(c, e) -> do
-    ar <- ctrArity c
-    scrut <- uneval r . ExCtr c $ replicate ar ExTop
-    let prjs = [App (Prj c n) r | n <- [1..ar]]
-    e' <- eval m e
-    arm <- resume mempty (apps e' prjs) >>= flip uneval ex
-    return $ Conjunction [scrut, arm]
-  -- Functions should have both input and output, and evaluating their body on
-  -- this input should unevaluate onto the output example.
+  (Apps (Scoped m (Elim xs)) (r:rs), ex) ->
+    Disjunction <$> for xs \(c, e) -> do
+      ar <- ctrArity c
+      scrut <- uneval r . ExCtr c $ replicate ar ExTop
+      let prjs = [App (Prj c n) r | n <- [1..ar]]
+      e' <- eval m e
+      arm <- resume mempty (apps e' (prjs ++ rs)) >>= flip uneval ex
+      return $ Conjunction [scrut, arm]
   (Scoped m (Lam a e), ExFun xs) ->
     Conjunction <$> for (Map.assocs xs) \(v, ex) -> do
       r <- eval (Map.insert a (upcast v) m) e
