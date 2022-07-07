@@ -10,6 +10,10 @@ take :: Nat -> List a -> List a
 -- correct recursion scheme.
 -- take = {}
 take n xs = foldList {} {} xs n
+-- TODO: it seems that if we leave out the last argument, the recursive
+-- argument does not have type Nat, so is never tried as the argument of
+-- elimNat, but it should be tried to get a solution.
+-- take n xs = foldList {} {} xs {}
 
 -- assert take 0 []        <== []
 -- assert take 0 [1]       <== []

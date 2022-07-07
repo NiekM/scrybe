@@ -53,6 +53,9 @@ uneval' r e = tryUneval (uneval r $ toEx e)
 assert' :: Assert -> Maybe (Logic Constraints)
 assert' = tryUneval . unevalAssert mempty
 
+merge :: Maybe (Logic Constraints) -> Doc ann
+merge = pretty . fmap (fmap mergeConstraints . dnf)
+
 read :: Parse a => String -> Defs a
 read s = let file = unsafePerformIO $ readFileUtf8 s in
   case lexParse parser file of

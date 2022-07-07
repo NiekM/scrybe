@@ -10,6 +10,8 @@ index :: Nat -> List a -> Maybe a
 -- correct recursion scheme.
 -- index = {}
 index n xs = foldList {} {} xs n
+-- NOTE: this version does not adhere to the informativeness restriction
+-- index n xs = foldList {} {} xs {}
 
 -- assert index 0 []        <== Nothing
 -- assert index 0 [1]       <== Just 1
