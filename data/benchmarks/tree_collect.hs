@@ -6,12 +6,9 @@
 import Prelude (foldTree, foldList)
 -- import Prelude (foldTree, append)
 
--- NOTE: this needs at least a ND of 32
--- (probably roughly 2^x, where x is the number of examples)
 collect :: Tree a -> List a
 collect = {}
 
--- NOTE: these examples are a bit different from Smyth
 assert collect Leaf                                           <== []
 assert collect (Node Leaf A Leaf)                             <== [A]
 assert collect (Node (Node Leaf A Leaf) B Leaf)               <== [A, B]

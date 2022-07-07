@@ -1,9 +1,10 @@
 -- import Prelude (foldList, elimBool)
--- import Prelude (elimBool)
+import Prelude (elimBool)
 
--- NOTE: almost any hole introduction makes this diverge
+-- NOTE: having (p {}) in the sketch will diverge because p = even and
+-- `even {} <== True` diverges
 filter :: (a -> Bool) -> List a -> List a
-filter p xs = foldList {} (\x r -> elimBool {} (Cons x r) (p x)) xs
+filter p xs = foldList {} {} xs
 
 assert filter even []        <== []
 assert filter even [0]       <== [0]

@@ -4,7 +4,7 @@ import Prelude (elimNat)
 -- NOTE: adding foldNat to the environment makes the computation run out fuel
 -- very quickly.
 compare :: Nat -> Nat -> Ord
-compare x y = foldNat (\z -> elimNat {} {} {}) (\r z -> elimNat {} {} {}) y x
+compare x y = foldNat (\z -> elimNat {} {} {}) {} y x
 
 assert compare 0 0 <== EQ
 assert compare 0 1 <== LT

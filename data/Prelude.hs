@@ -156,6 +156,9 @@ filter p = foldList [] (\x r -> elimBool r (Cons x r) (p x))
 append :: List a -> List a -> List a
 append xs ys = foldList ys Cons xs
 
+snoc :: List a -> a -> List a
+snoc xs x = foldList [x] Cons xs
+
 length :: List a -> Nat
 length xs = foldList Zero (\x r -> Succ r) xs
 
