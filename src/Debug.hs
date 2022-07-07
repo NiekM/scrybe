@@ -41,14 +41,17 @@ instance Pretty SynState where
     , "", "Fillings:", pretty $ view fillings st
     ]
 
+tryUneval :: Uneval a -> Maybe a
+tryUneval x = view _1 <$> runRWST x prelude 100
+
 eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude
 
-uneval' :: Result -> Example -> Logic Constraints
-uneval' r e = runEval prelude (uneval r $ toEx e)
+uneval' :: Result -> Example -> Maybe (Logic Constraints)
+uneval' r e = tryUneval (uneval r $ toEx e)
 
-assert' :: Assert -> Logic Constraints
-assert' = runEval prelude . unevalAssert mempty
+assert' :: Assert -> Maybe (Logic Constraints)
+assert' = tryUneval . unevalAssert mempty
 
 read :: Parse a => String -> Defs a
 read s = let file = unsafePerformIO $ readFileUtf8 s in

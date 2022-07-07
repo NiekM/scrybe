@@ -49,6 +49,9 @@ instance ExpandHole Hole Synth where
     modifying contexts $ Map.insert h ctx'
     return (xs, h)
 
+liftUneval :: Int -> Uneval a -> Synth (Maybe a)
+liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
+
 -- TODO: figure out how to deal with diverging unevaluation, such as that of
 -- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
 -- example 'mult 0 {0} <= 0'.
@@ -106,9 +109,10 @@ init defs = do
       modifying contexts $ Map.delete h
       assign examples $ asserts defs
       -- TODO: find reasonable fuel
-      updateConstraints =<< do
-        xs <- liftEval $ for (asserts defs) (unevalAssert m)
-        mfold . fmap mergeConstraints . dnf $ Conjunction xs
+      cs <- liftUneval 1000 (for (asserts defs) (unevalAssert m)) >>= \case
+        Nothing -> fail "Out of fuel"
+        Just xs -> mfold . fmap mergeConstraints . dnf $ Conjunction xs
+      updateConstraints cs
       -- TODO: how do we deal with running out of fuel? Can we still have
       -- assertions at some nodes of the computation?
       return y
@@ -176,21 +180,28 @@ step hf = do
   ref <- refinements ctx
   expr <- etaExpand ref >>= traverseOf holes \c -> (,c) <$> fresh
   modifying contexts (<> Map.fromList (toListOf holes expr))
-  let new = Map.singleton hole (over holes fst expr)
+  let new = Map.singleton hole $ over holes fst expr
   use mainScope
     >>= mapM (liftEval . resume new)
     >>= assign mainScope
   modifying fillings (<> new)
   let hf' = hf <> new
   cs <- use constraints
-  disjunctions <- fmap dnf . liftEval $ resumeUneval hf' cs
-  -- TODO: find a good amount of disjunctions allowed.
-  if length disjunctions > 32
-    then do
-      traceM $ "Too many disjunctions: "
-        <> (fromString . show . length $ disjunctions)
+  liftUneval 32 (resumeUneval hf' cs) >>= \case
+    Nothing -> do
+      traceM "Out of fuel"
+      tell 1
       step hf'
-    else updateConstraints $ disjunctions >>= mergeConstraints
+    Just xs -> do
+      let disjunctions = dnf xs
+      -- TODO: find a good amount of disjunctions allowed.
+      if length disjunctions > 32
+        then do
+          traceM $ "Too many disjunctions: "
+            <> (fromString . show . length $ disjunctions)
+          tell 1
+          step hf'
+        else updateConstraints $ disjunctions >>= mergeConstraints
 
 -- TODO: add a testsuite testing the equivalence of different kinds and
 -- combinations of (un)evaluation resumptions.

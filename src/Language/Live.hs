@@ -42,7 +42,7 @@ eval :: Scope -> Term Hole -> Eval Result
 eval loc = \case
   Var v -> do
     rs <- view scope
-    maybe undefined return $ Map.lookup v (loc <> rs)
+    maybe (error $ show v) return $ Map.lookup v (loc <> rs)
   App f x -> do
     f' <- eval loc f
     x' <- eval loc x
@@ -216,6 +216,16 @@ fromEx = \case
 
 -- Live unevaluation {{{
 
+type Uneval = RWST Env () Int Maybe
+
+instance LiftEval Uneval where
+  liftEval x = ask <&> runReader x
+
+burnFuel :: Uneval ()
+burnFuel = get >>= \case
+  n | n <= 0    -> fail "Out of fuel"
+    | otherwise -> put (n - 1)
+
 -- TODO: find some better names?
 type Constraint = Map Scope Ex
 type Constraints = Map Hole Constraint
@@ -227,8 +237,10 @@ ctrArity c = do
     Nothing -> error $ "Unknown constructor " <> show c
     Just d -> return $ arity d
 
+-- TODO: why does foldList {} {} xs {} not unevaluate correctly?
+
 -- Non-normalizing variant of uneval
-uneval :: Result -> Ex -> Eval (Logic Constraints)
+uneval :: Result -> Ex -> Uneval (Logic Constraints)
 uneval = curry \case
   -- Top always succeeds.
   (_, ExTop) -> return $ Conjunction []
@@ -249,17 +261,17 @@ uneval = curry \case
   (App (Prj c n) r, ex) -> do
     ar <- ctrArity c
     uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
-  (Apps (Scoped m (Elim xs)) (r:rs), ex) ->
+  (Apps (Scoped m (Elim xs)) (r:rs), ex) -> burnFuel >>
     Disjunction <$> for xs \(c, e) -> do
       ar <- ctrArity c
       scrut <- uneval r . ExCtr c $ replicate ar ExTop
       let prjs = [App (Prj c n) r | n <- [1..ar]]
-      e' <- eval m e
-      arm <- resume mempty (apps e' (prjs ++ rs)) >>= flip uneval ex
+      e' <- liftEval (eval m e)
+      arm <- liftEval (resume mempty (apps e' (prjs ++ rs))) >>= flip uneval ex
       return $ Conjunction [scrut, arm]
   (Scoped m (Lam a e), ExFun xs) ->
     Conjunction <$> for (Map.assocs xs) \(v, ex) -> do
-      r <- eval (Map.insert a (upcast v) m) e
+      r <- liftEval $ eval (Map.insert a (upcast v) m) e
       uneval r ex
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
@@ -267,18 +279,18 @@ uneval = curry \case
   _ -> return $ Disjunction []
 
 resumeLive :: Map Hole (Term Hole) -> Term Hole -> Constraint ->
-  Eval (Logic Constraints)
+  Uneval (Logic Constraints)
 resumeLive hf e cs = Conjunction <$> for (Map.assocs cs) \(m, ex) -> do
-  r <- eval m e >>= resume hf
+  r <- liftEval $ eval m e >>= resume hf
   uneval r ex
 
 resumeUneval :: Map Hole (Term Hole) -> Logic Constraints ->
-  Eval (Logic Constraints)
+  Uneval (Logic Constraints)
 resumeUneval hf = fmap join . traverse \old -> do
   -- Update the old constraints by resuming their local scopes and then
   -- merging them.
   foo <- mapM (mergeFromAssocs (<?>)) <$> for old \c ->
-    forOf (each . _1) (Map.assocs c) $ traverseOf each (resume hf)
+    forOf (each . _1) (Map.assocs c) $ traverseOf each (liftEval . resume hf)
   case foo of
     Nothing -> return $ Disjunction []
     Just upd -> do
@@ -297,9 +309,9 @@ dnf = \case
   Conjunction xs -> concat <$> mapM dnf xs
   Disjunction xs -> concat $ dnf <$> xs
 
-unevalAssert :: Scope -> Assert -> Eval (Logic Constraints)
+unevalAssert :: Scope -> Assert -> Uneval (Logic Constraints)
 unevalAssert m (MkAssert e ex) = do
-  r <- eval m e
+  r <- liftEval $ eval m e
   uneval r $ toEx ex
 
 -- }}}
