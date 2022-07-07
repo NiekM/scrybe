@@ -93,10 +93,18 @@ evalAssert rs (MkAssert e (Lams vs ex)) = do
   v <- eval rs e
   fmap (,ex) . resume mempty $ apps v (upcast <$> vs)
 
-blocking :: Result -> Maybe Hole
+blocking :: Result -> Maybe (Scope, Hole)
 blocking = cataExpr \case
-  Scoped _ (Hole h) -> Just h
+  Scoped m (Hole h) -> Just (m, h)
   App f x -> f <|> x
+  _ -> Nothing
+
+recursive :: Result -> Maybe Hole
+recursive = \case
+  App (Scoped m (Elim _)) r
+    | Just (_, h) <- blocking r
+    , h `elem` mapMaybe (fmap snd . blocking) (toList m) -> Just h
+  App f x -> recursive f <|> recursive x
   _ -> Nothing
 
 -- }}}

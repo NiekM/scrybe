@@ -139,19 +139,21 @@ updateConstraints xs = do
 refinements :: HoleCtx -> Synth (Term HoleCtx)
 refinements (HoleCtx t ctx) = do
   e <- join $ mfold
+    -- TODO: make sure that recursive functions do not loop infinitely.
+    -- For local variables, introduce a hole for every argument.
+    [ do
+      (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
+      return $ apps (Var v) (Hole (Unit ()) <$ ts)
     -- For concrete types, try the corresponding constructors.
     -- TODO: check if constructors are introduced correctly, see list_map.hs
-    [ case t of
+    -- NOTE: giving constructors a higher weight makes list_sort way faster,
+    -- but list_rev_fold seems to diverge.
+    , case t of
       Apps (Ctr d) _ -> do
         (_, cs) <- mfold . Map.lookup d =<< view dataTypes
         (c, ts) <- mfold cs
         return $ apps (Ctr c) (Hole (Unit ()) <$ ts)
       _ -> mzero
-    -- TODO: make sure that recursive functions do not loop infinitely.
-    -- For local variables, introduce a hole for every argument.
-    , do
-      (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
-      return $ apps (Var v) (Hole (Unit ()) <$ ts)
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.
     , do
@@ -173,7 +175,7 @@ step hf = do
   -- Pick one blocking hole and remove it.
   s <- use mainScope
   rs <- use examples >>= mapM (liftEval . evalAssert s)
-  hole <- mfold $ foldr (<|>) Nothing (blocking . fst <$> rs)
+  (m, hole) <- mfold $ foldr (<|>) Nothing (blocking . fst <$> rs)
   ctx <- mfold . Map.lookup hole =<< use contexts
   modifying contexts $ Map.delete hole
   -- Find a refinement to extend the hole filling.
@@ -186,22 +188,29 @@ step hf = do
     >>= assign mainScope
   modifying fillings (<> new)
   let hf' = hf <> new
-  cs <- use constraints
-  liftUneval 32 (resumeUneval hf' cs) >>= \case
-    Nothing -> do
-      traceM "Out of fuel"
+  recHole <- fmap recursive . liftEval . eval m $ over holes fst expr
+  case recHole of
+    Just _h -> do
+      -- traceShowM $ "Recursive position: " <> show _h
       tell 1
       step hf'
-    Just xs -> do
-      let disjunctions = dnf xs
-      -- TODO: find a good amount of disjunctions allowed.
-      if length disjunctions > 32
-        then do
-          traceM $ "Too many disjunctions: "
-            <> (fromString . show . length $ disjunctions)
+    Nothing -> do
+      cs <- use constraints
+      liftUneval 32 (resumeUneval hf' cs) >>= \case
+        Nothing -> do
+          -- traceM "Out of fuel"
           tell 1
           step hf'
-        else updateConstraints $ disjunctions >>= mergeConstraints
+        Just xs -> do
+          let disjunctions = dnf xs
+          -- TODO: find a good amount of disjunctions allowed.
+          if length disjunctions > 32
+            then do
+              -- traceM $ "Too many disjunctions: "
+              --   <> (fromString . show . length $ disjunctions)
+              tell 1
+              step hf'
+            else updateConstraints $ disjunctions >>= mergeConstraints
 
 -- TODO: add a testsuite testing the equivalence of different kinds and
 -- combinations of (un)evaluation resumptions.
