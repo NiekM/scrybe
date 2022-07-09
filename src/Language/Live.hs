@@ -245,8 +245,6 @@ ctrArity c = do
     Nothing -> error $ "Unknown constructor " <> show c
     Just d -> return $ arity d
 
--- TODO: why does foldList {} {} xs {} not unevaluate correctly?
-
 -- Non-normalizing variant of uneval
 uneval :: Result -> Ex -> Uneval (Logic Constraints)
 uneval = curry \case
@@ -267,6 +265,7 @@ uneval = curry \case
     let ex' = foldr (\v -> ExFun . Map.singleton v) ex vs
     return . Pure $ Map.singleton h $ Map.singleton m ex'
   (App (Prj c n) r, ex) -> do
+    burnFuel
     ar <- ctrArity c
     uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (Apps (Scoped m (Elim xs)) (r:rs), ex) -> burnFuel >>

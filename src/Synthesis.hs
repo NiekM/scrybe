@@ -5,6 +5,7 @@ module Synthesis where
 import Import
 import Language
 import qualified RIO.Map as Map
+import qualified RIO.Set as Set
 import Control.Monad.Heap
 import Control.Monad.State
 import Data.Monus.Dist
@@ -103,6 +104,7 @@ init defs = do
         . subst th
   assign contexts ctx'
   y <- etaExpand (strip x)
+  -- traceShowM . pretty $ y
   liftEval (eval mempty y) >>= \case
     Scoped m (Hole h) -> do
       assign mainScope m
@@ -118,14 +120,42 @@ init defs = do
       return y
     _ -> error "Should never happen"
 
+-- resHoles :: Result -> Set Hole
+-- resHoles = cataExpr \case
+--   Scoped m (Hole h) -> Set.singleton h <> scopeHoles m
+--   Scoped m _ -> scopeHoles m
+--   App f x -> f <> x
+--   _ -> mempty
+
+-- scopeHoles :: Scope -> Set Hole
+-- scopeHoles = foldMap resHoles
+
+-- constrained :: Constraints -> Set Hole
+-- constrained cs = Map.keysSet cs
+--   <> let
+--     bar = foldMap Map.keys $ toList cs
+--     baz = foldMap scopeHoles bar
+--   in baz
+
+-- TODO: maybe reintroduce some informativeness constraint
+informative :: Set Hole -> Constraints -> Bool
+informative hs cs = hs == Map.keysSet cs
+-- informative hs cs = hs == constrained cs
+
 updateConstraints :: [Constraints] -> Synth ()
 updateConstraints xs = do
   let ys = nubOrd xs
-  cs <- Map.keysSet <$> use contexts
-  -- Make sure every hole has constraints. ('Informativeness restriction')
-  let zs = filter ((== cs) . Map.keysSet) ys
-  guard . not . null $ zs
-  assign constraints $ Disjunction . fmap Pure $ zs
+  guard . not . null $ ys
+  assign constraints $ Disjunction . fmap Pure $ ys
+
+-- updateConstraints :: [Constraints] -> Synth ()
+-- updateConstraints xs = do
+--   let ys = nubOrd xs
+--   hs <- Map.keysSet <$> use contexts
+--   -- Make sure every hole has constraints. ('Informativeness restriction')
+--   let zs = filter (informative hs) ys
+--   guard . not . null $ zs
+--   assign constraints $ Disjunction . fmap Pure $ zs
 
 -- TODO: sometimes it's faster to introduce helper functions rather than
 -- eliminators/folds (e.g. introducing `not` in `nat_even`), but other times
@@ -173,6 +203,7 @@ refinements (HoleCtx t ctx) = do
 step :: Map Hole (Term Hole) -> Synth ()
 step hf = do
   -- Pick one blocking hole and remove it.
+  -- traceShowM . pretty =<< use fillings
   s <- use mainScope
   rs <- use examples >>= mapM (liftEval . evalAssert s)
   (m, hole) <- mfold $ foldr (<|>) Nothing (blocking . fst <$> rs)

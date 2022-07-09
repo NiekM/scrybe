@@ -1,4 +1,4 @@
-import Prelude (foldTree, append)
+import Prelude (append)
 
 postorder :: Tree a -> List a
 postorder = foldTree {} {}

@@ -1,4 +1,5 @@
-import Prelude (elimNat)
+import Prelude (foldListIndexed, elimNat)
+-- import Prelude (elimNat)
 
 -- MODEL:
 -- index n xs = foldList (const Nothing) (\x r m -> elimNat (Just x) r m) xs n
@@ -8,10 +9,10 @@ import Prelude (elimNat)
 index :: Nat -> List a -> Maybe a
 -- NOTE: this diverges, but synthesis also does not know how to introduce the
 -- correct recursion scheme.
--- index = {}
-index n xs = foldList {} {} xs n
+index = {}
+-- index n xs = foldList {} {} xs n
 -- NOTE: this version does not adhere to the informativeness restriction
--- index n xs = foldList {} {} xs {}
+-- index n xs = foldListIndexed {} {} xs {}
 
 -- assert index 0 []        <== Nothing
 -- assert index 0 [1]       <== Just 1

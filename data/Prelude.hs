@@ -96,6 +96,9 @@ foldNat z s = fix \go n -> case n of
   Zero -> z
   Succ m -> s (go m)
 
+foldNatIndexed :: (Nat -> b) -> ((Nat -> b) -> Nat -> b) -> Nat -> Nat -> b
+foldNatIndexed = foldNat
+
 unfoldNat :: (a -> Maybe a) -> a -> Nat
 unfoldNat f x = case f x of
   Nothing -> Zero
@@ -140,6 +143,9 @@ paraList :: b -> (a -> List a -> b -> b) -> List a -> b
 paraList n c = fix \go l -> case l of
   Nil -> n
   Cons h t -> c h t (go t)
+
+foldListIndexed :: (Nat -> b) -> (a -> (Nat -> b) -> Nat -> b) -> List a -> Nat -> b
+foldListIndexed = foldList
 
 mapList :: (a -> b) -> List a -> List b
 mapList f = foldList [] (\x -> Cons (f x))
