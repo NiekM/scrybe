@@ -20,13 +20,14 @@ data SynState = SynState
   , _mainScope   :: Scope
   , _examples    :: [Assert]
   , _weights     :: Map Var Int
+  , _forbidden   :: [Map Hole (Term Unit)]
   }
 
 makeLenses ''SynState
 
 emptySynState :: SynState
 emptySynState =
-  SynState mempty (Disjunction []) mempty mkFreshState mempty [] mempty
+  SynState mempty (Disjunction []) mempty mkFreshState mempty [] mempty []
 
 runSynth :: Env -> Synth a -> Heap Dist a
 runSynth m x = fst <$> runReaderT (runStateT x emptySynState) m
@@ -89,7 +90,11 @@ init :: Defs Unit -> Synth (Term Hole)
 init defs = do
   let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
   -- TODO: determine weights based on something
-  assign weights $ Map.fromList ((,1) <$> ws)
+  assign weights $ flip Map.fromSet (Set.fromList ws) \case
+    "foldTree" -> 6
+    "elimNat" -> 3
+    "foldNatIndexed" -> 6
+    _ -> 1
   let addBinding (MkBinding a x) y = Let a x y
   (x, _, ctx) <-
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
@@ -103,7 +108,7 @@ init defs = do
         . over localEnv (freezeUnbound . instantiate th <$>)
         . subst th
   assign contexts ctx'
-  y <- etaExpand (strip x)
+  y <- etaExpand id (strip x)
   -- traceShowM . pretty $ y
   liftEval (eval mempty y) >>= \case
     Scoped m (Hole h) -> do
@@ -166,14 +171,16 @@ updateConstraints xs = do
 -- constructors and variables makes the benchmarks an order of
 -- magnitude slower! The weight of global variables should probably be scaled
 -- further compared to constructors and local variables.
-refinements :: HoleCtx -> Synth (Term HoleCtx)
+refinements :: HoleCtx -> Synth (Term (Hole, HoleCtx))
 refinements (HoleCtx t ctx) = do
   e <- join $ mfold
     -- TODO: make sure that recursive functions do not loop infinitely.
     -- For local variables, introduce a hole for every argument.
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
-      return $ apps (Var v) (Hole (Unit ()) <$ ts)
+      hs <- for ts $ const (fresh @Hole)
+      tell $ fromIntegral $ length ts
+      return $ apps (Var v) (Hole <$> hs)
     -- For concrete types, try the corresponding constructors.
     -- TODO: check if constructors are introduced correctly, see list_map.hs
     -- NOTE: giving constructors a higher weight makes list_sort way faster,
@@ -182,7 +189,8 @@ refinements (HoleCtx t ctx) = do
       Apps (Ctr d) _ -> do
         (_, cs) <- mfold . Map.lookup d =<< view dataTypes
         (c, ts) <- mfold cs
-        return $ apps (Ctr c) (Hole (Unit ()) <$ ts)
+        hs <- for ts $ const fresh
+        return $ apps (Ctr c) (Hole <$> hs)
       _ -> mzero
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.
@@ -193,17 +201,101 @@ refinements (HoleCtx t ctx) = do
         Map.intersectionWith (,) fs ws
       -- TODO: do we update the weights?
       tell $ fromIntegral $ w + length ts
-      return $ apps (Var v) (Hole (Unit ()) <$ ts)
+      hs <- for ts $ const fresh
+
+      let u = Hole $ Unit ()
+      case v of
+        "plus" | [l, _] <- hs -> do
+          let zeros = (`Map.singleton` Ctr "Zero") <$> hs
+          let succs = (`Map.singleton` App (Ctr "Succ") u) <$> hs
+          let left = Map.singleton l $ apps (Var "plus") (replicate 2 u)
+          modifying forbidden (<> (left : zeros ++ succs))
+        "append" | [l, _] <- hs -> do
+          let nils = (`Map.singleton` Ctr "Nil") <$> hs
+          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          let left = Map.singleton l $ apps (Var "append") (replicate 2 u)
+          modifying forbidden (<> (left : cons : nils))
+        "snoc" | [l, _] <- hs -> do
+          let nil = Map.singleton l $ Ctr "Nil"
+          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          modifying forbidden (<> [nil, cons])
+        "foldTree" | [_, _, l] <- hs -> do
+          let leaf = Map.singleton l $ Ctr "Leaf"
+          let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
+          modifying forbidden (<> [leaf, node])
+        "elimList" | [_, _, l] <- hs -> do
+          let nil = Map.singleton l $ Ctr "Nil"
+          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          modifying forbidden (<> [nil, cons])
+        "foldList" | [_, _, l] <- hs -> do
+          let nil = Map.singleton l $ Ctr "Nil"
+          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          modifying forbidden (<> [nil, cons])
+        "paraList" | [_, _, l] <- hs -> do
+          let nil = Map.singleton l $ Ctr "Nil"
+          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          modifying forbidden (<> [nil, cons])
+        "foldListIndexed" | [_, _, l, _] <- hs -> do
+          let nil = Map.singleton l $ Ctr "Nil"
+          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          modifying forbidden (<> [nil, cons])
+        "elimNat" | [_, _, l] <- hs -> do
+          let zero = Map.singleton l $ Ctr "Zero"
+          let succ = Map.singleton l $ apps (Ctr "Succ") (replicate 1 u)
+          modifying forbidden (<> [zero, succ])
+        "foldNat" | [_, _, l] <- hs -> do
+          let zero = Map.singleton l $ Ctr "Zero"
+          let succ = Map.singleton l $ apps (Ctr "Succ") (replicate 1 u)
+          modifying forbidden (<> [zero, succ])
+        "foldNatIndexed" | [_, _, l, _] <- hs -> do
+          let zero = Map.singleton l $ Ctr "Zero"
+          let succ = Map.singleton l $ apps (Ctr "Succ") (replicate 1 u)
+          modifying forbidden (<> [zero, succ])
+        "elimBool" | [_, _, l] <- hs -> do
+          let false = Map.singleton l $ Ctr "False"
+          let true = Map.singleton l $ Ctr "True"
+          modifying forbidden (<> [false, true])
+        "elimOrd" | [_, _, _, l] <- hs -> do
+          let lt = Map.singleton l $ Ctr "LT"
+          let eq = Map.singleton l $ Ctr "EQ"
+          let gt = Map.singleton l $ Ctr "GT"
+          modifying forbidden (<> [lt, eq, gt])
+        "compareNat" | [x, y] <- hs -> do
+          let z = Ctr "Zero"
+          let s = App (Ctr "Succ") u
+          let zz = Map.fromList [(x, z), (y, z)]
+          let zs = Map.fromList [(x, z), (y, s)]
+          let sz = Map.fromList [(x, s), (y, z)]
+          let ss = Map.fromList [(x, s), (y, s)]
+          modifying forbidden (<> [zz, zs, sz, ss])
+        _ -> return ()
+
+      return $ apps (Var v) (Hole <$> hs)
     ]
   -- TODO: in replicate, the second argument has type `a`, but shouldn't unify
   -- with type `Nat`.
   (e', _) <- check ctx e $ Poly [] t
   return $ strip e'
 
+foo :: (Ord k, Eq v) => k -> v -> Map k v -> Maybe (Map k v)
+foo k v m = case Map.lookup k m of
+  Nothing -> return m
+  Just x -> do
+    guard $ x == v
+    return $ Map.delete k m
+
+updateForbidden :: Hole -> Term Unit -> Synth ()
+updateForbidden h e = do
+  fs <- use forbidden
+  let fs' = mapMaybe (foo h e) fs
+  guard $ not . any null $ fs'
+  assign forbidden fs'
+
 step :: Map Hole (Term Hole) -> Synth ()
 step hf = do
   -- Pick one blocking hole and remove it.
   -- traceShowM . pretty =<< use fillings
+  -- traceShowM . pretty =<< use forbidden
   s <- use mainScope
   rs <- use examples >>= mapM (liftEval . evalAssert s)
   (m, hole) <- mfold $ foldr (<|>) Nothing (blocking . fst <$> rs)
@@ -211,7 +303,8 @@ step hf = do
   modifying contexts $ Map.delete hole
   -- Find a refinement to extend the hole filling.
   ref <- refinements ctx
-  expr <- etaExpand ref >>= traverseOf holes \c -> (,c) <$> fresh
+  updateForbidden hole $ over holes (const $ Unit ()) ref
+  expr <- etaExpand _2 ref
   modifying contexts (<> Map.fromList (toListOf holes expr))
   let new = Map.singleton hole $ over holes fst expr
   use mainScope

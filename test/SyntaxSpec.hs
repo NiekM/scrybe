@@ -27,7 +27,7 @@ spec = do
       Nothing -> it "parses" False
       Just x -> do
         let es = Map.fromList $ bindings x <&>
-              \(MkBinding a e) -> (a, over holes absurd e)
+              \(MkBinding a e) -> (a, over holes (absurd @Unit) e)
         let ts = Map.fromList $ signatures x <&> \(MkSignature a t) -> (a, t)
         let y = Map.assocs $ Map.intersectionWith (,) es ts
         let m = fromDefs x

@@ -407,18 +407,21 @@ class ExpandHole h m where
   expandHole :: h -> m ([(Var, Type)], h)
 
 instance FreshVar m => ExpandHole Type m where
-  expandHole (Args ts u) = (,u) <$> number ts
+  expandHole (Args ts t) = (,t) <$> number ts --expandHole t
+    -- (xs, u) <- (,t) <$> number ts --expandHole t
+    -- return (xs, HoleCtx u (vs <> (Mono <$> Map.fromList xs)))
 
 instance FreshVar m => ExpandHole HoleCtx m where
   expandHole (HoleCtx t vs) = do
     (xs, u) <- expandHole t
     return (xs, HoleCtx u (vs <> (Mono <$> Map.fromList xs)))
 
-etaExpand :: (Monad m, ExpandHole h m) => Term h -> m (Term h)
-etaExpand = cataExprM \case
+etaExpand :: (ExpandHole h' m, FreshVar m) =>
+  Lens' h h' -> Term h -> m (Term h)
+etaExpand ctx = cataExprM \case
   Hole h -> do
-    (xs, h') <- expandHole h
-    return $ lams (fst <$> xs) (Hole h')
+    (xs, ctx') <- expandHole (view ctx h)
+    return $ lams (fst <$> xs) (Hole $ set ctx ctx' h)
   e -> fixExprM e
 
 -- }}}

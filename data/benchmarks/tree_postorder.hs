@@ -1,7 +1,10 @@
-import Prelude (append)
+-- import Prelude (append)
+import Prelude (foldTree, append)
 
 postorder :: Tree a -> List a
-postorder = foldTree {} {}
+-- postorder t = foldTree [] (\l x r -> foldTree {} (\a b c -> {}) t) t
+-- postorder t = foldTree {} {} t
+postorder = {}
 
 assert postorder Leaf                                           <== []
 assert postorder (Node Leaf A Leaf)                             <== [A]

@@ -71,15 +71,15 @@ type TCMonad m = (FreshFree m, MonadFail m, MonadReader Env m)
 
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a cataExprM?
-infer :: TCMonad m => Map Var Poly -> Term Unit ->
-  m (Ann Type ('Term HoleCtx), Unify)
+infer :: TCMonad m => Map Var Poly -> Term h ->
+  m (Ann Type ('Term (h, HoleCtx)), Unify)
 infer ts expr = do
   cs <- view constructors
   fs <- view functions
   (e, th) <- (ts &) $ expr & cataExpr \e loc -> case e of
-    Hole _ -> do
+    Hole h -> do
       g <- Var <$> fresh
-      return (Hole (HoleCtx g loc) `Annot` g, Map.empty)
+      return (Hole (h, HoleCtx g loc) `Annot` g, Map.empty)
     Ctr c -> do
       t <- failMaybe $ Map.lookup c cs
       u <- instantiateFresh t
@@ -132,28 +132,28 @@ infer ts expr = do
       t <- Var <$> fresh
       return (Fix `Annot` Arr (Arr t t) t, mempty)
 
-  return (subst th e, th)
+  return (over (holesAnn . _2) (subst th) . mapAnn (subst th) $ e, th)
 
 infer' :: (TCMonad m, FreshHole m) => Map Var Poly -> Term Unit ->
   m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 infer' ts e = do
   (x, th) <- infer ts e
-  y <- forOf holesAnn x \ctx -> (,ctx) <$> fresh
+  y <- forOf holesAnn x \(_, ctx) -> (,ctx) <$> fresh
   return (over holesAnn fst y, th, Map.fromList $ toListOf holesAnn y)
 
 -- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
 -- partially annotated expressions.
-check :: TCMonad m => Map Var Poly -> Term Unit -> Poly ->
-  m (Ann Type ('Term HoleCtx), Unify)
+check :: TCMonad m => Map Var Poly -> Term h -> Poly ->
+  m (Ann Type ('Term (h, HoleCtx)), Unify)
 check ts e p = do
   (e'@(Annot _ u), th1) <- infer ts e
   th2 <- failMaybe $ unify (freeze p) u
   let th3 = compose th2 th1
-  return (subst th3 e', th3)
+  return (over (holesAnn . _2) (subst th3) . mapAnn (subst th3) $ e', th3)
 
 check' :: (TCMonad m, FreshHole m) => Map Var Poly -> Term Unit -> Poly ->
   m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
 check' ts e t = do
   (x, th) <- check ts e t
-  y <- forOf holesAnn x \ctx -> (,ctx) <$> fresh
+  y <- forOf holesAnn x \(_, ctx) -> (,ctx) <$> fresh
   return (over holesAnn fst y, th, Map.fromList $ toListOf holesAnn y)

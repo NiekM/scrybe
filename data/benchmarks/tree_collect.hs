@@ -3,8 +3,8 @@
 -- the smaller number of holes, which means that many hole fillings are tried
 -- that start with append rather than foldTree. It still looks different than
 -- you would expect though...
-import Prelude (foldTree, foldList)
--- import Prelude (foldTree, append)
+-- import Prelude (foldTree, foldList)
+import Prelude (foldTree, append)
 
 collect :: Tree a -> List a
 collect = {}
