@@ -343,7 +343,8 @@ step hf = do
     >>= assign mainScope
   modifying fillings (<> new)
   let hf' = hf <> new
-  recHole <- fmap recursive . liftEval . eval m $ over holes fst expr
+  recHole <- recursive <$> liftEval do
+    eval m (over holes fst expr) >>= resume new
   case recHole of
     Just _h -> do
       -- traceShowM $ "Recursive position: " <> show _h
