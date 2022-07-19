@@ -91,9 +91,11 @@ init defs = do
   let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
   -- TODO: determine weights based on something
   assign weights $ flip Map.fromSet (Set.fromList ws) \case
+
     "foldTree" -> 6
     "elimNat" -> 3
     "foldNatIndexed" -> 6
+
     _ -> 1
   let addBinding (MkBinding a x) y = Let a x y
   (x, _, ctx) <-
@@ -204,52 +206,79 @@ refinements (HoleCtx t ctx) = do
       hs <- for ts $ const fresh
 
       let u = Hole $ Unit ()
+      let z = Ctr "Zero"
+      let s = App (Ctr "Succ") u
+      let n = Ctr "Nil"
+      let c = apps (Ctr "Cons") (replicate 2 u)
       case v of
         "plus" | [l, _] <- hs -> do
-          let zeros = (`Map.singleton` Ctr "Zero") <$> hs
-          let succs = (`Map.singleton` App (Ctr "Succ") u) <$> hs
+          let zeros = (`Map.singleton` z) <$> hs
+          let succs = (`Map.singleton` s) <$> hs
           let left = Map.singleton l $ apps (Var "plus") (replicate 2 u)
           modifying forbidden (<> (left : zeros ++ succs))
+        "mult" | [l, _] <- hs -> do
+          let zeros = (`Map.singleton` z) <$> hs
+          -- TODO: how to disallow multiplying by 1? We probably need some
+          -- more sophisticated representation of forbidden fillings.
+          -- let succs = (`Map.singleton` App (Ctr "Succ") u) <$> hs
+          let left = Map.singleton l $ apps (Var "mult") (replicate 2 u)
+          modifying forbidden (<> (left : zeros))
         "append" | [l, _] <- hs -> do
-          let nils = (`Map.singleton` Ctr "Nil") <$> hs
-          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          let nils = (`Map.singleton` n) <$> hs
+          let cons = Map.singleton l c
           let left = Map.singleton l $ apps (Var "append") (replicate 2 u)
           modifying forbidden (<> (left : cons : nils))
         "snoc" | [l, _] <- hs -> do
-          let nil = Map.singleton l $ Ctr "Nil"
-          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
+          modifying forbidden (<> [nil, cons])
+        "even" | [l] <- hs -> do
+          let zero = Map.singleton l z
+          let succ = Map.singleton l s
+          modifying forbidden (<> [zero, succ])
+        "length" | [l] <- hs -> do
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
+          modifying forbidden (<> [nil, cons])
+        "sum" | [l] <- hs -> do
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
         "foldTree" | [_, _, l] <- hs -> do
           let leaf = Map.singleton l $ Ctr "Leaf"
           let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
           modifying forbidden (<> [leaf, node])
         "elimList" | [_, _, l] <- hs -> do
-          let nil = Map.singleton l $ Ctr "Nil"
-          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
         "foldList" | [_, _, l] <- hs -> do
-          let nil = Map.singleton l $ Ctr "Nil"
-          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
         "paraList" | [_, _, l] <- hs -> do
-          let nil = Map.singleton l $ Ctr "Nil"
-          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
         "foldListIndexed" | [_, _, l, _] <- hs -> do
-          let nil = Map.singleton l $ Ctr "Nil"
-          let cons = Map.singleton l $ apps (Ctr "Cons") (replicate 2 u)
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
+        "zipWith" | [_, l, r] <- hs -> do
+          let left = Map.singleton l c
+          let right = Map.singleton r c
+          modifying forbidden (<> [left, right])
         "elimNat" | [_, _, l] <- hs -> do
-          let zero = Map.singleton l $ Ctr "Zero"
-          let succ = Map.singleton l $ apps (Ctr "Succ") (replicate 1 u)
+          let zero = Map.singleton l z
+          let succ = Map.singleton l s
           modifying forbidden (<> [zero, succ])
         "foldNat" | [_, _, l] <- hs -> do
-          let zero = Map.singleton l $ Ctr "Zero"
-          let succ = Map.singleton l $ apps (Ctr "Succ") (replicate 1 u)
+          let zero = Map.singleton l z
+          let succ = Map.singleton l s
           modifying forbidden (<> [zero, succ])
         "foldNatIndexed" | [_, _, l, _] <- hs -> do
-          let zero = Map.singleton l $ Ctr "Zero"
-          let succ = Map.singleton l $ apps (Ctr "Succ") (replicate 1 u)
+          let zero = Map.singleton l z
+          let succ = Map.singleton l s
           modifying forbidden (<> [zero, succ])
         "elimBool" | [_, _, l] <- hs -> do
           let false = Map.singleton l $ Ctr "False"
@@ -261,13 +290,15 @@ refinements (HoleCtx t ctx) = do
           let gt = Map.singleton l $ Ctr "GT"
           modifying forbidden (<> [lt, eq, gt])
         "compareNat" | [x, y] <- hs -> do
-          let z = Ctr "Zero"
-          let s = App (Ctr "Succ") u
           let zz = Map.fromList [(x, z), (y, z)]
           let zs = Map.fromList [(x, z), (y, s)]
           let sz = Map.fromList [(x, s), (y, z)]
           let ss = Map.fromList [(x, s), (y, s)]
           modifying forbidden (<> [zz, zs, sz, ss])
+        "leq" | [x, y] <- hs -> do
+          let zero = Map.singleton x z
+          let succs = Map.fromList [(x, s), (y, s)]
+          modifying forbidden (<> [zero, succs])
         _ -> return ()
 
       return $ apps (Var v) (Hole <$> hs)
