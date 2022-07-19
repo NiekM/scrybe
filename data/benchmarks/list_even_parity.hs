@@ -1,8 +1,9 @@
 import Prelude (foldList, elimBool)
--- import Prelude (elimBool)
+
+-- NOTE: this is very effective, but uses no unevaluation resumption
+-- import Prelude (even, length, filter)
 
 even_parity :: List Bool -> Bool
--- even_parity = foldList {} {}
 even_parity = {}
 
 assert even_parity [] <== True

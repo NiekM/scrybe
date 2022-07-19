@@ -41,6 +41,9 @@ elimBool f t b = case b of
 not :: Bool -> Bool
 not b = elimBool True False b
 
+and :: Bool -> Bool -> Bool
+and = elimBool False
+
 -- || Orderings
 
 data Ord = LT | EQ | GT
@@ -119,6 +122,12 @@ mult n = foldNat Zero (plus n)
 compareNat :: Nat -> Nat -> Ord
 compareNat = foldNat (elimNat EQ (const LT)) \n -> elimNat GT \m -> n m
 
+eq :: Nat -> Nat -> Bool
+eq n m = elimOrd False True False (compareNat n m)
+
+leq :: Nat -> Nat -> Bool
+leq n m = elimOrd True True False (compareNat n m)
+
 -- || Lists
 
 data List a = Nil | Cons a (List a)
@@ -165,6 +174,9 @@ append xs ys = foldList ys Cons xs
 snoc :: List a -> a -> List a
 snoc xs x = foldList [x] Cons xs
 
+reverse :: List a -> List a
+reverse = foldList [] (flip snoc)
+
 length :: List a -> Nat
 length xs = foldList Zero (\x r -> Succ r) xs
 
@@ -185,6 +197,9 @@ insert n = paraList [n] \x xs r -> case compareNat n x of
 
 sort :: List Nat -> List Nat
 sort = foldList [] insert
+
+eqList :: List Nat -> List Nat -> Bool
+eqList = foldList (elimList True (\y ys -> False)) (\x r -> elimList False (\y ys -> and (eq x y) (r ys)))
 
 -- || Products
 

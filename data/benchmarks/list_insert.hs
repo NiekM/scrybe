@@ -1,14 +1,12 @@
 -- import Prelude (paraList, elimOrd, compareNat)
-import Prelude (elimOrd, compareNat)
+import Prelude (elimBool, leq)
+
+-- NOTE: using compareNat and elimOrd is considerably slower
+-- import Prelude (elimOrd, compareNat)
 
 insert :: Nat -> List Nat -> List Nat
 -- insert = {}
 insert n = paraList {} {}
--- insert n = paraList {} \x xs r -> elimOrd {} {} {} (compareNat n x)
--- insert n = paraList {} \x xs r -> case compareNat n x of
---   LT -> {}
---   EQ -> {}
---   GT -> {}
 
 assert insert 0 []     <== [0]
 assert insert 1 []     <== [1]
