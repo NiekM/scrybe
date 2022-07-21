@@ -1,13 +1,10 @@
-import Prelude (foldNatIndexed, elimNat)
--- import Prelude (elimNat)
+-- import Prelude (foldNatIndexed, elimNat)
+import Prelude (elimNat)
 
--- NOTE: adding foldNat to the environment makes the computation run out fuel
--- very quickly.
+-- NOTE: it works without sketch, but is very slow!
 compare :: Nat -> Nat -> Ord
--- compare x y = foldNat (\z -> elimNat {} {} {}) {} y x
--- TODO: add foldNatIndexed or something
--- compare x y = foldNatIndexed {} {} y x
-compare = {}
+compare = foldNatIndexed {} {}
+-- compare = {}
 
 assert compare 0 0 <== EQ
 assert compare 0 1 <== LT

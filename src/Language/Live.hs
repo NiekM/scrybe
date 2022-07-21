@@ -71,6 +71,12 @@ evalApp f x = case f of
     _ -> return $ App (Prj c n) x
   r -> return $ App r x
 
+normalizeFilling :: Map Hole (Term Hole) -> Map Hole (Term Hole)
+normalizeFilling hf
+  | hf' == hf = hf'
+  | otherwise = normalizeFilling hf'
+  where hf' = fill hf <$> hf
+
 -- TODO: Note that resumption loops forever if the hole fillings are (mutually)
 -- recursive. An alternative would be to only allow resumption of one hole at a
 -- time.
@@ -86,7 +92,7 @@ resume hf = cataExprM \case
     , x /= Hole h -> resume hf =<< eval m x
   Scoped m e -> do
     m' <- mapM (resume hf) m
-    return . Scoped m' $ over rec (fill hf) e
+    return . Scoped m' $ over rec (fill $ normalizeFilling hf) e
 
 evalAssert :: Scope -> Assert -> Eval (Result, Example)
 evalAssert rs (MkAssert e (Lams vs ex)) = do
