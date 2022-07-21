@@ -25,14 +25,6 @@ data Unit = Unit
 
 data Bool = False | True
 
--- TODO: false, true, elimBool and similar functions could be inlined to help
--- visualization for students
-false :: Bool
-false = False
-
-true :: Bool
-true = True
-
 elimBool :: a -> a -> Bool -> a
 elimBool f t b = case b of
   False -> f
@@ -44,18 +36,12 @@ not b = elimBool True False b
 and :: Bool -> Bool -> Bool
 and = elimBool False
 
+or :: Bool -> Bool -> Bool
+or x y = elimBool y x x
+
 -- || Orderings
 
 data Ord = LT | EQ | GT
-
-lt :: Ord
-lt = LT
-
-eq :: Ord
-eq = EQ
-
-gt :: Ord
-gt = GT
 
 elimOrd :: a -> a -> a -> Ord -> a
 elimOrd l e g o = case o of
@@ -67,12 +53,6 @@ elimOrd l e g o = case o of
 
 data Maybe a = Nothing | Just a
 
-nothing :: Maybe a
-nothing = Nothing
-
-just :: a -> Maybe a
-just = Just
-
 elimMaybe :: b -> (a -> b) -> Maybe a -> b
 elimMaybe n j m = case m of
   Nothing -> n
@@ -81,12 +61,6 @@ elimMaybe n j m = case m of
 -- || Naturals
 
 data Nat = Zero | Succ Nat
-
-zero :: Nat
-zero = Zero
-
-succ :: Nat -> Nat
-succ = Succ
 
 elimNat :: a -> (Nat -> a) -> Nat -> a
 elimNat z s n = case n of
@@ -128,15 +102,12 @@ eq n m = elimOrd False True False (compareNat n m)
 leq :: Nat -> Nat -> Bool
 leq n m = elimOrd True True False (compareNat n m)
 
+max :: Nat -> Nat -> Nat
+max n m = elimBool n m (leq n m)
+
 -- || Lists
 
 data List a = Nil | Cons a (List a)
-
-nil :: List a
-nil = Nil
-
-cons :: a -> List a -> List a
-cons = Cons
 
 elimList :: a -> (b -> List b -> a) -> List b -> a
 elimList n c l = case l of
@@ -186,14 +157,16 @@ sum = foldList 0 plus
 product :: List Nat -> Nat
 product = foldList 1 mult
 
+any :: (a -> Bool) -> List a -> Bool
+any p = foldList False \x -> or (p x)
+
 drop :: Nat -> List a -> List a
 drop = foldNat id (\r -> elimList [] (\x xs -> r xs))
 
 insert :: Nat -> List Nat -> List Nat
-insert n = paraList [n] \x xs r -> case compareNat n x of
-  LT -> Cons n (Cons x xs)
-  EQ -> Cons n (Cons x xs)
-  GT -> Cons x r
+insert n = paraList [n] \x xs r -> case leq n x of
+  True -> Cons n (Cons x xs)
+  False -> Cons x r
 
 sort :: List Nat -> List Nat
 sort = foldList [] insert
@@ -204,9 +177,6 @@ eqList = foldList (elimList True (\y ys -> False)) (\x r -> elimList False (\y y
 -- || Products
 
 data Pair a b = Pair a b
-
-pair :: a -> b -> Pair a b
-pair = Pair
 
 fst :: Pair a b -> a
 fst p = case p of Pair x y -> x
@@ -233,12 +203,6 @@ zipWith f xs ys = mapList (uncurry f) (zip xs ys)
 
 data Either a b = Left a | Right b
 
-left :: a -> Either a b
-left = Left
-
-right :: b -> Either a b
-right = Right
-
 elimEither :: (a -> c) -> (b -> c) -> Either a b -> c
 elimEither l r e = case e of
   Left x -> l x
@@ -247,12 +211,6 @@ elimEither l r e = case e of
 -- || Trees
 
 data Tree a = Leaf | Node (Tree a) a (Tree a)
-
-leaf :: Tree a
-leaf = Leaf
-
-node :: Tree a -> a -> Tree a -> Tree a
-node = Node
 
 elimTree :: a -> (Tree b -> b -> Tree b -> a) -> Tree b -> a
 elimTree e f t = case t of

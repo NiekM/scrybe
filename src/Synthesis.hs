@@ -295,10 +295,25 @@ refinements (HoleCtx t ctx) = do
           let sz = Map.fromList [(x, s), (y, z)]
           let ss = Map.fromList [(x, s), (y, s)]
           modifying forbidden (<> [zz, zs, sz, ss])
+        "eq" | [x, y] <- hs -> do
+          let zz = Map.fromList [(x, z), (y, z)]
+          let zs = Map.fromList [(x, z), (y, s)]
+          let sz = Map.fromList [(x, s), (y, z)]
+          let ss = Map.fromList [(x, s), (y, s)]
+          modifying forbidden (<> [zz, zs, sz, ss])
         "leq" | [x, y] <- hs -> do
           let zero = Map.singleton x z
           let succs = Map.fromList [(x, s), (y, s)]
           modifying forbidden (<> [zero, succs])
+        "any" | [p, l] <- hs -> do
+          let false = Map.singleton p $ Ctr "False"
+          let true = Map.singleton p $ Ctr "True"
+          let nil = Map.singleton l n
+          modifying forbidden (<> [false, true, nil])
+        "or" | [_, _] <- hs -> do
+          let falses = (`Map.singleton` Ctr "False") <$> hs
+          let trues = (`Map.singleton` Ctr "True") <$> hs
+          modifying forbidden (<> falses <> trues)
         _ -> return ()
 
       return $ apps (Var v) (Hole <$> hs)
@@ -308,8 +323,8 @@ refinements (HoleCtx t ctx) = do
   (e', _) <- check ctx e $ Poly [] t
   return $ strip e'
 
-foo :: (Ord k, Eq v) => k -> v -> Map k v -> Maybe (Map k v)
-foo k v m = case Map.lookup k m of
+removeMatching :: (Ord k, Eq v) => k -> v -> Map k v -> Maybe (Map k v)
+removeMatching k v m = case Map.lookup k m of
   Nothing -> return m
   Just x -> do
     guard $ x == v
@@ -318,7 +333,7 @@ foo k v m = case Map.lookup k m of
 updateForbidden :: Hole -> Term Unit -> Synth ()
 updateForbidden h e = do
   fs <- use forbidden
-  let fs' = mapMaybe (foo h e) fs
+  let fs' = mapMaybe (removeMatching h e) fs
   guard $ not . any null $ fs'
   assign forbidden fs'
 

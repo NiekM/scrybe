@@ -1,4 +1,5 @@
-import Prelude (compareNat, elimOrd)
+-- import Prelude (compareNat, elimOrd)
+import Prelude (leq, elimBool)
 
 max :: Nat -> Nat -> Nat
 max = {}
