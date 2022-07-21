@@ -157,8 +157,14 @@ sum = foldList 0 plus
 product :: List Nat -> Nat
 product = foldList 1 mult
 
+maximum :: List Nat -> Nat
+maximum = foldList 0 max
+
 any :: (a -> Bool) -> List a -> Bool
 any p = foldList False \x -> or (p x)
+
+elem :: Nat -> List Nat -> Bool
+elem n = any (eq n)
 
 drop :: Nat -> List a -> List a
 drop = foldNat id (\r -> elimList [] (\x xs -> r xs))

@@ -301,6 +301,10 @@ refinements (HoleCtx t ctx) = do
           let sz = Map.fromList [(x, s), (y, z)]
           let ss = Map.fromList [(x, s), (y, s)]
           modifying forbidden (<> [zz, zs, sz, ss])
+        "max" | [x, y] <- hs -> do
+          let zeroes = (`Map.singleton` z) <$> hs
+          let ss = Map.fromList [(x, s), (y, s)]
+          modifying forbidden (<> (ss:zeroes))
         "leq" | [x, y] <- hs -> do
           let zero = Map.singleton x z
           let succs = Map.fromList [(x, s), (y, s)]
