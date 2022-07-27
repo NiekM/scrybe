@@ -19,6 +19,7 @@ data Lexeme
   | Operator Text
   | Separator Text
   | Bracket Bracket
+  | Underscore
   | Literal Int
   | Newline Int
   deriving (Eq, Ord, Show, Read)
@@ -79,6 +80,7 @@ lex = (optional comment *>) . many . choice $ fmap (L.lexeme sc)
   , Operator <$> operator
   , Separator <$> separator
   , Bracket <$> bracket
+  , Underscore <$ char '_'
   , Literal <$> literal
   ] ++ fmap (L.lexeme sc')
   [ Newline . length <$ eol <*> many (char ' ')
@@ -179,6 +181,7 @@ instance Parse h => ParseAtom ('Term h) where
     , Let <$ key "let" <*> parser <*>
       (lams <$> many parser <* op "=" <*> parser) <* key "in" <*> parser
     , Hole <$> brackets Curly parser
+    , Hole <$ single Underscore <*> parser
     , Var <$> parser
     , Ctr <$> parser
     , Fix <$ key "fix"
@@ -204,6 +207,7 @@ instance ParseAtom 'Example where
     [ lams <$ op "\\" <*> some (brackets Round parser <|> parseAtom)
       <* op "->" <*> parser
     , Hole <$> brackets Curly parser
+    , Hole <$ single Underscore <*> parser
     , Ctr <$> parser
     , parseNat
     , parseList parser
