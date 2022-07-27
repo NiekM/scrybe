@@ -1,12 +1,12 @@
-module SynthesisSpec where
+module Main where
 
 import Import
 import Synthesis
-import Test.Hspec
 import Language.Parser
 import Language.Syntax
 import RIO.FilePath
 import RIO.Directory
+import Criterion.Main
 import Control.Monad.Heap hiding (Leaf)
 
 data Tree a b = Node a [Tree a b] | Leaf b
@@ -28,16 +28,20 @@ getTree p = do
       return . Just $ Leaf (a, x)
     (_, _) -> return Nothing
 
-specTree :: Env -> FileTree -> Spec
-specTree m = \case
-  Node x xs -> describe x . for_ xs $ specTree m
-  Leaf (f, x) -> describe f do
-    it "synthesizes" . isJust . best . runSynth m $ synth x
+benchTree :: Env -> FileTree -> Benchmark
+benchTree m = \case
+  Node x xs -> bgroup x $ benchTree m <$> xs
+  Leaf (f, x) -> bench f $
+    whnf (isJust . best . runSynth m . synth) x
 
-spec :: Spec
-spec = do
-  pre <- runIO $ readFileUtf8 "data/prelude.hs"
+main :: IO ()
+main = do
+  pre <- readFileUtf8 "data/prelude.hs"
   let m = fromMaybe undefined $ lexParse parser pre
   let benchmarks = "data/benchmarks"
-  t <- runIO $ getTree benchmarks
-  specTree m $ Node "benchmarks" t
+  t <- getTree benchmarks
+  -- t <- do
+  --   t <- readFileUtf8 "data/benchmarks/myth/bool/and.hs"
+  --   let x = fromMaybe undefined . lexParse parser $ t
+  --   return [Leaf ("and", x)]
+  defaultMain $ benchTree m <$> t

@@ -11,10 +11,19 @@
 ### Run all tests
 
 * `stack test`
+* `stack test --test-arguments='--match=benchmark'`
 
-### Only benchmarks
+## Benchmarks
 
-* `stack test --test-arguments='--match benchmark'`
+NOTE: we have to run `chcp 65001` beforehand or use `--verbosity=0`, because
+powershell cannot display some characters.
+
+* `stack bench --benchmark-arguments='myth'`
+* `stack bench --benchmark-arguments='lambda2'`
+
+* `stack bench --ba='--verbosity=0 --output=results/bench.html'`
+
+* `stack bench --ba='--match=pattern --verbosity=0 --output=results/bench_myth.html myth'`
 
 ## Run profiling
 

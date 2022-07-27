@@ -179,3 +179,52 @@ test-suite synthesis-test
     , synthesis
     , template-haskell
   default-language: Haskell2010
+
+benchmark synthesis-bench
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Paths_synthesis
+  hs-source-dirs:
+      bench
+  default-extensions:
+      BlockArguments
+      ConstraintKinds
+      DataKinds
+      DeriveTraversable
+      DerivingStrategies
+      DerivingVia
+      FlexibleContexts
+      FlexibleInstances
+      GADTs
+      GeneralizedNewtypeDeriving
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      NamedFieldPuns
+      NoImplicitPrelude
+      OverloadedStrings
+      PatternSynonyms
+      ScopedTypeVariables
+      StandaloneDeriving
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      ViewPatterns
+      QuasiQuotes
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuickCheck
+    , base >=4.11 && <10
+    , containers
+    , criterion
+    , megaparsec
+    , microlens-platform
+    , monus-weighted-search
+    , mtl
+    , prettyprinter
+    , rio >=0.1.12.0
+    , synthesis
+    , template-haskell
+  default-language: Haskell2010

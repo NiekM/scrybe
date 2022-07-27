@@ -248,6 +248,11 @@ refinements (HoleCtx t ctx) = do
           let leaf = Map.singleton l $ Ctr "Leaf"
           let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
           modifying forbidden (<> [leaf, node])
+        "mapTree" | [_, l] <- hs -> do
+          let leaf = Map.singleton l $ Ctr "Leaf"
+          let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
+          let fuse = Map.singleton l $ apps (Var "mapTree") (replicate 2 u)
+          modifying forbidden (<> [leaf, node, fuse])
         "elimList" | [_, _, l] <- hs -> do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
@@ -264,6 +269,11 @@ refinements (HoleCtx t ctx) = do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
+        "map" | [_, l] <- hs -> do
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
+          let fuse = Map.singleton l $ apps (Var "map") (replicate 2 u)
+          modifying forbidden (<> [nil, cons, fuse])
         "zipWith" | [_, l, r] <- hs -> do
           let left = Map.singleton l c
           let right = Map.singleton r c
@@ -294,17 +304,29 @@ refinements (HoleCtx t ctx) = do
           let zs = Map.fromList [(x, z), (y, s)]
           let sz = Map.fromList [(x, s), (y, z)]
           let ss = Map.fromList [(x, s), (y, s)]
-          modifying forbidden (<> [zz, zs, sz, ss])
+          -- NOTE: since eq is commutative, we can disallow one Succ/Zero,
+          -- since two is already forbidden
+          let zero = Map.singleton x z
+          let succ = Map.singleton x s
+          modifying forbidden (<> [zero, succ, zz, zs, sz, ss])
         "eq" | [x, y] <- hs -> do
           let zz = Map.fromList [(x, z), (y, z)]
           let zs = Map.fromList [(x, z), (y, s)]
           let sz = Map.fromList [(x, s), (y, z)]
           let ss = Map.fromList [(x, s), (y, s)]
-          modifying forbidden (<> [zz, zs, sz, ss])
+          -- NOTE: since eq is commutative, we can disallow one Succ/Zero,
+          -- since two is already forbidden
+          let zero = Map.singleton x z
+          let succ = Map.singleton x s
+          modifying forbidden (<> [zero, succ, zz, zs, sz, ss])
         "max" | [x, y] <- hs -> do
           let zeroes = (`Map.singleton` z) <$> hs
+          -- NOTE: since max is commutative, we can disallow one Succ, since
+          -- two is already forbidden
+          let succ = Map.singleton x s
           let ss = Map.fromList [(x, s), (y, s)]
-          modifying forbidden (<> (ss:zeroes))
+          let left = Map.singleton x $ apps (Var "max") (replicate 2 u)
+          modifying forbidden (<> (left:succ:ss:zeroes))
         "leq" | [x, y] <- hs -> do
           let zero = Map.singleton x z
           let succs = Map.fromList [(x, s), (y, s)]
@@ -318,6 +340,10 @@ refinements (HoleCtx t ctx) = do
           let falses = (`Map.singleton` Ctr "False") <$> hs
           let trues = (`Map.singleton` Ctr "True") <$> hs
           modifying forbidden (<> falses <> trues)
+        "elem" | [_, l] <- hs -> do
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
+          modifying forbidden (<> [nil, cons])
         _ -> return ()
 
       return $ apps (Var v) (Hole <$> hs)
@@ -343,9 +369,8 @@ updateForbidden h e = do
 
 step :: Map Hole (Term Hole) -> Synth ()
 step hf = do
-  -- Pick one blocking hole and remove it.
   -- traceShowM . pretty =<< use fillings
-  -- traceShowM . pretty =<< use forbidden
+  -- Pick one blocking hole and remove it.
   s <- use mainScope
   rs <- use examples >>= mapM (liftEval . evalAssert s)
   (m, hole) <- mfold $ foldr (<|>) Nothing (blocking . fst <$> rs)

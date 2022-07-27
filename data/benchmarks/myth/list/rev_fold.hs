@@ -1,4 +1,5 @@
-import Prelude (foldList, snoc)
+-- import Prelude (foldList, snoc)
+import Prelude (foldList)
 
 -- TODO: what is the recursion scheme?
 

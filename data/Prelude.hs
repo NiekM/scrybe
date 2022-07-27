@@ -37,7 +37,7 @@ and :: Bool -> Bool -> Bool
 and = elimBool False
 
 or :: Bool -> Bool -> Bool
-or x y = elimBool y x x
+or x y = elimBool y True x
 
 -- || Orderings
 
@@ -227,3 +227,6 @@ foldTree :: b -> (b -> a -> b -> b) -> Tree a -> b
 foldTree e f = fix \go t -> case t of
   Leaf -> e
   Node l x r -> f (go l) x (go r)
+
+mapTree :: (a -> b) -> Tree a -> Tree b
+mapTree f = foldTree Leaf \l x r -> Node l (f x) r
