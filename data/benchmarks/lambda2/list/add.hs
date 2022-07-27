@@ -1,7 +1,7 @@
 import Prelude (map, plus)
 
 add :: Nat -> List Nat -> List Nat
-add = {}
+add = _
 
 assert add 3 [] <== []
 assert add 1 [1, 2] <== [2, 3]

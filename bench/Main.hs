@@ -40,8 +40,4 @@ main = do
   let m = fromMaybe undefined $ lexParse parser pre
   let benchmarks = "data/benchmarks"
   t <- getTree benchmarks
-  -- t <- do
-  --   t <- readFileUtf8 "data/benchmarks/myth/bool/and.hs"
-  --   let x = fromMaybe undefined . lexParse parser $ t
-  --   return [Leaf ("and", x)]
   defaultMain $ benchTree m <$> t

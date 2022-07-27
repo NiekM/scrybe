@@ -1,7 +1,7 @@
 import Prelude (elimList, elimBool, eq)
 
 compress :: List Nat -> List Nat
-compress = foldList {} {}
+compress = foldList _ _
 
 assert compress [] <== []
 assert compress [0] <== [0]

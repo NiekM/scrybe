@@ -1,7 +1,7 @@
 import Prelude (foldList)
 
 snoc :: List a -> a -> List a
-snoc = {}
+snoc = _
 
 assert snoc []  A       <== [A]
 assert snoc [A] A       <== [A, A]

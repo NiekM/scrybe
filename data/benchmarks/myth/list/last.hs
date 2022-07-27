@@ -1,7 +1,7 @@
 import Prelude (foldList, elimMaybe)
 
 last :: List a -> Maybe a
-last = {}
+last = _
 
 assert last []        <== Nothing
 assert last [1]       <== Just 1

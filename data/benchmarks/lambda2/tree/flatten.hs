@@ -1,7 +1,7 @@
 import Prelude (foldTree, append)
 
 flatten :: Tree (List a) -> List a
-flatten = {}
+flatten = _
 
 assert flatten Leaf                                                 <== []
 assert flatten (Node Leaf [] Leaf)                                  <== []

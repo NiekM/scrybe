@@ -2,7 +2,7 @@ import Prelude (foldTree, append, elimBool)
 -- import Prelude (foldTree, append, filter)
 
 select :: (a -> Bool) -> Tree a -> List a
-select = {}
+select = _
 
 assert select even Leaf                                           <== []
 assert select even (Node Leaf 0 Leaf)                             <== [0]

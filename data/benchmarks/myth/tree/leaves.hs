@@ -1,7 +1,7 @@
 import Prelude (foldTree, plus)
 
 leaves :: Tree a -> Nat
-leaves = {}
+leaves = _
 
 assert leaves Leaf                                           <== 1
 assert leaves (Node Leaf A Leaf)                             <== 2

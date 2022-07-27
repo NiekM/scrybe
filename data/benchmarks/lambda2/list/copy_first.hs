@@ -1,7 +1,7 @@
 import Prelude (foldList, elimList)
 
 copy_first :: List a -> List a
-copy_first = {}
+copy_first = _
 
 assert copy_first [] <== []
 assert copy_first [A] <== [A]

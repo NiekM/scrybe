@@ -1,7 +1,7 @@
 import Prelude (foldTree)
 
 map :: (a -> b) -> Tree a -> Tree b
-map = {}
+map = _
 
 assert map Succ Leaf                             <== Leaf
 assert map Succ (Node Leaf 0 Leaf)               <== Node Leaf 1 Leaf

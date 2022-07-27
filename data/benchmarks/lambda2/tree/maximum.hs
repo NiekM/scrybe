@@ -1,7 +1,7 @@
 import Prelude (foldTree, max)
 
 maximum :: Tree Nat -> Nat
-maximum = {}
+maximum = _
 
 assert maximum Leaf                                           <== 0
 assert maximum (Node Leaf 1 Leaf)                             <== 1

@@ -1,7 +1,7 @@
 import Prelude (foldListIndexed, elimNat)
 
 drop :: Nat -> List a -> List a
-drop = {}
+drop = _
 
 -- This smaller set of constraints is faster, but does not give the same set of
 -- solutions.

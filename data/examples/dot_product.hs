@@ -8,7 +8,7 @@ import Prelude (zipWith, foldNat, plus)
 
 dot :: List Nat -> List Nat -> Nat
 -- dot :: List Nat -> List Nat -> List Nat
-dot xs ys = foldList {} {} {}
+dot xs ys = foldList _ _ _
 
 -- NOTE: dot product is too difficult because sum cannot be efficiently
 -- unevaluated and we don't know the intermediate result...

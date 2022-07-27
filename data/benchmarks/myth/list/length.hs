@@ -1,7 +1,7 @@
 import Prelude (foldList)
 
 length :: List a -> Nat
-length = {}
+length = _
 
 assert length []     <== 0
 assert length [0]    <== 1

@@ -1,7 +1,7 @@
 import Prelude (elimBool)
 
 xor :: Bool -> Bool -> Bool
-xor = {}
+xor = _
 
 assert xor True  True  <== False
 assert xor True  False <== True

@@ -1,7 +1,7 @@
 import Prelude (map)
 
 incs :: List (List Nat) -> List (List Nat)
-incs = {}
+incs = _
 
 assert incs [] <== []
 assert incs [[]] <== [[]]

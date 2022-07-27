@@ -1,7 +1,7 @@
 import Prelude (foldNat)
 
 plus :: Nat -> Nat -> Nat
-plus = {}
+plus = _
 
 assert plus 0 0 <== 0
 assert plus 0 1 <== 1

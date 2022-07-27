@@ -5,8 +5,8 @@ import Prelude (elimBool, leq)
 -- import Prelude (elimOrd, compareNat)
 
 insert :: Nat -> List Nat -> List Nat
--- insert = {}
-insert n = paraList {} {}
+-- insert = _
+insert n = paraList _ _
 
 assert insert 0 []     <== [0]
 assert insert 1 []     <== [1]

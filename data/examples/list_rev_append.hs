@@ -3,7 +3,7 @@ import Prelude (append)
 -- TODO: what is the recursion scheme?
 
 rev :: List a -> List a
-rev = {}
+rev = _
 
 assert rev []        <== []
 assert rev [0]       <== [0]

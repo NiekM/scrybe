@@ -4,11 +4,11 @@
 import Prelude (plus, elimNat)
 
 level :: Nat -> Tree a -> Nat
--- level n t = foldTree {} {} t n
+-- level n t = foldTree _ _ t n
 -- level n t = foldTree (const 0) (\l x r -> elimNat 1 (\m -> plus (l m) (r m))) t n
--- level n t = foldTree {} (\l x r -> elimNat {} (\m -> plus {} {})) t n
--- level n t = foldTree {} (\l x r -> elimNat {} (\m -> {})) t n
-level n t = foldTree {} (\l x r m -> {}) t n
+-- level n t = foldTree _ (\l x r -> elimNat _ (\m -> plus _ _)) t n
+-- level n t = foldTree _ (\l x r -> elimNat _ (\m -> _)) t n
+level n t = foldTree _ (\l x r m -> _) t n
 
 assert level 0 Leaf <== 0
 assert level 1 Leaf <== 0

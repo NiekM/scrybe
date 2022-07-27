@@ -2,7 +2,7 @@ import Prelude (foldList, elimList, elimMaybe)
 -- import Prelude (reverse, elimList)
 
 init :: List a -> Maybe (List a)
-init = {}
+init = _
 
 assert init [] <== Nothing
 assert init [A] <== Just []

@@ -1,7 +1,7 @@
 import Prelude (elimBool)
 
 or :: Bool -> Bool -> Bool
-or = {}
+or = _
 
 assert or True  True  <== True
 assert or True  False <== True

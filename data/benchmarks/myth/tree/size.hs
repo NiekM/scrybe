@@ -1,7 +1,7 @@
 import Prelude (foldTree, plus)
 
 size :: Tree a -> Nat
-size = {}
+size = _
 
 assert size Leaf                                           <== 0
 assert size (Node Leaf A Leaf)                             <== 1

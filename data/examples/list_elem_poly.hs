@@ -3,7 +3,7 @@ import Prelude (foldList, elimBool)
 -- import Prelude (any, eq)
 
 elem :: (a -> a -> Bool) -> Nat -> List Nat -> Bool
-elem = {}
+elem = _
 
 assert elem eq 0 [] <== False
 assert elem eq 0 [1] <== False

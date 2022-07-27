@@ -2,7 +2,7 @@
 import Prelude (mapTree, foldList, plus)
 
 sum_lists :: Tree (List Nat) -> Tree Nat
-sum_lists = {}
+sum_lists = _
 
 assert sum_lists Leaf                                                <== Leaf
 assert sum_lists (Node Leaf [] Leaf)                                 <== Node Leaf 0 Leaf

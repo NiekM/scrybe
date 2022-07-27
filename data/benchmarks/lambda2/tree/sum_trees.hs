@@ -1,7 +1,7 @@
 import Prelude (foldTree, map, plus)
 
 sum_trees :: List (Tree Nat) -> List Nat
-sum_trees = {}
+sum_trees = _
 
 assert sum_trees []                                             <== []
 assert sum_trees [Leaf]                                         <== [0]

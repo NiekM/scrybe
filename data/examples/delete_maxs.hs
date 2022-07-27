@@ -3,7 +3,7 @@ import Prelude (map, filter, eq, maximum, not)
 -- TODO: how do we define minimum for Nats?
 -- NOTE: this takes too long
 delete_maxs :: List (List Nat) -> List (List Nat)
-delete_maxs = {}
+delete_maxs = _
 
 assert delete_maxs [] <== []
 assert delete_maxs [[]] <== [[]]

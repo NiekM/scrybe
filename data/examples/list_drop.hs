@@ -5,7 +5,7 @@ import Prelude (elimList)
 
 -- NOTE: like with filter, almost any hole introduced makes it diverge
 drop :: Nat -> List a -> List a
-drop n xs = foldNat {} (\r -> elimList [] (\z zs -> r zs)) n xs
+drop n xs = foldNat _ (\r -> elimList [] (\z zs -> r zs)) n xs
 
 assert drop 0 []                 <== []
 assert drop 0 [A]                <== [A]

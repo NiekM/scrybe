@@ -1,10 +1,10 @@
 import Prelude (compare)
 
 insert :: Nat -> List Nat -> List Nat
-insert n = paraList {} \x xs r -> case compareNat {} x of
-  LT -> {}
-  EQ -> {}
-  GT -> {}
+insert n = paraList _ \x xs r -> case compareNat _ x of
+  LT -> _
+  EQ -> _
+  GT -> _
 
 assert insert 0 []     <== [0]
 assert insert 1 []     <== [1]

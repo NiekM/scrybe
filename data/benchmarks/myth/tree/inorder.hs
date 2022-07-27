@@ -1,7 +1,7 @@
 import Prelude (foldTree, append)
 
 inorder :: Tree a -> List a
-inorder = {}
+inorder = _
 
 assert inorder Leaf                                           <== []
 assert inorder (Node Leaf A Leaf)                             <== [A]

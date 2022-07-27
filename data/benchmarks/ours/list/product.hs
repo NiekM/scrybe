@@ -4,7 +4,7 @@ import Prelude (foldList, mult)
 -- NOTE: unlike Smyth, it is actually faster to just introduce foldNat i.o.
 -- plus, probably because plus is not weighted correctly.
 product :: List Nat -> Nat
-product = {}
+product = _
 
 assert product []     <== 1
 assert product [1]    <== 1

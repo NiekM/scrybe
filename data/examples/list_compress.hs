@@ -4,9 +4,9 @@ import Prelude (elimList, elimBool, eq)
 compress :: List Nat -> List Nat
 -- compress = foldList [] (\x -> elimList [x] (\y ys -> elimBool (Cons x (Cons y ys)) (Cons y ys) (eq x y)))
 -- compress = foldList [] (\x -> elimList [x] (\y ys -> elimBool (Cons x (Cons y ys)) (Cons y ys) (eq x y)))
--- compress = {}
-compress = foldList {} {}
--- compress xs = foldList [] (\x r -> elimList [x] {} r) xs
+-- compress = _
+compress = foldList _ _
+-- compress xs = foldList [] (\x r -> elimList [x] _ r) xs
 
 assert compress [] <== []
 assert compress [0] <== [0]

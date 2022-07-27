@@ -1,7 +1,7 @@
 import Prelude (elimNat, append)
 
 level :: Nat -> Tree a -> List a
-level n t = foldTree {} {} t n
+level n t = foldTree _ _ t n
 
 assert level 0 Leaf <== []
 assert level 1 Leaf <== []

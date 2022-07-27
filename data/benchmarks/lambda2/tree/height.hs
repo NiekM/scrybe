@@ -1,7 +1,7 @@
 import Prelude (foldTree, max)
 
 height :: Tree a -> Nat
-height = {}
+height = _
 
 assert height Leaf                                           <== 0
 assert height (Node Leaf A Leaf)                             <== 1

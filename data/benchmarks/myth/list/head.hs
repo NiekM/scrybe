@@ -1,7 +1,7 @@
 import Prelude (elimList)
 
 head :: List a -> Maybe a
-head = {}
+head = _
 
 assert head []            <== Nothing
 assert head [1]           <== Just 1

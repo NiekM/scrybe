@@ -1,7 +1,7 @@
 import Prelude (foldListIndexed, elimNat)
 
 index :: Nat -> List a -> Maybe a
-index = {}
+index = _
 
 -- assert index 0 []        <== Nothing
 -- assert index 0 [1]       <== Just 1

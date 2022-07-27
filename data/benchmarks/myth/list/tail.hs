@@ -1,7 +1,7 @@
 import Prelude (elimList)
 
 tail :: List a -> Maybe (List a)
-tail = {}
+tail = _
 
 assert tail []            <== Nothing
 assert tail [1]           <== Just []

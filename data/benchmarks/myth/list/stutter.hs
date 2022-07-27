@@ -1,7 +1,7 @@
 import Prelude (foldList)
 
 stutter :: List a -> List a
-stutter = {}
+stutter = _
 
 assert stutter []     <== []
 assert stutter [0]    <== [0, 0]

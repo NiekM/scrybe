@@ -4,7 +4,7 @@ import Prelude (foldList, plus)
 -- NOTE: unlike Smyth, it is actually faster to just introduce foldNat i.o.
 -- plus, probably because plus is not weighted correctly.
 sum :: List Nat -> Nat
-sum = {}
+sum = _
 
 assert sum []     <== 0
 assert sum [1]    <== 1

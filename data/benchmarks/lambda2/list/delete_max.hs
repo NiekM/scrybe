@@ -1,7 +1,7 @@
 import Prelude (filter, maximum, eq, not)
 
 delete_max :: List Nat -> List Nat
-delete_max = {}
+delete_max = _
 
 assert delete_max [] <== []
 assert delete_max [1] <== []

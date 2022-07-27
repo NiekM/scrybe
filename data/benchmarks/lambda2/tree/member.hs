@@ -2,7 +2,7 @@
 import Prelude (foldTree, eq, or)
 
 member :: Nat -> Tree Nat -> Bool
-member = {}
+member = _
 
 assert member 0 Leaf                                           <== False
 assert member 0 (Node Leaf 1 Leaf)                             <== False

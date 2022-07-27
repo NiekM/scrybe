@@ -1,7 +1,7 @@
 import Prelude (foldNat, elimBool)
 
 even :: Nat -> Bool
-even = {}
+even = _
 
 assert even 0 <== True
 assert even 1 <== False

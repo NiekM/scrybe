@@ -4,7 +4,7 @@ import Prelude (foldList, elimBool)
 -- import Prelude (even, length, filter)
 
 even_parity :: List Bool -> Bool
-even_parity = {}
+even_parity = _
 
 assert even_parity [] <== True
 assert even_parity [False, True] <== False

@@ -2,8 +2,8 @@ import Prelude
 
 repl :: Nat -> a -> List a
 repl = fix \repl n x -> case x of
-  Zero -> {}
-  Succ m -> {}
+  Zero -> _
+  Succ m -> _
 
 stutter :: Nat -> List a -> List a
 stutter = fix \stutter n xs -> case xs of

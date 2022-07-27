@@ -1,7 +1,7 @@
 import Prelude (foldTree)
 
 inc :: Tree Nat -> Tree Nat
-inc = {}
+inc = _
 
 assert inc Leaf                                           <== Leaf
 assert inc (Node Leaf 1 Leaf)                             <== Node Leaf 2 Leaf

@@ -5,7 +5,7 @@ headBad :: List Bool -> Maybe Bool
 headBad = elimList Nothing (\x xs -> Just x)
 
 head :: List a -> Maybe a
-head = {}
+head = _
 
 assert head []            <== Nothing
 assert head [1]           <== Just 1

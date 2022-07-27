@@ -1,7 +1,7 @@
 import Prelude (foldList)
 
 cartesian :: List (List a) -> List (List a)
-cartesian = {}
+cartesian = _
 
 assert cartesian []              <== [[]]
 assert cartesian [[]]            <== []

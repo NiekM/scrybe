@@ -1,7 +1,7 @@
 import Prelude (foldNat, plus)
 
 mult :: Nat -> Nat -> Nat
-mult = {}
+mult = _
 
 assert mult 0 0 <== 0
 assert mult 0 1 <== 0

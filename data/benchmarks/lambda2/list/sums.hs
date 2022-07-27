@@ -1,7 +1,7 @@
 import Prelude (map, foldList, plus)
 
 sums :: List (List Nat) -> List Nat
-sums = {}
+sums = _
 
 assert sums [] <== []
 assert sums [[]] <== [0]

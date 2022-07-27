@@ -1,7 +1,7 @@
 import Prelude (foldList)
 
 append :: List a -> List a -> List a
-append = {}
+append = _
 
 assert append []     []  <== []
 assert append []     [0] <== [0]

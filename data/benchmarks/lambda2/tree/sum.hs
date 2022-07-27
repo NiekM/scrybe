@@ -1,7 +1,7 @@
 import Prelude (foldTree, plus)
 
 sum :: Tree Nat -> Nat
-sum = {}
+sum = _
 
 assert sum Leaf                                           <== 0
 assert sum (Node Leaf 1 Leaf)                             <== 1

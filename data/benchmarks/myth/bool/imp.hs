@@ -1,7 +1,7 @@
 import Prelude (elimBool)
 
 imp :: Bool -> Bool -> Bool
-imp = {}
+imp = _
 
 assert imp True  True  <== True
 assert imp True  False <== False

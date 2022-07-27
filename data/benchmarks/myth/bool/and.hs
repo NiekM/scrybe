@@ -1,7 +1,7 @@
 import Prelude (elimBool)
 
 and :: Bool -> Bool -> Bool
-and = {}
+and = _
 
 assert and True  True  <== True
 assert and True  False <== False

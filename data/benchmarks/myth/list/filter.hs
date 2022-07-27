@@ -1,7 +1,7 @@
 import Prelude (foldList, elimBool)
 
 filter :: (a -> Bool) -> List a -> List a
-filter = {}
+filter = _
 
 assert filter even []        <== []
 assert filter even [0]       <== [0]

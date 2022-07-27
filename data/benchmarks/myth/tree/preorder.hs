@@ -1,7 +1,7 @@
 import Prelude (foldTree, append)
 
 preorder :: Tree a -> List a
-preorder = {}
+preorder = _
 
 -- NOTE: these examples are a bit different from Smyth
 assert preorder Leaf                                           <== []

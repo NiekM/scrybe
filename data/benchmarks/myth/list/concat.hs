@@ -1,7 +1,7 @@
 import Prelude (foldList, append)
 
 concat :: List (List a) -> List a
-concat = {}
+concat = _
 
 assert concat []    <== []
 assert concat [[]]  <== []

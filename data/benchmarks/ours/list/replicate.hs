@@ -1,7 +1,7 @@
 import Prelude (foldNat)
 
 replicate :: Nat -> a -> List a
-replicate = {}
+replicate = _
 
 assert replicate 0 A <== []
 assert replicate 1 B <== [B]

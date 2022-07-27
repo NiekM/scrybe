@@ -1,7 +1,7 @@
 import Prelude (foldTree, foldList)
 
 cons :: a -> Tree (List a) -> Tree (List a)
-cons = {}
+cons = _
 
 assert cons A Leaf                                                  <== Leaf
 assert cons A (Node Leaf [] Leaf)                                   <== Node Leaf [A] Leaf

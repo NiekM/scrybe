@@ -2,7 +2,7 @@ import Prelude (foldList, leq, elimBool)
 -- import Prelude (foldList, max)
 
 maximum :: List Nat -> Nat
-maximum = {}
+maximum = _
 
 assert maximum [] <== 0
 assert maximum [1] <== 1

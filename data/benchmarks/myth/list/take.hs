@@ -9,14 +9,14 @@ import Prelude (foldListIndexed, elimNat)
 take :: Nat -> List a -> List a
 -- NOTE: this diverges, but synthesis also does not know how to introduce the
 -- correct recursion scheme.
-take = {}
--- take n xs = foldList {} {} xs n
+take = _
+-- take n xs = foldList _ _ xs n
 -- TODO: it seems that if we leave out the last argument, the recursive
 -- argument does not have type Nat, so is never tried as the argument of
 -- elimNat in the second hole, but it should be tried to get a solution.
 -- Using foldListIndexed to specialize the last parameter to Nat solves this,
 -- but there is probably a bug in the use of free vs skolemnized variables.
--- take n xs = foldListIndexed {} {} xs {}
+-- take n xs = foldListIndexed _ _ xs _
 
 -- assert take 0 []        <== []
 -- assert take 0 [1]       <== []

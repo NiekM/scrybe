@@ -1,7 +1,7 @@
 import Prelude (foldList, insert)
 
 sort :: List Nat -> List Nat
-sort = {}
+sort = _
 
 assert sort []      <== []
 assert sort [1]     <== [1]

@@ -1,7 +1,7 @@
 import Prelude (foldTree, append)
 
 postorder :: Tree a -> List a
-postorder = {}
+postorder = _
 
 assert postorder Leaf                                           <== []
 assert postorder (Node Leaf A Leaf)                             <== [A]

@@ -1,7 +1,7 @@
 import Prelude (foldList, elimList)
 
 shiftl :: List a -> List a
-shiftl = {}
+shiftl = _
 
 assert shiftl [] <== []
 assert shiftl [A] <== [A]

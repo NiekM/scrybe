@@ -1,7 +1,7 @@
 import Prelude (foldList)
 
 map :: (a -> b) -> List a -> List b
-map = {}
+map = _
 
 assert map Succ []     <== []
 -- assert map Succ [0]    <== [1]

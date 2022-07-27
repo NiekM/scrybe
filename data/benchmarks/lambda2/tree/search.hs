@@ -1,7 +1,7 @@
 import Prelude (foldTree, or, elem)
 
 search :: Nat -> Tree (List Nat) -> Bool
-search = {}
+search = _
 
 assert search 0 Leaf                                                <== False
 assert search 0 (Node Leaf [] Leaf)                                 <== False

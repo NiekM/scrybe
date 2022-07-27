@@ -1,7 +1,7 @@
 import Prelude (elimNat)
 
 pred :: Nat -> Maybe Nat
-pred = {}
+pred = _
 
 assert pred 0 <== Nothing
 assert pred 1 <== Just 0

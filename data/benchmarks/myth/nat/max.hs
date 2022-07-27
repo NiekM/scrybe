@@ -2,7 +2,7 @@
 import Prelude (leq, elimBool)
 
 max :: Nat -> Nat -> Nat
-max = {}
+max = _
 
 assert max 0 0 <== 0
 assert max 0 1 <== 1

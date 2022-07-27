@@ -1,7 +1,7 @@
 import Prelude (foldList)
 
 drop_last :: List a -> List a
-drop_last = {}
+drop_last = _
 
 assert drop_last []        <== []
 assert drop_last [1]       <== []
