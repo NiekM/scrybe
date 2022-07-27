@@ -42,7 +42,7 @@ instance Pretty SynState where
     ]
 
 tryUneval :: Uneval a -> Maybe a
-tryUneval x = view _1 <$> runRWST x prelude 100
+tryUneval x = view _1 <$> runRWST x prelude 10000
 
 eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude
