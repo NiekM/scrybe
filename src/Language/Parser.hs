@@ -2,6 +2,7 @@ module Language.Parser where
 
 import Import hiding (some, many, lift, bracket)
 import RIO.Partial (read)
+import RIO.List
 import Language.Syntax
 import Language.Live
 import Text.Megaparsec
@@ -277,6 +278,7 @@ instance Parse Env where
 
 instance Parse Sketch where
   parser = do
-    ([], [MkSignature x s], [MkBinding y b], [], []) <- sepDefs <$> parser
+    [Signature (MkSignature x s), Binding (MkBinding y b)] <-
+      sort . getDefs <$> parser
     guard (x == y)
     return $ Sketch x s b

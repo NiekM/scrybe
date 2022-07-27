@@ -117,13 +117,13 @@ recursive = \case
 
 -- TODO: type checking and imports
 fromDefs :: Defs Void -> Env
-fromDefs defs = foldl' fromSigs bindEnv ss
+fromDefs defs = foldl' fromSigs bindEnv $ signatures defs
   where
     dataEnv :: Env
-    dataEnv = foldl' fromData mempty ds
+    dataEnv = foldl' fromData mempty $ datatypes defs
 
     bindEnv :: Env
-    bindEnv = foldl' fromBind dataEnv bs
+    bindEnv = foldl' fromBind dataEnv $ bindings defs
 
     fromData :: Env -> Datatype -> Env
     fromData m (MkDatatype t as cs) = m
@@ -140,8 +140,6 @@ fromDefs defs = foldl' fromSigs bindEnv ss
 
     fromSigs :: Env -> Signature -> Env
     fromSigs m (MkSignature x t) = m & over functions (Map.insert x t)
-
-    (_, ss, bs, ds, _) = sepDefs defs
 
 upcast :: Value -> Result
 upcast = cataExpr \case

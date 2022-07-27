@@ -549,29 +549,20 @@ data Def a
 newtype Defs a = Defs { getDefs :: [Def a] }
   deriving (Eq, Ord, Show)
 
-sepDefs :: Defs a -> ([Import], [Signature], [Binding a], [Datatype], [Assert])
-sepDefs (Defs ds) = foldr go mempty ds where
-  go = \case
-    Import    i -> over _1 (i:)
-    Signature s -> over _2 (s:)
-    Binding   b -> over _3 (b:)
-    Datatype  d -> over _4 (d:)
-    Assert    a -> over _5 (a:)
-
 imports :: Defs a -> [Import]
-imports = view _1 . sepDefs
+imports (Defs ds) = [i | Import i <- ds]
 
 signatures :: Defs a -> [Signature]
-signatures = view _2 . sepDefs
+signatures (Defs ds) = [s | Signature s <- ds]
 
 bindings :: Defs a -> [Binding a]
-bindings = view _3 . sepDefs
+bindings (Defs ds) = [b | Binding b <- ds]
 
 datatypes :: Defs a -> [Datatype]
-datatypes = view _4 . sepDefs
+datatypes (Defs ds) = [d | Datatype d <- ds]
 
 asserts :: Defs a -> [Assert]
-asserts = view _5 . sepDefs
+asserts (Defs ds) = [a | Assert a <- ds]
 
 arity :: Poly -> Int
 arity (Poly _ (Args as _)) = length as
