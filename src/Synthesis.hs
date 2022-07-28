@@ -94,6 +94,7 @@ init defs = do
 
   gs <- view functions <$> ask
   ws' <- forOf (each . _2 . each) ws refresh
+
   assign included $ ws' <&> \(v, a) ->
     ( v
     , case Map.lookup v gs of
@@ -109,6 +110,7 @@ init defs = do
         "elimNat" -> 3
         "foldNat" | Just _ <- a -> 10
         "foldList" | Just _ <- a -> 10
+        "foldListIndexed" -> 10
         _ -> 1
     )
 
@@ -190,7 +192,7 @@ updateConstraints xs = do
 -- further compared to constructors and local variables.
 refinements :: HoleCtx -> Synth (Term (Hole, HoleCtx))
 refinements (HoleCtx t ctx) = do
-  (e', _) <- join $ mfold
+  (e', th) <- join $ mfold
     -- TODO: make sure that recursive functions do not loop infinitely.
     -- For local variables, introduce a hole for every argument.
     [ do
@@ -198,8 +200,7 @@ refinements (HoleCtx t ctx) = do
       hs <- for ts $ const (fresh @Hole)
       tell $ fromIntegral $ length ts
       let e = apps (Var v) (Hole <$> hs)
-      let help = set functions mempty
-      local help $ check ctx e $ Poly [] t
+      check ctx e $ Poly [] t
     -- For concrete types, try the corresponding constructors.
     -- TODO: check if constructors are introduced correctly, see list_map.hs
     -- NOTE: giving constructors a higher weight makes list_sort way faster,
@@ -210,8 +211,7 @@ refinements (HoleCtx t ctx) = do
         (c, ts) <- mfold cs
         hs <- for ts $ const fresh
         let e = apps (Ctr c) (Hole <$> hs)
-        let help = set functions mempty
-        local help $ check ctx e $ Poly [] t
+        check ctx e $ Poly [] t
       _ -> mzero
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.
@@ -364,6 +364,7 @@ refinements (HoleCtx t ctx) = do
       let help = set functions $ Map.singleton v p
       local help $ check ctx e $ Poly [] t
     ]
+  modifying contexts (subst th <$>)
   return $ strip e'
 
 removeMatching :: (Ord k, Eq v) => k -> v -> Map k v -> Maybe (Map k v)
