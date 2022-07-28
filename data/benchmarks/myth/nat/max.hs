@@ -1,6 +1,10 @@
--- import Prelude (compareNat, elimOrd)
-import Prelude (leq, elimBool)
+-- {-# INCLUDE compareNat, elimOrd #-}
+-- {-# INCLUDE leq, elimBool #-}
 
+{-# INCLUDE leq #-}
+{-# INCLUDE elimBool #-}
+
+{-# DESC "The largest of two natural numbers." #-}
 max :: Nat -> Nat -> Nat
 max = _
 

@@ -1,4 +1,4 @@
-import Prelude (map)
+{-# INCLUDE map #-}
 
 inc :: List Nat -> List Nat
 inc = _

@@ -1,5 +1,5 @@
-import Prelude (foldTree, append, elimBool)
--- import Prelude (foldTree, append, filter)
+{-# INCLUDE foldTree, append, elimBool #-}
+-- {-# INCLUDE foldTree, append, filter #-}
 
 select :: (a -> Bool) -> Tree a -> List a
 select = _

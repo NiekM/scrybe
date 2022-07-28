@@ -1,4 +1,4 @@
-import Prelude (foldList)
+{-# INCLUDE foldList #-}
 
 map :: (a -> b) -> List a -> List b
 map = _

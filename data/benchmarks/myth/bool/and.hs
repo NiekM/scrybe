@@ -1,4 +1,4 @@
-import Prelude (elimBool)
+{-# INCLUDE elimBool #-}
 
 and :: Bool -> Bool -> Bool
 and = _

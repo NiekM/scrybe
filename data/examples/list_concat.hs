@@ -1,4 +1,4 @@
-import Prelude (foldList)
+{-# INCLUDE foldList #-}
 
 concat :: List (List a) -> List a
 concat = _

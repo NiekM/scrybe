@@ -1,4 +1,4 @@
-import Prelude (foldList)
+{-# INCLUDE foldList #-}
 
 length :: List a -> Nat
 length = _

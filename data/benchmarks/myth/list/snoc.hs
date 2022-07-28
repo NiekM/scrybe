@@ -1,4 +1,4 @@
-import Prelude (foldList)
+{-# INCLUDE foldList #-}
 
 snoc :: List a -> a -> List a
 snoc = _

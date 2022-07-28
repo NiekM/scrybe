@@ -1,4 +1,4 @@
-import Prelude (foldList, insert)
+{-# INCLUDE foldList, insert #-}
 
 sort :: List Nat -> List Nat
 sort = _

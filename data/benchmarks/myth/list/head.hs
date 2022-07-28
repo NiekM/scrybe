@@ -1,9 +1,9 @@
-import Prelude (elimList)
+{-# INCLUDE elimList #-}
 
 head :: List a -> Maybe a
 head = _
 
-assert head []            <== Nothing
-assert head [1]           <== Just 1
-assert head [True, False] <== Just True
-assert head [0, 1, 2]     <== Just 0
+assert head []        <== Nothing
+assert head [A]       <== Just A
+assert head [A, B]    <== Just A
+assert head [A, B, C] <== Just A

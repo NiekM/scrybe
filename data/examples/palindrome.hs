@@ -1,4 +1,4 @@
-import Prelude (reverse, eqList)
+{-# INCLUDE reverse, eqList #-}
 
 palindrome :: List Nat -> List Nat
 palindrome x = eqList x x

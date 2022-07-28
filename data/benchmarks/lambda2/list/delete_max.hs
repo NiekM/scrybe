@@ -1,4 +1,4 @@
-import Prelude (filter, maximum, eq, not)
+{-# INCLUDE filter, maximum, eq, not #-}
 
 delete_max :: List Nat -> List Nat
 delete_max = _

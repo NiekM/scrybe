@@ -1,4 +1,4 @@
-import Prelude (foldTree, plus)
+{-# INCLUDE foldTree, plus #-}
 
 leaves :: Tree a -> Nat
 leaves = _

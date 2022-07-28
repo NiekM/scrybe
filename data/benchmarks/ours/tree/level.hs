@@ -1,4 +1,4 @@
-import Prelude (elimNat, append)
+{-# INCLUDE elimNat, append #-}
 
 level :: Nat -> Tree a -> List a
 level n t = foldTree _ _ t n

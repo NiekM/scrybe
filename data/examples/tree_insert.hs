@@ -1,4 +1,4 @@
-import Prelude (elimNat, append)
+{-# INCLUDE elimNat, append #-}
 
 insert :: Nat -> Tree Nat -> List Nat
 insert n = foldTree (Node Leaf n Leaf) _

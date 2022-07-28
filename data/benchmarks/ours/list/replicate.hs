@@ -1,4 +1,4 @@
-import Prelude (foldNat)
+{-# INCLUDE foldNat #-}
 
 replicate :: Nat -> a -> List a
 replicate = _

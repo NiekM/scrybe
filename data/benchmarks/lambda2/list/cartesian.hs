@@ -1,4 +1,4 @@
-import Prelude (foldList)
+{-# INCLUDE foldList #-}
 
 cartesian :: List (List a) -> List (List a)
 cartesian = _

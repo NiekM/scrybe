@@ -1,8 +1,6 @@
-import Prelude (foldList, plus)
--- import Prelude (foldList, foldNat)
+{-# INCLUDE foldList, plus #-}
+-- {-# INCLUDE foldList, foldNat #-}
 
--- NOTE: unlike Smyth, it is actually faster to just introduce foldNat i.o.
--- plus, probably because plus is not weighted correctly.
 sum :: List Nat -> Nat
 sum = _
 

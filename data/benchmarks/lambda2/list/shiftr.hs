@@ -1,4 +1,4 @@
-import Prelude (foldList, elimList)
+{-# INCLUDE foldList, elimList #-}
 
 shiftr :: List a -> List a
 shiftr = _

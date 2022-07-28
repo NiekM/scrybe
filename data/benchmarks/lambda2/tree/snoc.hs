@@ -1,4 +1,4 @@
-import Prelude (foldTree, foldList)
+{-# INCLUDE foldTree, foldList #-}
 
 cons :: a -> Tree (List a) -> Tree (List a)
 cons = _

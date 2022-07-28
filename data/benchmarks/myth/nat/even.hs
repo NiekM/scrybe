@@ -1,5 +1,8 @@
-import Prelude (foldNat, elimBool)
+-- {-# INCLUDE foldNat, elimBool #-}
 
+{-# INCLUDE foldNat, elimBool #-}
+
+{-# DESC "Whether a natural number is even." #-}
 even :: Nat -> Bool
 even = _
 

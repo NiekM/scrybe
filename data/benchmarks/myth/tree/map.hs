@@ -1,4 +1,4 @@
-import Prelude (foldTree)
+{-# INCLUDE foldTree #-}
 
 map :: (a -> b) -> Tree a -> Tree b
 map = _

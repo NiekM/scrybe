@@ -1,5 +1,5 @@
--- import Prelude (foldList, elem, elimBool)
-import Prelude (foldList, not, eq, filter)
+-- {-# INCLUDE foldList, elem, elimBool #-}
+{-# INCLUDE foldList, not, eq, filter #-}
 
 nub :: List Nat -> List Nat
 -- nub = foldList [] \x r -> elimBool (Cons x r) _ (elem x r)

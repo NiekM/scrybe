@@ -1,4 +1,4 @@
-import Prelude (foldList, elimList)
+{-# INCLUDE foldList, elimList #-}
 
 copy_first :: List a -> List a
 copy_first = _

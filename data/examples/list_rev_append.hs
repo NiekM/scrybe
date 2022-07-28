@@ -1,4 +1,4 @@
-import Prelude (append)
+{-# INCLUDE append #-}
 
 -- TODO: what is the recursion scheme?
 

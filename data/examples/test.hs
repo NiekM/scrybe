@@ -1,5 +1,5 @@
-import Prelude (zipWith, foldNat)
--- import Prelude (zipWith, plus)
+{-# INCLUDE zipWith, foldNat #-}
+-- {-# INCLUDE zipWith, plus #-}
 
 -- TODO: allow explicit importing of functions with specific types, like this:
 --

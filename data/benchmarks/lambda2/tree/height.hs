@@ -1,4 +1,4 @@
-import Prelude (foldTree, max)
+{-# INCLUDE foldTree, max #-}
 
 height :: Tree a -> Nat
 height = _

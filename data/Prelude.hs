@@ -124,9 +124,6 @@ paraList n c = fix \go l -> case l of
   Nil -> n
   Cons h t -> c h t (go t)
 
-foldListIndexed :: (Nat -> b) -> (a -> (Nat -> b) -> Nat -> b) -> List a -> Nat -> b
-foldListIndexed = foldList
-
 mapList :: (a -> b) -> List a -> List b
 mapList f = foldList [] (\x -> Cons (f x))
 

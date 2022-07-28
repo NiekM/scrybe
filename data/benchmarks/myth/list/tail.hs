@@ -1,4 +1,4 @@
-import Prelude (elimList)
+{-# INCLUDE elimList #-}
 
 tail :: List a -> Maybe (List a)
 tail = _

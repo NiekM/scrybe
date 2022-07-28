@@ -1,4 +1,4 @@
-import Prelude (elimList, elimBool, eq)
+{-# INCLUDE elimList, elimBool, eq #-}
 
 compress :: List Nat -> List Nat
 compress = foldList _ _

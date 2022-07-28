@@ -1,4 +1,4 @@
-import Prelude (foldTree, or, elem)
+{-# INCLUDE foldTree, or, elem #-}
 
 search :: Nat -> Tree (List Nat) -> Bool
 search = _

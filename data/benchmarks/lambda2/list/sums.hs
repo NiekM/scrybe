@@ -1,4 +1,4 @@
-import Prelude (map, foldList, plus)
+{-# INCLUDE map, foldList, plus #-}
 
 sums :: List (List Nat) -> List Nat
 sums = _

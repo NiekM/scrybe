@@ -1,4 +1,4 @@
-import Prelude (foldTree, plus)
+{-# INCLUDE foldTree, plus #-}
 
 sum :: Tree Nat -> Nat
 sum = _

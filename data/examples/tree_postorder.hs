@@ -1,5 +1,5 @@
--- import Prelude (foldTree, append)
-import Prelude (foldTree, foldList)
+-- {-# INCLUDE foldTree, append #-}
+{-# INCLUDE foldTree, foldList #-}
 
 postorder :: Tree a -> List a
 postorder = _

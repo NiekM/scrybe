@@ -12,8 +12,8 @@ import Import hiding (reverse)
 import Language.Identifiers
 import qualified Data.Kind as Kind
 import Data.Foldable
-import RIO.List (intersperse, repeat)
-import RIO.NonEmpty (cons, reverse)
+import qualified RIO.List as List
+import qualified RIO.NonEmpty as NonEmpty
 import Prettyprinter hiding (list)
 import qualified Prettyprinter as P
 import qualified RIO.Map as Map
@@ -292,7 +292,7 @@ arrs = foldr1 Arr
 
 unArrs :: HasCtr l Ctr => Expr l -> NonEmpty (Expr l)
 unArrs = \case
-  Arr t u -> t `cons` unArrs u
+  Arr t u -> t `NonEmpty.cons` unArrs u
   t -> pure t
 
 {-# COMPLETE Arrs #-}
@@ -307,10 +307,10 @@ apps :: (Foldable f, HasApp l) => Expr l -> f (Expr l) -> Expr l
 apps = foldl App
 
 unApps :: Expr l -> NonEmpty (Expr l)
-unApps = reverse . go where
+unApps = NonEmpty.reverse . go where
   go :: Expr l -> NonEmpty (Expr l)
   go = \case
-    App f x -> x `cons` go f
+    App f x -> x `NonEmpty.cons` go f
     e -> pure e
 
 {-# COMPLETE Apps #-}
@@ -535,6 +535,11 @@ data Import = MkImport
   , expose :: Maybe [Var]
   } deriving (Eq, Ord, Show)
 
+data Pragma
+  = Desc String
+  | Include (NonEmpty (Var,Maybe Poly))
+  deriving (Eq, Ord, Show)
+
 data Assert = MkAssert (Term Hole) Example
   deriving (Eq, Ord, Show)
 
@@ -543,6 +548,7 @@ data Def a
   | Signature Signature
   | Binding (Binding a)
   | Datatype Datatype
+  | Pragma Pragma
   | Assert Assert
   deriving (Eq, Ord, Show)
 
@@ -560,6 +566,9 @@ bindings (Defs ds) = [b | Binding b <- ds]
 
 datatypes :: Defs a -> [Datatype]
 datatypes (Defs ds) = [d | Datatype d <- ds]
+
+pragmas :: Defs a -> [Pragma]
+pragmas (Defs ds) = [p | Pragma p <- ds]
 
 asserts :: Defs a -> [Assert]
 asserts (Defs ds) = [a | Assert a <- ds]
@@ -630,7 +639,7 @@ pExpr p i = \case
   Lam a x -> prettyParen (i > 0) $ "\\" <> pretty a <+> "->" <+> p 0 x
   Let a x y -> "let" <+> pretty a <+> "=" <+> p 0 x <+> "in" <+> p 0 y
   Elim xs -> prettyParen (i > 0) $ "\\case" <+> mconcat
-    (intersperse "; " $ xs <&> \(c, b) -> pretty c <+> "->" <+> p 0 b)
+    (List.intersperse "; " $ xs <&> \(c, b) -> pretty c <+> "->" <+> p 0 b)
   Fix -> "fix"
   Prj c n -> pretty c <> dot <> pretty n
 
@@ -650,7 +659,7 @@ sTerm p i = \case
     "let" <+> pretty a <+> sep (pretty <$> as)
     <+> "=" <+> p 0 x <+> "in" <+> p 0 e
   Case x xs -> Just . prettyParen (i > 0) $ "case" <+> p 0 x <+> "of" <+>
-    mconcat (intersperse "; " $ xs <&> \(c, Lams as b) ->
+    mconcat (List.intersperse "; " $ xs <&> \(c, Lams as b) ->
       sep (pretty c : fmap pretty as) <+> "->" <+> p 0 b)
   _ -> Nothing
 
@@ -710,12 +719,12 @@ instance (Pretty a, Consts Pretty l) => Pretty (Base a l) where
 instance Pretty Import where
   pretty (MkImport name Nothing) = "import" <+> pretty name
   pretty (MkImport name (Just exports)) = "import" <+> pretty name <+>
-    parens (mconcat $ intersperse ", " (pretty <$> exports))
+    parens (mconcat $ List.intersperse ", " (pretty <$> exports))
 
 instance Pretty Datatype where
   pretty (MkDatatype d as cs) =
     "data" <+> sep (pretty d : fmap pretty as) <+>
-      ( align . sep . zipWith (<+>) ("=" : repeat "|")
+      ( align . sep . zipWith (<+>) ("=" : List.repeat "|")
       $ cs <&> \(c, xs) -> pretty (apps (Ctr c) xs)
       )
 
@@ -725,6 +734,16 @@ instance Pretty Signature where
 instance Pretty h => Pretty (Binding h) where
   pretty (MkBinding x (Lams as e)) =
     sep (pretty x : fmap pretty as) <+> "=" <+> pretty e
+
+instance Pretty Pragma where
+  pretty = fancy . \case
+    Desc s -> "DESC" <+> pretty (show s)
+    Include xs ->
+     let ys = xs <&> \case
+           (x, Nothing) -> pretty x
+           (x, Just t) -> pretty x <+> "::" <+> pretty t
+     in "INCLUDE" <+> fold (NonEmpty.intersperse ", " ys)
+    where fancy x = "{-#" <+> x <+> "#-}"
 
 instance Pretty Assert where
   pretty (MkAssert a ex) = "assert" <+> pretty a <+> pretty ex
@@ -739,6 +758,7 @@ instance Pretty a => Pretty (Def a) where
     Signature s -> pretty s
     Binding b -> pretty b
     Datatype d -> pretty d
+    Pragma p -> pretty p
     Assert a -> pretty a
 
 instance Pretty a => Pretty (Defs a) where

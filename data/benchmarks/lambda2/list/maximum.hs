@@ -1,5 +1,5 @@
-import Prelude (foldList, leq, elimBool)
--- import Prelude (foldList, max)
+{-# INCLUDE foldList, leq, elimBool #-}
+-- {-# INCLUDE foldList, max #-}
 
 maximum :: List Nat -> Nat
 maximum = _

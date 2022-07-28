@@ -1,4 +1,4 @@
-import Prelude (foldTree)
+{-# INCLUDE foldTree #-}
 
 inc :: Tree Nat -> Tree Nat
 inc = _

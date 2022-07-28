@@ -1,4 +1,4 @@
-import Prelude (foldNat, plus)
+{-# INCLUDE foldNat, plus #-}
 
 mult :: Nat -> Nat -> Nat
 mult = _

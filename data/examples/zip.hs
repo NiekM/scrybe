@@ -1,5 +1,5 @@
--- import Prelude (foldListIndexed, elimList)
-import Prelude (elimList)
+-- {-# INCLUDE foldListIndexed, elimList #-}
+{-# INCLUDE elimList #-}
 
 zip :: List a -> List b -> List (Pair a b)
 -- zip = foldList (const []) \x r -> elimList [] \y ys -> Cons (Pair x y) (r ys)

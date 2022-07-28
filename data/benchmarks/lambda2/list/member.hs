@@ -1,6 +1,6 @@
-import Prelude (foldList, eq, elimBool)
--- import Prelude (foldList, eq, or)
--- import Prelude (any, eq)
+{-# INCLUDE foldList, eq, elimBool #-}
+-- {-# INCLUDE foldList, eq, or #-}
+-- {-# INCLUDE any, eq #-}
 
 member :: Nat -> List Nat -> Bool
 member = _

@@ -1,38 +1,9 @@
-import Prelude (foldListIndexed, elimNat)
--- import Prelude (elimNat)
+{-# INCLUDE foldList :: (c -> b) -> (a -> (c -> b) -> c -> b) -> List a -> c -> b #-}
+{-# INCLUDE elimNat #-}
 
--- MODEL:
--- take n xs = foldList (const Nothing) (\x r m -> elimNat (Just x) r m) xs n
-
--- TODO: how to handle this recursive pattern nicely?
--- NOTE: this is really similar to index.
 take :: Nat -> List a -> List a
--- NOTE: this diverges, but synthesis also does not know how to introduce the
--- correct recursion scheme.
 take = _
--- take n xs = foldList _ _ xs n
--- TODO: it seems that if we leave out the last argument, the recursive
--- argument does not have type Nat, so is never tried as the argument of
--- elimNat in the second hole, but it should be tried to get a solution.
--- Using foldListIndexed to specialize the last parameter to Nat solves this,
--- but there is probably a bug in the use of free vs skolemnized variables.
--- take n xs = foldListIndexed _ _ xs _
 
--- assert take 0 []        <== []
--- assert take 0 [1]       <== []
--- assert take 0 [0, 1]    <== []
--- assert take 0 [1, 0, 1] <== []
--- assert take 1 []        <== []
--- assert take 1 [1]       <== [1]
--- assert take 1 [0, 1]    <== [0]
--- assert take 1 [1, 0, 1] <== [1]
--- assert take 2 []        <== []
--- assert take 2 [1]       <== [1]
--- assert take 2 [0, 1]    <== [0, 1]
--- assert take 2 [1, 0, 1] <== [1, 0]
-
--- This smaller set of constraints is faster, but does not give the same set of
--- solutions.
 assert take 0 []        <== []
 assert take 0 [1]       <== []
 assert take 1 []        <== []

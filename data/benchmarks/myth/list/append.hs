@@ -1,11 +1,11 @@
-import Prelude (foldList)
+{-# INCLUDE foldList #-}
 
 append :: List a -> List a -> List a
 append = _
 
 assert append []     []  <== []
-assert append []     [0] <== [0]
-assert append [0]    []  <== [0]
-assert append [0]    [0] <== [0, 0]
-assert append [1, 0] []  <== [1, 0]
-assert append [1, 0] [0] <== [1, 0, 0]
+assert append []     [A] <== [A]
+assert append [A]    []  <== [A]
+assert append [A]    [B] <== [A, B]
+assert append [A, B] []  <== [A, B]
+assert append [A, B] [C] <== [A, B, C]

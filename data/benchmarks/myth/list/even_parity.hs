@@ -1,7 +1,7 @@
-import Prelude (foldList, elimBool)
+{-# INCLUDE foldList, elimBool #-}
 
 -- NOTE: this is very effective, but uses no unevaluation resumption
--- import Prelude (even, length, filter)
+-- {-# INCLUDE even, length, filter #-}
 
 even_parity :: List Bool -> Bool
 even_parity = _

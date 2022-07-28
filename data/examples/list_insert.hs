@@ -1,4 +1,4 @@
-import Prelude (compare)
+{-# INCLUDE compare #-}
 
 insert :: Nat -> List Nat -> List Nat
 insert n = paraList _ \x xs r -> case compareNat _ x of

@@ -1,4 +1,4 @@
-import Prelude (foldTree, max)
+{-# INCLUDE foldTree, max #-}
 
 maximum :: Tree Nat -> Nat
 maximum = _

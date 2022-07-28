@@ -1,4 +1,4 @@
-import Prelude (foldTree, plus)
+{-# INCLUDE foldTree, plus #-}
 
 size :: Tree a -> Nat
 size = _

@@ -1,4 +1,4 @@
-import Prelude (foldTree, append)
+{-# INCLUDE foldTree, append #-}
 
 flatten :: Tree (List a) -> List a
 flatten = _

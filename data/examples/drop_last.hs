@@ -1,4 +1,4 @@
-import Prelude (foldList)
+{-# INCLUDE foldList #-}
 
 drop_last :: List a -> List a
 drop_last = _

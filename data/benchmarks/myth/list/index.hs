@@ -1,27 +1,13 @@
-import Prelude (foldListIndexed, elimNat)
+{-# INCLUDE foldList :: (c -> b) -> (a -> (c -> b) -> c -> b) -> List a -> c -> b #-}
+{-# INCLUDE elimNat #-}
 
 index :: Nat -> List a -> Maybe a
 index = _
 
--- assert index 0 []        <== Nothing
--- assert index 0 [1]       <== Just 1
--- assert index 0 [2]       <== Just 2
--- assert index 0 [1, 2]    <== Just 1
--- assert index 0 [2, 1]    <== Just 2
--- assert index 0 [3, 2, 1] <== Just 3
--- assert index 1 []        <== Nothing
--- assert index 1 [1]       <== Nothing
--- assert index 1 [2]       <== Nothing
--- assert index 1 [1, 2]    <== Just 2
--- assert index 1 [2, 1]    <== Just 1
--- assert index 1 [3, 2, 1] <== Just 2
--- assert index 2 [3, 2, 1] <== Just 1
-
--- This smaller set of constraints is considerably faster
 assert index 0 []        <== Nothing
-assert index 0 [1]       <== Just 1
-assert index 0 [3, 2, 1] <== Just 3
 assert index 1 []        <== Nothing
-assert index 1 [2]       <== Nothing
-assert index 1 [3, 2, 1] <== Just 2
-assert index 2 [3, 2, 1] <== Just 1
+assert index 0 [A]       <== Just A
+assert index 1 [A]       <== Nothing
+assert index 0 [A, B]    <== Just A
+assert index 1 [A, B, C] <== Just B
+assert index 2 [A, B, C] <== Just C

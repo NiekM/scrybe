@@ -1,10 +1,9 @@
-import Prelude (foldListIndexed, elimNat)
+{-# INCLUDE foldList :: (c -> b) -> (a -> (c -> b) -> c -> b) -> List a -> c -> b #-}
+{-# INCLUDE elimNat #-}
 
 drop :: Nat -> List a -> List a
 drop = _
 
--- This smaller set of constraints is faster, but does not give the same set of
--- solutions.
 assert drop 0 []        <== []
 assert drop 0 [1]       <== [1]
 assert drop 0 [1, 0, 1] <== [1, 0, 1]

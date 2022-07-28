@@ -1,10 +1,11 @@
--- import Prelude (foldNatIndexed, elimNat)
-import Prelude (elimNat)
+-- {-# INCLUDE foldNatIndexed, elimNat #-}
+{-# INCLUDE foldNat :: (Nat -> b) -> ((Nat -> b) -> Nat -> b) -> Nat -> Nat -> b #-}
+{-# INCLUDE elimNat #-}
 
 -- NOTE: it works without sketch, but is very slow!
 compare :: Nat -> Nat -> Ord
-compare = foldNatIndexed _ _
--- compare = _
+-- compare = foldNat _ _
+compare = _
 
 assert compare 0 0 <== EQ
 assert compare 0 1 <== LT

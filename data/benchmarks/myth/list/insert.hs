@@ -1,8 +1,8 @@
--- import Prelude (paraList, elimOrd, compareNat)
-import Prelude (elimBool, leq)
+-- {-# INCLUDE paraList, elimOrd, compareNat #-}
+{-# INCLUDE elimBool, leq #-}
 
 -- NOTE: using compareNat and elimOrd is considerably slower
--- import Prelude (elimOrd, compareNat)
+-- {-# INCLUDE elimOrd, compareNat #-}
 
 insert :: Nat -> List Nat -> List Nat
 -- insert = _

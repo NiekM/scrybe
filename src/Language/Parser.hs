@@ -20,26 +20,27 @@ data Lexeme
   | Separator Text
   | Bracket Bracket
   | Underscore
-  | Literal Int
+  | IntLit Int
+  | StringLit String
   | Newline Int
   deriving (Eq, Ord, Show, Read)
 
 type Bracket = (Shape, Position)
 
-data Shape = Round | Curly | Square
+data Shape = Fancy | Round | Curly | Square
   deriving (Eq, Ord, Show, Read)
 
 data Position = Open | Close
   deriving (Eq, Ord, Show, Read)
 
 sc :: Lexer ()
-sc = L.space hspace1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
+sc = L.space hspace1 (L.skipLineComment "--") empty
 
 sc' :: Lexer ()
-sc' = L.space mzero (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
+sc' = L.space mzero (L.skipLineComment "--") empty
 
 comment :: Lexer ()
-comment = L.skipLineComment "--" <|> L.skipBlockComment "{-" "-}"
+comment = L.skipLineComment "--"
 
 identChar :: Lexer Char
 identChar = alphaNumChar <|> char '_' <|> char '\''
@@ -65,13 +66,17 @@ separator = string "," <|> string ";"
 
 bracket :: Lexer Bracket
 bracket = choice
-  [ (Round , Open) <$ char '(', (Round , Close) <$ char ')'
-  , (Curly , Open) <$ char '{', (Curly , Close) <$ char '}'
-  , (Square, Open) <$ char '[', (Square, Close) <$ char ']'
+  [ (Fancy , Open) <$ string "{-#", (Fancy , Close) <$ string "#-}"
+  , (Round , Open) <$ char   '('  , (Round , Close) <$ char     ')'
+  , (Curly , Open) <$ char   '{'  , (Curly , Close) <$ char     '}'
+  , (Square, Open) <$ char   '['  , (Square, Close) <$ char     ']'
   ]
 
-literal :: Lexer Int
-literal = read <$> some digitChar
+intLit :: Lexer Int
+intLit = read <$> some digitChar
+
+stringLit :: Lexer String
+stringLit = char '"' >> manyTill L.charLiteral (char '"')
 
 lex :: Lexer [Lexeme]
 lex = (optional comment *>) . many . choice $ fmap (L.lexeme sc)
@@ -81,7 +86,8 @@ lex = (optional comment *>) . many . choice $ fmap (L.lexeme sc)
   , Separator <$> separator
   , Bracket <$> bracket
   , Underscore <$ char '_'
-  , Literal <$> literal
+  , IntLit <$> intLit
+  , StringLit <$> stringLit
   ] ++ fmap (L.lexeme sc')
   [ Newline . length <$ eol <*> many (char ' ')
   ]
@@ -117,7 +123,12 @@ constructor = flip token Set.empty \case
 
 int :: Parser Int
 int = flip token Set.empty \case
-  Literal i -> Just i
+  IntLit i -> Just i
+  _ -> Nothing
+
+str :: Parser String
+str = flip token Set.empty \case
+  StringLit s -> Just s
   _ -> Nothing
 
 sep :: Text -> Parser Lexeme
@@ -128,6 +139,9 @@ op = single . Operator
 
 key :: Text -> Parser Lexeme
 key = single . Keyword
+
+ctr :: Text -> Parser Lexeme
+ctr = single . Constructor
 
 instance Parse Void where
   parser = mzero
@@ -254,6 +268,13 @@ instance Parse Import where
     , mempty
     ]
 
+instance Parse Pragma where
+  parser = brackets Fancy $ choice
+    [ Desc <$ ctr "DESC" <*> str
+    , Include <$ ctr "INCLUDE" <*>
+      alt1 ((,) <$> parser <*> optional (op "::" *> parser)) (sep ",")
+    ]
+
 instance Parse Assert where
   parser = MkAssert <$> parser <* op "<==" <*> parser
 
@@ -261,6 +282,7 @@ instance Parse a => Parse (Def a) where
   parser = choice
     [ Datatype <$> parser
     , Import <$> parser
+    , Pragma <$> parser
     , Assert <$ key "assert" <*> parser
     , do
       x <- parser

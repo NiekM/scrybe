@@ -1,4 +1,4 @@
-import Prelude (elimBool)
+{-# INCLUDE elimBool #-}
 
 xor :: Bool -> Bool -> Bool
 xor = _

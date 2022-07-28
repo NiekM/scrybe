@@ -5,9 +5,9 @@ module Synthesis where
 import Import
 import Language
 import qualified RIO.Map as Map
-import qualified RIO.Set as Set
 import Control.Monad.Heap
 import Control.Monad.State
+import Control.Monad.RWS
 import Data.Monus.Dist
 
 -- TODO: maybe we also want to keep track of a list of possible refinements
@@ -19,7 +19,7 @@ data SynState = SynState
   , _freshSt     :: FreshState
   , _mainScope   :: Scope
   , _examples    :: [Assert]
-  , _weights     :: Map Var Int
+  , _included    :: [(Var, Poly, Int)]
   , _forbidden   :: [Map Hole (Term Unit)]
   }
 
@@ -88,15 +88,30 @@ instance MonadFail (Heap w) where
 
 init :: Defs Unit -> Synth (Term Hole)
 init defs = do
-  let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
+  -- let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
+  let ws = [x | Include xs <- pragmas defs, x <- toList xs]
   -- TODO: determine weights based on something
-  assign weights $ flip Map.fromSet (Set.fromList ws) \case
 
-    "foldTree" -> 6
-    "elimNat" -> 3
-    "foldNatIndexed" -> 6
+  gs <- view functions <$> ask
+  ws' <- forOf (each . _2 . each) ws refresh
+  assign included $ ws' <&> \(v, a) ->
+    ( v
+    , case Map.lookup v gs of
+        Nothing -> error $ "Unknown function " <> show v
+        Just b -> case a of
+          Nothing -> b
+          Just (Poly _ t) | Poly _ u <- b -> case unify t u of
+            Nothing ->
+              error $ "Included function " <> show v <> " has wrong type"
+            Just th -> poly (subst th t)
+    , case v of
+        "foldTree" -> 6
+        "elimNat" -> 3
+        "foldNat" | Just _ <- a -> 10
+        "foldList" | Just _ <- a -> 10
+        _ -> 1
+    )
 
-    _ -> 1
   let addBinding (MkBinding a x) y = Let a x y
   (x, _, ctx) <-
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
@@ -175,14 +190,16 @@ updateConstraints xs = do
 -- further compared to constructors and local variables.
 refinements :: HoleCtx -> Synth (Term (Hole, HoleCtx))
 refinements (HoleCtx t ctx) = do
-  e <- join $ mfold
+  (e', _) <- join $ mfold
     -- TODO: make sure that recursive functions do not loop infinitely.
     -- For local variables, introduce a hole for every argument.
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       hs <- for ts $ const (fresh @Hole)
       tell $ fromIntegral $ length ts
-      return $ apps (Var v) (Hole <$> hs)
+      let e = apps (Var v) (Hole <$> hs)
+      let help = set functions mempty
+      local help $ check ctx e $ Poly [] t
     -- For concrete types, try the corresponding constructors.
     -- TODO: check if constructors are introduced correctly, see list_map.hs
     -- NOTE: giving constructors a higher weight makes list_sort way faster,
@@ -192,19 +209,19 @@ refinements (HoleCtx t ctx) = do
         (_, cs) <- mfold . Map.lookup d =<< view dataTypes
         (c, ts) <- mfold cs
         hs <- for ts $ const fresh
-        return $ apps (Ctr c) (Hole <$> hs)
+        let e = apps (Ctr c) (Hole <$> hs)
+        let help = set functions mempty
+        local help $ check ctx e $ Poly [] t
       _ -> mzero
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.
     , do
-      fs <- view functions
-      ws <- use weights
-      (v, (Poly _ (Args ts _), w)) <- mfold $ Map.assocs $
-        Map.intersectionWith (,) fs ws
+      (v, p@(Poly _ (Args ts _)), w) <- mfold =<< use included
       -- TODO: do we update the weights?
       tell $ fromIntegral $ w + length ts
       hs <- for ts $ const fresh
 
+      -- Equivalences {{{
       let u = Hole $ Unit ()
       let z = Ctr "Zero"
       let s = App (Ctr "Succ") u
@@ -257,15 +274,11 @@ refinements (HoleCtx t ctx) = do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
-        "foldList" | [_, _, l] <- hs -> do
+        "foldList" | _:_:l:_ <- hs -> do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
         "paraList" | [_, _, l] <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
-        "foldListIndexed" | [_, _, l, _] <- hs -> do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
@@ -282,7 +295,7 @@ refinements (HoleCtx t ctx) = do
           let zero = Map.singleton l z
           let succ = Map.singleton l s
           modifying forbidden (<> [zero, succ])
-        "foldNat" | [_, _, l] <- hs -> do
+        "foldNat" | _:_:l:_ <- hs -> do
           let zero = Map.singleton l z
           let succ = Map.singleton l s
           modifying forbidden (<> [zero, succ])
@@ -331,9 +344,9 @@ refinements (HoleCtx t ctx) = do
           let zero = Map.singleton x z
           let succs = Map.fromList [(x, s), (y, s)]
           modifying forbidden (<> [zero, succs])
-        "any" | [p, l] <- hs -> do
-          let false = Map.singleton p $ Ctr "False"
-          let true = Map.singleton p $ Ctr "True"
+        "any" | [f, l] <- hs -> do
+          let false = Map.singleton f $ Ctr "False"
+          let true = Map.singleton f $ Ctr "True"
           let nil = Map.singleton l n
           modifying forbidden (<> [false, true, nil])
         "or" | [_, _] <- hs -> do
@@ -345,12 +358,12 @@ refinements (HoleCtx t ctx) = do
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
         _ -> return ()
+      -- }}}
 
-      return $ apps (Var v) (Hole <$> hs)
+      let e = apps (Var v) (Hole <$> hs)
+      let help = set functions $ Map.singleton v p
+      local help $ check ctx e $ Poly [] t
     ]
-  -- TODO: in replicate, the second argument has type `a`, but shouldn't unify
-  -- with type `Nat`.
-  (e', _) <- check ctx e $ Poly [] t
   return $ strip e'
 
 removeMatching :: (Ord k, Eq v) => k -> v -> Map k v -> Maybe (Map k v)

@@ -1,5 +1,5 @@
-import Prelude (foldList, elimList, elimMaybe)
--- import Prelude (reverse, elimList)
+{-# INCLUDE foldList, elimList, elimMaybe #-}
+-- {-# INCLUDE reverse, elimList #-}
 
 init :: List a -> Maybe (List a)
 init = _

@@ -1,5 +1,5 @@
--- import Prelude (foldTree, foldList, plus)
-import Prelude (mapTree, foldList, plus)
+-- {-# INCLUDE foldTree, foldList, plus #-}
+{-# INCLUDE mapTree, foldList, plus #-}
 
 sum_lists :: Tree (List Nat) -> Tree Nat
 sum_lists = _

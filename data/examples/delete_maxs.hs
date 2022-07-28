@@ -1,4 +1,4 @@
-import Prelude (map, filter, eq, maximum, not)
+{-# INCLUDE map, filter, eq, maximum, not #-}
 
 -- TODO: how do we define minimum for Nats?
 -- NOTE: this takes too long

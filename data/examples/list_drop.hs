@@ -1,4 +1,4 @@
-import Prelude (elimList)
+{-# INCLUDE elimList #-}
 
 -- MODEL:
 -- drop n xs = foldNat (\ys -> ys) (\r ys -> elimList [] (\z zs -> r zs) ys) n xs

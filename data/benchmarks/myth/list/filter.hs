@@ -1,4 +1,4 @@
-import Prelude (foldList, elimBool)
+{-# INCLUDE foldList, elimBool #-}
 
 filter :: (a -> Bool) -> List a -> List a
 filter = _

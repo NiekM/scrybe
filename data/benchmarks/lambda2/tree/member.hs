@@ -1,5 +1,5 @@
--- import Prelude (foldTree, eq, elimBool)
-import Prelude (foldTree, eq, or)
+-- {-# INCLUDE foldTree, eq, elimBool #-}
+{-# INCLUDE foldTree, eq, or #-}
 
 member :: Nat -> Tree Nat -> Bool
 member = _

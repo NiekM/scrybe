@@ -1,4 +1,4 @@
-import Prelude (foldTree, append)
+{-# INCLUDE foldTree, append #-}
 
 inorder :: Tree a -> List a
 inorder = _

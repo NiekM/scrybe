@@ -1,7 +1,7 @@
--- import Prelude (elimNat, plus)
--- import Prelude (elimNat, foldNat)
--- import Prelude (foldNat)
-import Prelude (plus, elimNat)
+-- {-# INCLUDE elimNat, plus #-}
+-- {-# INCLUDE elimNat, foldNat #-}
+-- {-# INCLUDE foldNat #-}
+{-# INCLUDE plus, elimNat #-}
 
 level :: Nat -> Tree a -> Nat
 -- level n t = foldTree _ _ t n

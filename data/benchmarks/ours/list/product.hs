@@ -1,5 +1,5 @@
-import Prelude (foldList, mult)
--- import Prelude (foldList, foldNat)
+{-# INCLUDE foldList, mult #-}
+-- {-# INCLUDE foldList, foldNat #-}
 
 -- NOTE: unlike Smyth, it is actually faster to just introduce foldNat i.o.
 -- plus, probably because plus is not weighted correctly.

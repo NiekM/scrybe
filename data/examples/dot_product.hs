@@ -1,10 +1,10 @@
--- import Prelude (sum, zipWith, mult)
--- import Prelude (sum, zipWith, foldNat)
--- import Prelude (foldList, zipWith, foldNat, plus)
--- import Prelude (sum, zipWith, foldNat, plus)
-import Prelude (zipWith, foldNat, plus)
--- import Prelude (foldList, zipWith, mult, plus)
--- import Prelude (zipWith, mult)
+-- {-# INCLUDE sum, zipWith, mult #-}
+-- {-# INCLUDE sum, zipWith, foldNat #-}
+-- {-# INCLUDE foldList, zipWith, foldNat, plus #-}
+-- {-# INCLUDE sum, zipWith, foldNat, plus #-}
+{-# INCLUDE zipWith, foldNat, plus #-}
+-- {-# INCLUDE foldList, zipWith, mult, plus #-}
+-- {-# INCLUDE zipWith, mult #-}
 
 dot :: List Nat -> List Nat -> Nat
 -- dot :: List Nat -> List Nat -> List Nat

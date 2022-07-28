@@ -1,5 +1,5 @@
-import Prelude (zipWith, foldNat)
--- import Prelude (zipWith, plus)
+{-# INCLUDE zipWith, foldNat #-}
+-- {-# INCLUDE zipWith, plus #-}
 
 zipPlus :: List Nat -> List Nat -> List Nat
 zipPlus = _

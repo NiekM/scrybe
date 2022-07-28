@@ -1,5 +1,5 @@
-import Prelude (elimList, elimBool, eq)
--- import Prelude (elimBool, eq)
+{-# INCLUDE elimList, elimBool, eq #-}
+-- {-# INCLUDE elimBool, eq #-}
 
 compress :: List Nat -> List Nat
 -- compress = foldList [] (\x -> elimList [x] (\y ys -> elimBool (Cons x (Cons y ys)) (Cons y ys) (eq x y)))

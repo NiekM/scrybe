@@ -1,4 +1,4 @@
-import Prelude (foldList)
+{-# INCLUDE foldList #-}
 
 -- Model solution:
 -- cartesian xss = foldList [[]] (\xs yss -> foldList [] (\x zss -> foldList zss (\ys qss -> Cons (Cons x ys) qss) yss) xs) xss

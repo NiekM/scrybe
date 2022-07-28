@@ -1,4 +1,4 @@
-import Prelude (foldList)
+{-# INCLUDE foldList #-}
 
 -- TODO: what is the type of swap, what is even the model solution?
 swap :: List a -> Maybe (List a)
