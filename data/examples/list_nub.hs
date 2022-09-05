@@ -3,8 +3,8 @@
 
 nub :: List Nat -> List Nat
 -- nub = foldList [] \x r -> elimBool (Cons x r) _ (elem x r)
-nub = foldList [] \x r -> Cons x (filter (\y -> not _) r)
--- nub = _
+-- nub = foldList [] \x r -> Cons x (filter (\y -> not _) r)
+nub = _
 
 assert nub [] <== []
 assert nub [1] <== [1]

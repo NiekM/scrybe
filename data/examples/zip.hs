@@ -1,10 +1,11 @@
 -- {-# INCLUDE foldListIndexed, elimList #-}
+{-# INCLUDE foldList :: (c -> b) -> (a -> (c -> b) -> (c -> b)) -> List a -> c -> b #-}
 {-# INCLUDE elimList #-}
 
 zip :: List a -> List b -> List (Pair a b)
 -- zip = foldList (const []) \x r -> elimList [] \y ys -> Cons (Pair x y) (r ys)
-zip = foldList _ \x r -> _
--- zip = _
+-- zip = foldList _ \x r -> _
+zip = _
 
 assert zip [] [] <== []
 assert zip [A] [] <== []

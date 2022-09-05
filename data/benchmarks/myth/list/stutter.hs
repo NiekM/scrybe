@@ -1,4 +1,5 @@
 {-# INCLUDE foldList #-}
+-- {-# INCLUDE concatMap #-}
 
 stutter :: List a -> List a
 stutter = _

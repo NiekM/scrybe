@@ -73,8 +73,10 @@ foldNat z s = fix \go n -> case n of
   Zero -> z
   Succ m -> s (go m)
 
-foldNatIndexed :: (Nat -> b) -> ((Nat -> b) -> Nat -> b) -> Nat -> Nat -> b
-foldNatIndexed = foldNat
+paraNat :: a -> (Nat -> a -> a) -> Nat -> a
+paraNat z s = fix \go n -> case n of
+  Zero -> z
+  Succ m -> s m (go m)
 
 unfoldNat :: (a -> Maybe a) -> a -> Nat
 unfoldNat f x = case f x of
@@ -98,6 +100,9 @@ compareNat = foldNat (elimNat EQ (const LT)) \n -> elimNat GT \m -> n m
 
 eq :: Nat -> Nat -> Bool
 eq n m = elimOrd False True False (compareNat n m)
+
+neq :: Nat -> Nat -> Bool
+neq n m = not (eq n m)
 
 leq :: Nat -> Nat -> Bool
 leq n m = elimOrd True True False (compareNat n m)
@@ -145,6 +150,12 @@ snoc xs x = foldList [x] Cons xs
 reverse :: List a -> List a
 reverse = foldList [] (flip snoc)
 
+concat :: List (List a) -> List a
+concat = foldList [] append
+
+concatMap :: (a -> List b) -> List a -> List b
+concatMap f xs = concat (map f xs)
+
 length :: List a -> Nat
 length xs = foldList Zero (\x r -> Succ r) xs
 
@@ -173,6 +184,15 @@ insert n = paraList [n] \x xs r -> case leq n x of
 
 sort :: List Nat -> List Nat
 sort = foldList [] insert
+
+set_insert :: Nat -> List Nat -> List Nat
+set_insert n = paraList [n] \x xs r -> case compareNat n x of
+  LT -> Cons n (Cons x xs)
+  EQ -> Cons x xs
+  GT -> Cons x r
+
+nub :: List Nat -> List Nat
+nub = foldList [] set_insert
 
 eqList :: List Nat -> List Nat -> Bool
 eqList = foldList (elimList True (\y ys -> False)) (\x r -> elimList False (\y ys -> and (eq x y) (r ys)))

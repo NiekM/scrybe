@@ -1,7 +1,9 @@
+-- {-# INCLUDE foldList :: List Nat -> (Nat -> List Nat -> List Nat) -> List Nat -> List Nat #-}
 {-# INCLUDE elimList, elimBool, eq #-}
 
 compress :: List Nat -> List Nat
 compress = foldList _ _
+-- compress = _
 
 assert compress [] <== []
 assert compress [0] <== [0]

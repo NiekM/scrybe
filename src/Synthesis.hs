@@ -110,7 +110,8 @@ init defs = do
         "elimNat" -> 3
         "foldNat" | Just _ <- a -> 10
         "foldList" | Just _ <- a -> 10
-        "foldListIndexed" -> 10
+        -- "foldListIndexed" -> 10
+        -- "paraList" -> 10
         _ -> 1
     )
 
@@ -144,47 +145,15 @@ init defs = do
       return y
     _ -> error "Should never happen"
 
--- resHoles :: Result -> Set Hole
--- resHoles = cataExpr \case
---   Scoped m (Hole h) -> Set.singleton h <> scopeHoles m
---   Scoped m _ -> scopeHoles m
---   App f x -> f <> x
---   _ -> mempty
-
--- scopeHoles :: Scope -> Set Hole
--- scopeHoles = foldMap resHoles
-
--- constrained :: Constraints -> Set Hole
--- constrained cs = Map.keysSet cs
---   <> let
---     bar = foldMap Map.keys $ toList cs
---     baz = foldMap scopeHoles bar
---   in baz
-
 -- TODO: maybe reintroduce some informativeness constraint
 informative :: Set Hole -> Constraints -> Bool
 informative hs cs = hs == Map.keysSet cs
--- informative hs cs = hs == constrained cs
 
 updateConstraints :: [Constraints] -> Synth ()
 updateConstraints xs = do
   let ys = nubOrd xs
   guard . not . null $ ys
   assign constraints $ Disjunction . fmap Pure $ ys
-
--- updateConstraints :: [Constraints] -> Synth ()
--- updateConstraints xs = do
---   let ys = nubOrd xs
---   hs <- Map.keysSet <$> use contexts
---   -- Make sure every hole has constraints. ('Informativeness restriction')
---   let zs = filter (informative hs) ys
---   guard . not . null $ zs
---   assign constraints $ Disjunction . fmap Pure $ zs
-
--- TODO: sometimes it's faster to introduce helper functions rather than
--- eliminators/folds (e.g. introducing `not` in `nat_even`), but other times
--- it is better to just intoduce the fold (e.g. introducing `append` in
--- `tree_collect`)
 
 -- TODO: should we have a weight here? Giving a weight of 1 to
 -- constructors and variables makes the benchmarks an order of
@@ -202,9 +171,6 @@ refinements (HoleCtx t ctx) = do
       let e = apps (Var v) (Hole <$> hs)
       check ctx e $ Poly [] t
     -- For concrete types, try the corresponding constructors.
-    -- TODO: check if constructors are introduced correctly, see list_map.hs
-    -- NOTE: giving constructors a higher weight makes list_sort way faster,
-    -- but list_rev_fold seems to diverge.
     , case t of
       Apps (Ctr d) _ -> do
         (_, cs) <- mfold . Map.lookup d =<< view dataTypes
@@ -287,6 +253,11 @@ refinements (HoleCtx t ctx) = do
           let cons = Map.singleton l c
           let fuse = Map.singleton l $ apps (Var "map") (replicate 2 u)
           modifying forbidden (<> [nil, cons, fuse])
+        "concatMap" | [f, l] <- hs -> do
+          let empty = Map.singleton f n
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
+          modifying forbidden (<> [empty, nil, cons])
         "zipWith" | [_, l, r] <- hs -> do
           let left = Map.singleton l c
           let right = Map.singleton r c
@@ -328,6 +299,16 @@ refinements (HoleCtx t ctx) = do
           let sz = Map.fromList [(x, s), (y, z)]
           let ss = Map.fromList [(x, s), (y, s)]
           -- NOTE: since eq is commutative, we can disallow one Succ/Zero,
+          -- since two is already forbidden
+          let zero = Map.singleton x z
+          let succ = Map.singleton x s
+          modifying forbidden (<> [zero, succ, zz, zs, sz, ss])
+        "neq" | [x, y] <- hs -> do
+          let zz = Map.fromList [(x, z), (y, z)]
+          let zs = Map.fromList [(x, z), (y, s)]
+          let sz = Map.fromList [(x, s), (y, z)]
+          let ss = Map.fromList [(x, s), (y, s)]
+          -- NOTE: since neq is commutative, we can disallow one Succ/Zero,
           -- since two is already forbidden
           let zero = Map.singleton x z
           let succ = Map.singleton x s

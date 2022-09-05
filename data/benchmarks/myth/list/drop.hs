@@ -1,3 +1,5 @@
+-- NOTE: non-specialized version results in a timeout unless weights are added
+-- on foldList.
 -- {-# INCLUDE foldList :: (c -> b) -> (a -> (c -> b) -> c -> b) -> List a -> c -> b #-}
 {-# INCLUDE foldList :: (Nat -> b) -> (a -> (Nat -> b) -> Nat -> b) -> List a -> Nat -> b #-}
 {-# INCLUDE elimNat #-}
