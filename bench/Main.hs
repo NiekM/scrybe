@@ -1,19 +1,30 @@
 module Main where
 
-import Import
+import Import hiding (timeout)
 import Synthesis
 import Language.Parser
-import Language.Syntax
+import Language.Syntax hiding (env)
 import RIO.FilePath
 import RIO.Directory
 import Criterion.Main
 import Control.Monad.Heap hiding (Leaf)
+import System.Timeout
 
 data Tree a b = Node a [Tree a b] | Leaf b
   deriving (Eq, Ord, Show, Read)
   deriving (Functor, Foldable, Traversable)
 
 type FileTree = Tree String (String, Defs Unit)
+
+removeMaybes :: Tree a (Maybe b) -> Maybe (Tree a b)
+removeMaybes = \case
+  Node x xs -> case mapMaybe removeMaybes xs of
+    [] -> Nothing
+    ys -> Just $ Node x ys
+  Leaf l -> Leaf <$> l
+
+trySyn :: Env -> Defs Unit -> Bool
+trySyn m = isJust . best . runSynth m . synth
 
 getTree :: MonadIO m => FilePath -> m [FileTree]
 getTree p = do
@@ -31,13 +42,21 @@ getTree p = do
 benchTree :: Env -> FileTree -> Benchmark
 benchTree m = \case
   Node x xs -> bgroup x $ benchTree m <$> xs
-  Leaf (f, x) -> bench f $
-    whnf (isJust . best . runSynth m . synth) x
+  Leaf (f, x) -> bench f $ nf (trySyn m) x
 
+-- TODO: use `env' function to read input
+-- TODO: give better control over which benchmarks are tried and checked for
+-- timeouts, now all benchmarks are checked for timeout, not just the ones we
+-- want to run.
 main :: IO ()
 main = do
   pre <- readFileUtf8 "data/prelude.hs"
   let m = fromMaybe undefined $ lexParse parser pre
   let benchmarks = "data/benchmarks"
   t <- getTree benchmarks
-  defaultMain $ benchTree m <$> t
+  t' <- for t $ mapM \(s, x) -> timeout 1000000 (return $! force (trySyn m x))
+    <&> \case
+      Nothing -> Nothing
+      Just _ -> Just (s, x)
+  let t'' = mapMaybe removeMaybes t'
+  defaultMain $ benchTree m <$> t''
