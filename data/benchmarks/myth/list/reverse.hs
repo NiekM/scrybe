@@ -1,5 +1,6 @@
 -- {-# INCLUDE foldList, snoc #-}
-{-# INCLUDE foldList #-}
+-- {-# INCLUDE foldList #-}
+{-# INCLUDE foldl #-}
 
 reverse :: List a -> List a
 reverse = _

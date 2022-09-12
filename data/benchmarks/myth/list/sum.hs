@@ -1,4 +1,5 @@
 {-# INCLUDE foldList, plus #-}
+-- {-# INCLUDE foldl, plus #-}
 -- {-# INCLUDE foldList, foldNat #-}
 
 sum :: List Nat -> Nat

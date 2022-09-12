@@ -135,6 +135,11 @@ mapList f = foldList [] (\x -> Cons (f x))
 foldr :: (a -> b -> b) -> b -> List a -> b
 foldr f e = foldList e f
 
+foldl :: (b -> a -> b) -> b -> List a -> b
+foldl f = fix \go acc l -> case l of
+  Nil -> acc
+  Cons h t -> go (f acc h) t
+
 map :: (a -> b) -> List a -> List b
 map = mapList
 
