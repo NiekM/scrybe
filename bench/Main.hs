@@ -24,7 +24,7 @@ removeMaybes = \case
   Leaf l -> Leaf <$> l
 
 trySyn :: Env -> Defs Unit -> Bool
-trySyn m = isJust . best . runSynth m . synth
+trySyn m = isJust . best . runNondet . runSynth m . synth
 
 getTree :: MonadIO m => FilePath -> m [FileTree]
 getTree p = do

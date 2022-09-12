@@ -29,13 +29,20 @@ emptySynState :: SynState
 emptySynState =
   SynState mempty (Disjunction []) mempty mkFreshState mempty [] mempty []
 
-runSynth :: Env -> Synth a -> Heap Dist a
+newtype Nondet a = Nondet { runNondet :: Heap Dist a }
+  deriving newtype (Functor, Applicative, Monad)
+  deriving newtype (Alternative, MonadPlus, MonadWriter Dist)
+
+instance MonadFail Nondet where
+  fail _ = mzero
+
+runSynth :: Env -> Synth a -> Nondet a
 runSynth m x = fst <$> runReaderT (runStateT x emptySynState) m
 
 instance HasFreshState SynState where
   freshState = freshSt
 
-type Synth = StateT SynState (ReaderT Env (Heap Dist))
+type Synth = StateT SynState (ReaderT Env Nondet)
 
 instance LiftEval Synth where
   liftEval x = runIdentity . runReaderT x <$> view env
@@ -81,14 +88,8 @@ liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
 -- toplevel definitions.
 -- ALTERNATIVELY: implement full let polymorphism.
 
--- TODO: perhaps Nondet should be a wrapper around Heap providing this
--- MonadFail instance.
-instance MonadFail (Heap w) where
-  fail _ = mzero
-
 init :: Defs Unit -> Synth (Term Hole)
 init defs = do
-  -- let ws = concat $ imports defs <&> \(MkImport _ xs) -> fromMaybe [] xs
   let ws = [x | Include xs <- pragmas defs, x <- toList xs]
   -- TODO: determine weights based on something
 

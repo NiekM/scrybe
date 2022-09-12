@@ -32,7 +32,7 @@ specTree :: Env -> FileTree -> Spec
 specTree m = \case
   Node x xs -> describe x . for_ xs $ specTree m
   Leaf (f, x) -> describe f do
-    it "synthesizes" . isJust . best . runSynth m $ synth x
+    it "synthesizes" . isJust . best . runNondet . runSynth m $ synth x
 
 spec :: Spec
 spec = do

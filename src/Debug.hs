@@ -63,4 +63,4 @@ read s = let file = unsafePerformIO $ readFileUtf8 s in
     Nothing -> error "Could not parse file"
 
 synth' :: String -> Doc ann
-synth' = pretty . fmap snd . best . runSynth prelude . synth . read
+synth' = pretty . fmap snd . best . runNondet . runSynth prelude . synth . read
