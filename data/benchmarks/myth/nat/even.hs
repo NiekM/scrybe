@@ -1,6 +1,6 @@
 -- {-# INCLUDE foldNat, elimBool #-}
 
-{-# INCLUDE foldNat, elimBool #-}
+{-# INCLUDE foldrNat, elimBool #-}
 
 {-# DESC "Whether a natural number is even." #-}
 even :: Nat -> Bool

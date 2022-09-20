@@ -1,5 +1,5 @@
 -- {-# INCLUDE foldNatIndexed, elimNat #-}
-{-# INCLUDE foldNat :: (Nat -> b) -> ((Nat -> b) -> Nat -> b) -> Nat -> Nat -> b #-}
+{-# INCLUDE foldrNat :: (Nat -> b) -> ((Nat -> b) -> Nat -> b) -> Nat -> Nat -> b #-}
 {-# INCLUDE elimNat #-}
 
 -- NOTE: it works without sketch, but is very slow!

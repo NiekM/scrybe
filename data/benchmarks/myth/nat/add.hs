@@ -1,6 +1,6 @@
 -- {-# INCLUDE foldNat #-}
 
-{-# INCLUDE foldNat #-}
+{-# INCLUDE foldrNat #-}
 
 {-# DESC "Add two natural numbers." #-}
 add :: Nat -> Nat -> Nat

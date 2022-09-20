@@ -68,10 +68,16 @@ elimNat z s n = case n of
   Succ m -> s m
 
 -- TODO: automatically introduce fixpoint for global bindings
-foldNat :: a -> (a -> a) -> Nat -> a
-foldNat z s = fix \go n -> case n of
+
+foldrNat :: a -> (a -> a) -> Nat -> a
+foldrNat z s = fix \go n -> case n of
   Zero -> z
   Succ m -> s (go m)
+
+foldlNat :: (a -> a) -> a -> Nat -> a
+foldlNat s = fix \go acc n -> case n of
+  Zero -> acc
+  Succ m -> go (s acc) m
 
 paraNat :: a -> (Nat -> a -> a) -> Nat -> a
 paraNat z s = fix \go n -> case n of
@@ -84,19 +90,19 @@ unfoldNat f x = case f x of
   Just y -> Succ (unfoldNat f y)
 
 even :: Nat -> Bool
-even = foldNat True not
+even = foldlNat not True
 
 odd :: Nat -> Bool
-odd = foldNat False not
+odd = foldlNat not False
 
 plus :: Nat -> Nat -> Nat
-plus n = foldNat n Succ
+plus n = foldrNat n Succ
 
 mult :: Nat -> Nat -> Nat
-mult n = foldNat Zero (plus n)
+mult n = foldrNat Zero (plus n)
 
 compareNat :: Nat -> Nat -> Ord
-compareNat = foldNat (elimNat EQ (const LT)) \n -> elimNat GT \m -> n m
+compareNat = foldrNat (elimNat EQ (const LT)) \n -> elimNat GT \m -> n m
 
 eq :: Nat -> Nat -> Bool
 eq n m = elimOrd False True False (compareNat n m)
@@ -162,16 +168,16 @@ concatMap :: (a -> List b) -> List a -> List b
 concatMap f xs = concat (map f xs)
 
 length :: List a -> Nat
-length xs = foldList Zero (\x r -> Succ r) xs
+length = foldl (const Succ) Zero
 
 sum :: List Nat -> Nat
-sum = foldList 0 plus
+sum = foldl plus 0
 
 product :: List Nat -> Nat
-product = foldList 1 mult
+product = foldl mult 1
 
 maximum :: List Nat -> Nat
-maximum = foldList 0 max
+maximum = foldl max 0
 
 any :: (a -> Bool) -> List a -> Bool
 any p = foldList False \x -> or (p x)
@@ -180,7 +186,7 @@ elem :: Nat -> List Nat -> Bool
 elem n = any (eq n)
 
 drop :: Nat -> List a -> List a
-drop = foldNat id (\r -> elimList [] (\x xs -> r xs))
+drop = foldrNat id (\r -> elimList [] (\x xs -> r xs))
 
 insert :: Nat -> List Nat -> List Nat
 insert n = paraList [n] \x xs r -> case leq n x of

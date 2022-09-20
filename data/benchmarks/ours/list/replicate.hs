@@ -1,4 +1,4 @@
-{-# INCLUDE foldNat #-}
+{-# INCLUDE foldrNat #-}
 
 replicate :: Nat -> a -> List a
 replicate = _

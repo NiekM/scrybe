@@ -1,4 +1,4 @@
-{-# INCLUDE foldNat, plus #-}
+{-# INCLUDE foldrNat, plus #-}
 
 mult :: Nat -> Nat -> Nat
 mult = _
