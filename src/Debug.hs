@@ -42,7 +42,7 @@ instance Pretty SynState where
     ]
 
 tryUneval :: Uneval a -> Maybe a
-tryUneval x = view _1 <$> runRWST x prelude 10000
+tryUneval x = view _1 <$> runRWST x prelude 1000
 
 eval' :: Term Hole -> Result
 eval' e = runReader (eval mempty e) prelude
@@ -52,6 +52,12 @@ uneval' r e = tryUneval (uneval r $ toEx e)
 
 assert' :: Assert -> Maybe (Logic Constraints)
 assert' = tryUneval . unevalAssert mempty
+
+assert2 :: Assert -> Logic Constraints
+assert2 = flip runReader prelude . unevalAssert2 mempty
+
+assert3 :: Assert -> [Constraints]
+assert3 a = view _2 <$> runRWST (unevalAssert3 mempty a) prelude mempty
 
 merge :: Maybe (Logic Constraints) -> Doc ann
 merge = pretty . fmap (fmap mergeConstraints . dnf)
