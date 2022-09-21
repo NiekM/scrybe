@@ -9,6 +9,7 @@ import Control.Monad.Heap
 import Control.Monad.State
 import Control.Monad.RWS
 import Data.Monus.Dist
+import qualified Prettyprinter as Pretty
 
 -- TODO: maybe we also want to keep track of a list of possible refinements
 -- e.g. [Term Unit]
@@ -155,6 +156,58 @@ updateConstraints xs = do
   let ys = nubOrd xs
   guard . not . null $ ys
   assign constraints $ Disjunction . fmap Pure $ ys
+
+-- Experimental {{{
+
+newtype Space = Space (Map Hole [(Term Hole, Space)])
+  deriving (Eq, Ord, Show)
+
+instance Pretty Space where
+  pretty (Space xs) = Pretty.vsep $ Map.assocs xs <&> \(h, es) ->
+    Pretty.nest 2 $ Pretty.vsep (pretty h <> ":" :
+      (es <&> \(e, sp) -> Pretty.nest 2 (Pretty.vsep [pretty e, pretty sp])))
+
+data GenSt = GenSt
+  { _genCtxs :: Map Hole HoleCtx
+  , _genFresh :: Hole
+  }
+
+makeLenses ''GenSt
+
+type Gen = Reader GenSt
+
+-- TODO: create some nicer helper functions for fresh readers
+withFresh :: Traversable t => t b -> (t (Hole, b) -> Gen a) -> Gen a
+withFresh xs f = do
+  h <- view genFresh
+  let (y, h') = h & runState do
+        for xs \x -> do
+          n <- get
+          put (n + 1)
+          return (n, x)
+  local (set genFresh h') $ f y
+
+-- TODO: is this the most minimal version?
+gen :: Gen Space
+gen = do
+  cs <- view genCtxs
+  xs <- for (Map.assocs cs) \(h, HoleCtx t ctx) ->
+    (h,) <$> for (Map.assocs ctx) \(v, Poly _ (Args ts u)) -> case unify u t of
+      Nothing -> return Nothing
+      Just th -> withFresh ts \ys -> do
+        let ctx' = subst th <$> ctx
+        let hs  = subst th <$> Map.delete h cs
+        let hs' = flip HoleCtx ctx' <$> Map.fromList ys
+        local (set genCtxs (hs <> hs')) do
+          let applied = apps (Var v) (Hole . fst <$> ys)
+          Just . (applied,) <$> gen
+  return . Space $ catMaybes <$> Map.fromList xs
+
+limit :: Int -> Space -> Space
+limit 0 (Space xs) = Space $ set each [] xs
+limit n (Space xs) = Space $ over (each.each._2) (limit (n-1)) xs
+
+-- }}}
 
 -- TODO: should we have a weight here? Giving a weight of 1 to
 -- constructors and variables makes the benchmarks an order of
