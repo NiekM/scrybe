@@ -7,16 +7,14 @@ import qualified RIO.Map as Map
 
 -- Type checking state {{{
 
--- type Check = RWST Env () FreshState _
-
 runTC :: Monad m => RWST Env () FreshState m a ->
-  Env -> m (a, FreshState)
-runTC tc m = do
-  (x, s, _) <- runRWST tc m mkFreshState
+  FreshState -> Env -> m (a, FreshState)
+runTC tc fr m = do
+  (x, s, _) <- runRWST tc m fr
   return (x, s)
 
-evalTC :: Monad m => RWST Env () FreshState m a -> Env -> m a
-evalTC tc m = fst <$> runTC tc m
+evalTC :: Monad m => RWST Env () FreshState m a -> FreshState -> Env -> m a
+evalTC tc fr m = fst <$> runTC tc fr m
 
 -- }}}
 

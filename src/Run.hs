@@ -42,7 +42,7 @@ readFiles file sketch model = do
   case alphaEq t u of
     Nothing -> fail "Model and sketch signature do not match."
     Just _ -> return ()
-  (a, _, _) <- evalTC (check' mempty b t) m
+  (a, _, _) <- evalTC (check' mempty b t) mkFreshState m
   return (m, sk, a)
 
 -- interactive :: String -> String -> String -> RIO Application ()
