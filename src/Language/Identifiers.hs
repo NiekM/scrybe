@@ -1,13 +1,17 @@
 {-# LANGUAGE MultiParamTypeClasses, RankNTypes #-}
 module Language.Identifiers
   ( Hole(..), Free(..), Var(..), Ctr(..)
+  , VarId(), varId
+  , FreeId(), freeId
   , FreshHole, FreshFree, FreshVar
   , MonadFresh(..)
   , HasFreshState(..), FreshState()
+  , Fresh, getFresh
   , mkFreshState
   )
   where
 
+import GHC.TypeLits
 import Import
 import Control.Monad.State
 
@@ -94,3 +98,31 @@ instance (HasFreshState s, Monad m) => MonadFresh Free (StateT s m) where
   fresh = freeId <$> fresh' freshFree
 instance (HasFreshState s, Monad m) => MonadFresh Var (StateT s m) where
   fresh = varId <$> fresh' freshVar
+
+newtype Fresh a = Fresh Int
+  deriving (Eq, Ord, Show)
+  deriving newtype (Num, Real, Enum, Integral)
+
+class Count a where
+  fromCounter :: Fresh a -> a
+  default fromCounter :: Num a => Fresh a -> a
+  fromCounter = fromIntegral
+
+instance Count Hole
+
+newtype TextVar (s :: Symbol) = MkTextVar Text
+  deriving stock (Eq, Ord, Read, Show)
+  deriving newtype (IsString, Pretty)
+
+instance KnownSymbol s => Count (TextVar s) where
+  fromCounter =
+    MkTextVar . fromString . (symbolVal (Proxy :: Proxy s) ++) . show
+
+deriving via TextVar "a" instance Count Var
+deriving via TextVar "t" instance Count Free
+
+getFresh :: Count a => State (Fresh a) a
+getFresh = do
+  n <- get
+  put (1 + n)
+  return $ fromCounter n

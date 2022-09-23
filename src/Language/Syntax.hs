@@ -401,6 +401,10 @@ collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
 number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
 
+-- | Check if an expression has no holes.
+holeFree :: Term a -> Maybe (Term Void)
+holeFree = traverseOf holes $ const Nothing
+
 -- Eta expansion {{{
 
 class ExpandHole h m where

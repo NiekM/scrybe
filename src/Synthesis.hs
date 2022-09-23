@@ -5,6 +5,7 @@ module Synthesis where
 import Import
 import Language
 import qualified RIO.Map as Map
+import Control.Monad.Cont
 import Control.Monad.Heap
 import Control.Monad.State
 import Control.Monad.RWS
@@ -159,53 +160,128 @@ updateConstraints xs = do
 
 -- Experimental {{{
 
-newtype Space = Space (Map Hole [(Term Hole, Space)])
+newtype Space a = Space (Map Hole [(a, Space a)])
   deriving (Eq, Ord, Show)
+  deriving (Functor, Foldable, Traversable)
 
-instance Pretty Space where
+instance Pretty a => Pretty (Space a) where
   pretty (Space xs) = Pretty.vsep $ Map.assocs xs <&> \(h, es) ->
     Pretty.nest 2 $ Pretty.vsep (pretty h <> ":" :
       (es <&> \(e, sp) -> Pretty.nest 2 (Pretty.vsep [pretty e, pretty sp])))
 
+data Goal = Goal
+  { _goalTyp :: Type
+  , _goalEnv :: Map (Term Void) Poly
+  } deriving (Eq, Ord, Show)
+
+makeLenses ''Goal
+
+instance Subst Goal where
+  subst th = over goalTyp (subst th) . over goalEnv (subst th <$>)
+
 data GenSt = GenSt
-  { _genCtxs :: Map Hole HoleCtx
-  , _genFresh :: Hole
-  }
+  { _genCtxs :: Map Hole Goal
+  , _genHole :: Fresh Hole
+  , _genVar  :: Fresh Var
+  , _genFree :: Fresh Free
+  } deriving (Eq, Ord, Show)
 
 makeLenses ''GenSt
 
 type Gen = Reader GenSt
 
--- TODO: create some nicer helper functions for fresh readers
-withFresh :: Traversable t => t b -> (t (Hole, b) -> Gen a) -> Gen a
-withFresh xs f = do
-  h <- view genFresh
-  let (y, h') = h & runState do
-        for xs \x -> do
-          n <- get
-          put (n + 1)
-          return (n, x)
-  local (set genFresh h') $ f y
+-- liftReader :: Reader s a -> State s a
+-- liftReader r = gets (runReader r)
 
--- TODO: is this the most minimal version?
-gen :: Gen Space
+readerState :: State s (Reader s a) -> Reader s a
+readerState = doCont . stateCont
+
+stateCont :: State s b -> ContT a (Reader s) b
+stateCont st = ContT \ct -> do
+  s <- ask
+  let (b, s') = runState st s
+  local (const s') $ ct b
+
+-- Instantiates a polymorphic type with fresh variables.
+refreshPoly :: Poly -> State (Fresh Free) Type
+refreshPoly (Poly as t) = do
+  th <- for as \a -> (a,) <$> getFresh
+  return $ subst (Var <$> Map.fromList th) t
+
+-- Generates the eta-expansion of a type.
+eta :: Type -> State (Fresh Var) (Term Goal)
+eta (Args ts u) = do
+  xs <- for ts \t -> (,t) <$> getFresh
+  return . lams (fst <$> xs) . Hole
+    $ Goal u (Map.fromList $ (Var *** Mono) <$> xs)
+
+-- Applies eta-expanded holes to a term.
+expand :: Term Void -> Type -> State (Fresh Var) (Term Goal, Type)
+expand x (Args ts u) = do
+  xs <- for ts eta
+  return (apps (over holes absurd x) xs, u)
+
+-- Gives each hole a name and returns a mapping from hole names to the original
+-- holes' contents.
+renumber :: Term a -> State (Fresh Hole) (Term Hole, Map Hole a)
+renumber x = do
+  e <- forOf holes x \a -> (,a) <$> getFresh
+  let m = Map.fromList $ toListOf holes e
+  return (over holes fst e, m)
+
+doCont :: ContT r m (m r) -> m r
+doCont m = runContT m id
+
+forMap :: (Ord k, Monad m) => Map k v -> (k -> v -> m a) -> m (Map k a)
+forMap m f = Map.fromList <$> for (Map.assocs m) \(k, v) -> (k,) <$> f k v
+
+gen :: Gen (Space (Term Hole))
 gen = do
   cs <- view genCtxs
-  xs <- for (Map.assocs cs) \(h, HoleCtx t ctx) ->
-    (h,) <$> for (Map.assocs ctx) \(v, Poly _ (Args ts u)) -> case unify u t of
-      Nothing -> return Nothing
-      Just th -> withFresh ts \ys -> do
-        let ctx' = subst th <$> ctx
-        let hs  = subst th <$> Map.delete h cs
-        let hs' = flip HoleCtx ctx' <$> Map.fromList ys
-        local (set genCtxs (hs <> hs')) do
-          let applied = apps (Var v) (Hole . fst <$> ys)
-          Just . (applied,) <$> gen
-  return . Space $ catMaybes <$> Map.fromList xs
+  xs <- forMap cs \h (Goal t ctx) ->
+    for (Map.assocs ctx) \(v, p) -> readerState do
+      m        <- zoom genFree $ refreshPoly p
+      (x, u)   <- zoom genVar  $ expand v m
+      (y, cs') <- zoom genHole $ renumber x
+      case unify u t of
+        Nothing -> return $ return Nothing
+        Just th -> do
+          zoom genCtxs do
+            modify $ Map.delete h
+            modify $ Map.union $ cs' <&> over goalEnv (ctx <>)
+            modify (subst th <$>)
+          return $ Just . (y,) <$> gen
+  return . Space $ catMaybes <$> xs
 
-limit :: Int -> Space -> Space
+updSpace :: (Hole -> a -> State r b) -> Space a -> Reader r (Space b)
+updSpace f (Space xs) =
+  Space <$> forMap xs \h ys -> for ys \(y, sp) -> readerState do
+    z <- f h y
+    return $ (z,) <$> updSpace f sp
+
+fillSpace :: Space (Term Hole) -> Reader (Term Hole) (Space (Term Hole))
+fillSpace = updSpace \h x -> do
+  modify $ fill (Map.singleton h x)
+  get
+
+evalSpace :: Space (Term Hole) -> Reader (Env, Result) (Space Result)
+evalSpace = updSpace \h x -> do
+  (en, y) <- get
+  let r = runReader (resume (Map.singleton h x) y) en
+  assign _2 r
+  return r
+
+-- TODO: equivalence pruning
+
+-- TODO: hole filling pruning
+
+-- TODO: unevaluation pruning
+
+limit :: Int -> Space a -> Space a
 limit 0 (Space xs) = Space $ set each [] xs
-limit n (Space xs) = Space $ over (each.each._2) (limit (n-1)) xs
+limit n (Space xs) = Space $ over (each . each . _2) (limit (n - 1)) xs
+
+-- TODO: enumerate fairly
 
 -- }}}
 

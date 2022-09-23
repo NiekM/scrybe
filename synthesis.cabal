@@ -45,6 +45,7 @@ library
       BlockArguments
       ConstraintKinds
       DataKinds
+      DefaultSignatures
       DeriveTraversable
       DerivingStrategies
       DerivingVia
@@ -58,7 +59,9 @@ library
       NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
+      PartialTypeSignatures
       PatternSynonyms
+      QuasiQuotes
       ScopedTypeVariables
       StandaloneDeriving
       TupleSections
@@ -66,7 +69,6 @@ library
       TypeFamilies
       TypeOperators
       ViewPatterns
-      QuasiQuotes
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
   build-depends:
       QuickCheck
@@ -91,6 +93,7 @@ executable synthesis-exe
       BlockArguments
       ConstraintKinds
       DataKinds
+      DefaultSignatures
       DeriveTraversable
       DerivingStrategies
       DerivingVia
@@ -104,7 +107,9 @@ executable synthesis-exe
       NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
+      PartialTypeSignatures
       PatternSynonyms
+      QuasiQuotes
       ScopedTypeVariables
       StandaloneDeriving
       TupleSections
@@ -112,7 +117,6 @@ executable synthesis-exe
       TypeFamilies
       TypeOperators
       ViewPatterns
-      QuasiQuotes
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
@@ -142,6 +146,7 @@ test-suite synthesis-test
       BlockArguments
       ConstraintKinds
       DataKinds
+      DefaultSignatures
       DeriveTraversable
       DerivingStrategies
       DerivingVia
@@ -155,7 +160,9 @@ test-suite synthesis-test
       NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
+      PartialTypeSignatures
       PatternSynonyms
+      QuasiQuotes
       ScopedTypeVariables
       StandaloneDeriving
       TupleSections
@@ -163,7 +170,6 @@ test-suite synthesis-test
       TypeFamilies
       TypeOperators
       ViewPatterns
-      QuasiQuotes
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
@@ -191,6 +197,7 @@ benchmark synthesis-bench
       BlockArguments
       ConstraintKinds
       DataKinds
+      DefaultSignatures
       DeriveTraversable
       DerivingStrategies
       DerivingVia
@@ -204,7 +211,9 @@ benchmark synthesis-bench
       NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
+      PartialTypeSignatures
       PatternSynonyms
+      QuasiQuotes
       ScopedTypeVariables
       StandaloneDeriving
       TupleSections
@@ -212,7 +221,6 @@ benchmark synthesis-bench
       TypeFamilies
       TypeOperators
       ViewPatterns
-      QuasiQuotes
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
