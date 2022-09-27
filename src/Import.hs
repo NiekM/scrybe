@@ -14,6 +14,8 @@ module Import
   , maximumDef
   , mfold
   , failMaybe
+  , readerState
+  , forMap
   , mergeMap
   , mergeMaps
   , mergeFromAssocs
@@ -29,6 +31,8 @@ import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import Prettyprinter
 import Control.Monad.RWS hiding (local)
+import Control.Monad.Reader
+import Control.Monad.State
 import Lens.Micro.Platform
 import Data.Functor.Compose
 
@@ -89,6 +93,14 @@ failMaybe :: MonadFail m => Maybe a -> m a
 failMaybe = \case
   Nothing -> fail ""
   Just x -> return x
+
+readerState :: State s (Reader s a) -> Reader s a
+readerState st = do
+  (x, s) <- asks $ runState st
+  local (const s) x
+
+forMap :: (Ord k, Monad m) => Map k v -> (k -> v -> m a) -> m (Map k a)
+forMap m f = Map.fromList <$> for (Map.assocs m) \(k, v) -> (k,) <$> f k v
 
 -- TODO: rename these unionWithM, unionsWithM and fromListM
 mergeMap :: (Monad m, Ord k) => (v -> v -> m v) ->

@@ -32,7 +32,7 @@ spec = do
         let y = Map.assocs $ Map.intersectionWith (,) es ts
         let m = fromDefs x
         forM_ y \(v, (e, t)) -> describe (show (pretty v)) do
-          it "type checks" . isJust $ evalTC (check mempty e t) m
+          it "type checks" . isJust $ evalTC (check mempty e t) mkFreshState m
           it "type roundtrips" $ roundtrip t
           it "body roundtrips" $ roundtrip e
 

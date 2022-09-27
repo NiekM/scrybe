@@ -168,7 +168,7 @@ concatMap :: (a -> List b) -> List a -> List b
 concatMap f xs = concat (map f xs)
 
 length :: List a -> Nat
-length = foldl (const Succ) Zero
+length = foldl (\r x -> Succ r) Zero
 
 sum :: List Nat -> Nat
 sum = foldl plus 0

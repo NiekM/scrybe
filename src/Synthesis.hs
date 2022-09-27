@@ -5,9 +5,9 @@ module Synthesis where
 import Import
 import Language
 import qualified RIO.Map as Map
-import Control.Monad.Cont
 import Control.Monad.Heap
 import Control.Monad.State
+import Control.Monad.Reader
 import Control.Monad.RWS
 import Data.Monus.Dist
 import qualified Prettyprinter as Pretty
@@ -47,7 +47,7 @@ instance HasFreshState SynState where
 type Synth = StateT SynState (ReaderT Env Nondet)
 
 instance LiftEval Synth where
-  liftEval x = runIdentity . runReaderT x <$> view env
+  liftEval x = runIdentity . runReaderT x <$> view (env . scope)
 
 -- | Retrieve the context of a hole.
 getCtx :: Hole -> Synth HoleCtx
@@ -190,18 +190,6 @@ makeLenses ''GenSt
 
 type Gen = Reader GenSt
 
--- liftReader :: Reader s a -> State s a
--- liftReader r = gets (runReader r)
-
-readerState :: State s (Reader s a) -> Reader s a
-readerState = doCont . stateCont
-
-stateCont :: State s b -> ContT a (Reader s) b
-stateCont st = ContT \ct -> do
-  s <- ask
-  let (b, s') = runState st s
-  local (const s') $ ct b
-
 -- Instantiates a polymorphic type with fresh variables.
 refreshPoly :: Poly -> State (Fresh Free) Type
 refreshPoly (Poly as t) = do
@@ -212,8 +200,8 @@ refreshPoly (Poly as t) = do
 eta :: Type -> State (Fresh Var) (Term Goal)
 eta (Args ts u) = do
   xs <- for ts \t -> (,t) <$> getFresh
-  return . lams (fst <$> xs) . Hole
-    $ Goal u (Map.fromList $ (Var *** Mono) <$> xs)
+  return . lams (fst <$> xs) . Hole . Goal u . Map.fromList
+    $ fmap (Var *** Mono) xs
 
 -- Applies eta-expanded holes to a term.
 expand :: Term Void -> Type -> State (Fresh Var) (Term Goal, Type)
@@ -228,12 +216,6 @@ renumber x = do
   e <- forOf holes x \a -> (,a) <$> getFresh
   let m = Map.fromList $ toListOf holes e
   return (over holes fst e, m)
-
-doCont :: ContT r m (m r) -> m r
-doCont m = runContT m id
-
-forMap :: (Ord k, Monad m) => Map k v -> (k -> v -> m a) -> m (Map k a)
-forMap m f = Map.fromList <$> for (Map.assocs m) \(k, v) -> (k,) <$> f k v
 
 gen :: Gen (Space (Term Hole))
 gen = do
@@ -253,29 +235,46 @@ gen = do
           return $ Just . (y,) <$> gen
   return . Space $ catMaybes <$> xs
 
-updSpace :: (Hole -> a -> State r b) -> Space a -> Reader r (Space b)
+updSpace :: (Hole -> a -> State r (Maybe b)) -> Space a -> Reader r (Space b)
 updSpace f (Space xs) =
-  Space <$> forMap xs \h ys -> for ys \(y, sp) -> readerState do
-    z <- f h y
-    return $ (z,) <$> updSpace f sp
+  Space <$> forMap xs \h ys -> catMaybes <$> for ys \(y, sp) -> readerState do
+    f h y >>= \case
+      Nothing -> return $ return Nothing
+      Just z -> return $ Just . (z,) <$> updSpace f sp
 
 fillSpace :: Space (Term Hole) -> Reader (Term Hole) (Space (Term Hole))
 fillSpace = updSpace \h x -> do
   modify $ fill (Map.singleton h x)
-  get
+  gets Just
 
-evalSpace :: Space (Term Hole) -> Reader (Env, Result) (Space Result)
+evalSpace :: Space (Term Hole) -> Reader (Scope, Result) (Space Result)
 evalSpace = updSpace \h x -> do
   (en, y) <- get
   let r = runReader (resume (Map.singleton h x) y) en
   assign _2 r
-  return r
+  return $ Just r
 
 -- TODO: equivalence pruning
 
--- TODO: hole filling pruning
+pruneHoles :: Space Result -> Reader Result (Space Result)
+pruneHoles = updSpace \h x -> do
+  gets blocking >>= \case
+    Nothing -> gets Just
+    Just (_, h')
+      | h == h' -> do
+        put x
+        gets Just
+      | otherwise -> return Nothing
 
 -- TODO: unevaluation pruning
+
+pipeline :: Reader (GenSt, Term Hole, Scope) (Space Result)
+pipeline = do
+  es <- magnify _1 gen
+  e <- view _2
+  magnify _3 do
+    r <- eval mempty e
+    withReader (,r) $ evalSpace es >>= withReader snd . pruneHoles
 
 limit :: Int -> Space a -> Space a
 limit 0 (Space xs) = Space $ set each [] xs

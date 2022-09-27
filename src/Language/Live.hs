@@ -30,10 +30,10 @@ pattern Indet i <- (indet -> Just i) where
 
 -- Live evaluation {{{
 
-type Eval = Reader Env
+type Eval = Reader Scope
 
 runEval :: Env -> Eval a -> a
-runEval = flip runReader
+runEval = flip runReader . view scope
 
 class LiftEval m where
   liftEval :: Eval a -> m a
@@ -41,7 +41,7 @@ class LiftEval m where
 eval :: Scope -> Term Hole -> Eval Result
 eval loc = \case
   Var v -> do
-    rs <- view scope
+    rs <- ask
     maybe (error $ show v) return $ Map.lookup v (loc <> rs)
   App f x -> do
     f' <- eval loc f
@@ -135,7 +135,7 @@ fromDefs defs = foldl' fromSigs bindEnv $ signatures defs
 
     fromBind :: Env -> Binding Void -> Env
     fromBind m (MkBinding x e) =
-      let r = runReader (eval mempty (over holes absurd e)) m
+      let r = runReader (magnify scope $ eval mempty (over holes absurd e)) m
       in m & over scope (Map.insert x r)
 
     fromSigs :: Env -> Signature -> Env
@@ -231,7 +231,7 @@ fromEx = \case
 type Uneval = RWST Env () Int Maybe
 
 instance LiftEval Uneval where
-  liftEval x = ask <&> runReader x
+  liftEval x = ask <&> magnify scope (runReader x)
 
 burnFuel :: Uneval ()
 burnFuel = get >>= \case
@@ -248,97 +248,6 @@ ctrArity c = do
   case Map.lookup c cs of
     Nothing -> error $ "Unknown constructor " <> show c
     Just d -> return $ arity d
-
--- NOTE: this version of uneval just uses the Eval monad, so does not use fuel.
-uneval2 :: Result -> Ex -> Eval (Logic Constraints)
-uneval2 = curry \case
-  -- Top always succeeds.
-  (_, ExTop) -> return $ Conjunction []
-  -- Constructors are handled as opaque functions and their unevaluation is
-  -- extensional in the sense that only their arguments are compared.
-  (r@(Apps (Ctr _) _), ExFun ys) ->
-    Conjunction <$> for (Map.assocs ys) \(v, ex) -> uneval2 (App r (upcast v)) ex
-  (Apps (Ctr c) xs, ExCtr d ys)
-    | c == d, length xs == length ys
-    -> Conjunction <$> zipWithM uneval2 xs ys
-  -- Holes are simply added to the environment, with their arguments as inputs.
-  -- The arguments should be values in order to obtain correct hole
-  -- constraints.
-  (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) -> do
-    let ex' = foldr (\v -> ExFun . Map.singleton v) ex vs
-    -- traceShowM . pretty $ (h, m, ex')
-    return . Pure $ Map.singleton h $ Map.singleton m ex'
-  (App (Prj c n) r, ex) -> do
-    ar <- ctrArity c
-    uneval2 r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
-  (Apps (Scoped m (Elim xs)) (r:rs), ex) ->
-    Disjunction <$> for xs \(c, e) -> do
-      ar <- ctrArity c
-      -- traceShowM . pretty $ r
-      scrut <- uneval2 r . ExCtr c $ replicate ar ExTop
-      let prjs = [App (Prj c n) r | n <- [1..ar]]
-      e' <- eval m e
-      arm <- resume mempty (apps e' (prjs ++ rs)) >>= flip uneval2 ex
-      return $ Conjunction [scrut, arm]
-  (Scoped m (Lam a e), ExFun xs) ->
-    Conjunction <$> for (Map.assocs xs) \(v, ex) -> do
-      r <- eval (Map.insert a (upcast v) m) e
-      uneval2 r ex
-  -- Fixed points additionally add their own definition to the environment.
-  (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    uneval2 (Scoped (Map.insert f r m) e) ex
-  _ -> return $ Disjunction []
-
-type Un = RWST Env () Constraints []
-
-instance LiftEval Un where
-  liftEval x = ask <&> runReader x
-
--- NOTE: this version of uneval uses the constraints as a state that is build
--- up during unevaluation. The idea is that some conflicts are caught earlier
--- to allow for unevaluation on e.g. multiplication, although this does not
--- seem to work. It might however help with unevaluating `even' up to some
--- depth (TODO: check this).
-uneval3 :: Result -> Ex -> Un ()
-uneval3 = curry \case
-  -- Top always succeeds.
-  (_, ExTop) -> return ()
-  -- Constructors are handled as opaque functions and their unevaluation is
-  -- extensional in the sense that only their arguments are compared.
-  (r@(Apps (Ctr _) _), ExFun ys)
-    -> for_ (Map.assocs ys) \(v, ex) -> uneval3 (App r (upcast v)) ex
-  (Apps (Ctr c) xs, ExCtr d ys)
-    | c == d, length xs == length ys
-    -> zipWithM_ uneval3 xs ys
-  -- Holes are simply added to the environment, with their arguments as inputs.
-  -- The arguments should be values in order to obtain correct hole
-  -- constraints.
-  (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) -> do
-    let ex' = foldr (\v -> ExFun . Map.singleton v) ex vs
-    -- traceShowM . pretty $ (h, m, ex')
-    cs <- use id
-    let c = Map.singleton m ex'
-    case Map.alterF (\case Nothing -> Just (Just c); Just c' -> Just <$> c <?> c') h cs of
-      Nothing -> fail "Conflicting constraint"
-      Just cs' -> assign id cs'
-  (App (Prj c n) r, ex) -> do
-    ar <- ctrArity c
-    uneval3 r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
-  (Apps (Scoped m (Elim xs)) (r:rs), ex) ->
-    asum $ xs <&> \(c, e) -> do
-      ar <- ctrArity c
-      uneval3 r . ExCtr c $ replicate ar ExTop
-      let prjs = [App (Prj c n) r | n <- [1..ar]]
-      e' <- liftEval (eval m e)
-      liftEval (resume mempty (apps e' (prjs ++ rs))) >>= flip uneval3 ex
-  (Scoped m (Lam a e), ExFun xs) ->
-    for_ (Map.assocs xs) \(v, ex) -> do
-      r <- liftEval $ eval (Map.insert a (upcast v) m) e
-      uneval3 r ex
-  -- Fixed points additionally add their own definition to the environment.
-  (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
-    uneval3 (Scoped (Map.insert f r m) e) ex
-  _ -> fail "Unevaluation failed"
 
 -- Non-normalizing variant of uneval
 uneval :: Result -> Ex -> Uneval (Logic Constraints)
@@ -415,15 +324,5 @@ unevalAssert :: Scope -> Assert -> Uneval (Logic Constraints)
 unevalAssert m (MkAssert e ex) = do
   r <- liftEval $ eval m e
   uneval r $ toEx ex
-
-unevalAssert2 :: Scope -> Assert -> Eval (Logic Constraints)
-unevalAssert2 m (MkAssert e ex) = do
-  r <- eval m e
-  uneval2 r $ toEx ex
-
-unevalAssert3 :: Scope -> Assert -> Un ()
-unevalAssert3 m (MkAssert e ex) = do
-  r <- liftEval $ eval m e
-  uneval3 r $ toEx ex
 
 -- }}}
