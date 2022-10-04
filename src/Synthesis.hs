@@ -5,10 +5,10 @@ module Synthesis where
 import Import
 import Language
 import qualified RIO.Map as Map
+import qualified RIO.Set as Set
 import Control.Monad.Heap
 import Control.Monad.State
 import Control.Monad.Reader
-import Control.Monad.RWS
 import Data.Monus.Dist
 import qualified Prettyprinter as Pretty
 
@@ -61,7 +61,13 @@ instance ExpandHole Hole Synth where
     return (xs, h)
 
 liftUneval :: Int -> Uneval a -> Synth (Maybe a)
-liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
+liftUneval fuel x = ask <&> \e -> view _1 <$>
+  runRWST x (view scope e, ctrArity e) fuel
+
+ctrArity :: Env -> Ctr -> Int
+ctrArity en c = case Map.lookup c (view constructors en) of
+  Nothing -> error $ "Unknown constructor " <> show c
+  Just d -> arity d
 
 -- TODO: figure out how to deal with diverging unevaluation, such as that of
 -- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
@@ -95,7 +101,7 @@ init defs = do
   let ws = [x | Include xs <- pragmas defs, x <- toList xs]
   -- TODO: determine weights based on something
 
-  gs <- view functions <$> ask
+  gs <- asks $ view functions
   ws' <- forOf (each . _2 . each) ws refresh
 
   assign included $ ws' <&> \(v, a) ->
@@ -142,6 +148,11 @@ init defs = do
       cs <- liftUneval 1000 (for (asserts defs) (unevalAssert m)) >>= \case
         Nothing -> fail "Out of fuel"
         Just xs -> mfold . fmap mergeConstraints . dnf $ Conjunction xs
+        -- |
+        -- TODO: is this better??? doesn't seem to make a difference, but might
+        -- be more correct
+        -- |
+        -- Just xs -> mfold . filter (not . null) . fmap mergeConstraints . dnf $ Conjunction xs
       updateConstraints cs
       -- TODO: how do we deal with running out of fuel? Can we still have
       -- assertions at some nodes of the computation?

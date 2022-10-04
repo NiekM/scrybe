@@ -228,10 +228,10 @@ fromEx = \case
 
 -- Live unevaluation {{{
 
-type Uneval = RWST Env () Int Maybe
+type Uneval = RWST (Scope, Ctr -> Int) () Int Maybe
 
 instance LiftEval Uneval where
-  liftEval x = ask <&> magnify scope (runReader x)
+  liftEval x = ask <&> magnify _1 (runReader x)
 
 burnFuel :: Uneval ()
 burnFuel = get >>= \case
@@ -241,13 +241,6 @@ burnFuel = get >>= \case
 -- TODO: find some better names?
 type Constraint = Map Scope Ex
 type Constraints = Map Hole Constraint
-
-ctrArity :: MonadReader Env m => Ctr -> m Int
-ctrArity c = do
-  cs <- view $ env . constructors
-  case Map.lookup c cs of
-    Nothing -> error $ "Unknown constructor " <> show c
-    Just d -> return $ arity d
 
 -- Non-normalizing variant of uneval
 uneval :: Result -> Ex -> Uneval (Logic Constraints)
@@ -270,11 +263,11 @@ uneval = curry \case
     return . Pure $ Map.singleton h $ Map.singleton m ex'
   (App (Prj c n) r, ex) -> do
     burnFuel
-    ar <- ctrArity c
+    ar <- ($ c) <$> view _2 --ctrArity c
     uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (Apps (Scoped m (Elim xs)) (r:rs), ex) -> burnFuel >>
     Disjunction <$> for xs \(c, e) -> do
-      ar <- ctrArity c
+      ar <- ($ c) <$> view _2
       scrut <- uneval r . ExCtr c $ replicate ar ExTop
       let prjs = [App (Prj c n) r | n <- [1..ar]]
       e' <- liftEval (eval m e)

@@ -185,8 +185,21 @@ any p = foldList False \x -> or (p x)
 elem :: Nat -> List Nat -> Bool
 elem n = any (eq n)
 
+take :: Nat -> List a -> List a
+take = foldrNat (const []) (\r -> elimList [] (\x xs -> Cons x (r xs)))
+
 drop :: Nat -> List a -> List a
 drop = foldrNat id (\r -> elimList [] (\x xs -> r xs))
+
+takeWhile :: (a -> Bool) -> List a -> List a
+takeWhile p = foldList [] \x r -> case p x of
+  False -> []
+  True -> Cons x r
+
+dropWhile :: (a -> Bool) -> List a -> List a
+dropWhile p = paraList [] \x xs r -> case p x of
+  False -> Cons x xs
+  True -> r
 
 insert :: Nat -> List Nat -> List Nat
 insert n = paraList [n] \x xs r -> case leq n x of

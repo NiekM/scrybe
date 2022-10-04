@@ -1,7 +1,7 @@
 module SynthesisSpec where
 
 import Import
-import Synthesis
+import Synthesis hiding (Tree(..))
 import Test.Hspec
 import Language.Parser
 import Language.Syntax
