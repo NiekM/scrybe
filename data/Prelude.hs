@@ -125,6 +125,12 @@ elimList n c l = case l of
   Nil -> n
   Cons h t -> c h t
 
+head :: List a -> Maybe a
+head = elimList Nothing \x xs -> Just x
+
+tail :: List a -> Maybe (List a)
+tail = elimList Nothing \x xs -> Just xs
+
 foldList :: b -> (a -> b -> b) -> List a -> b
 foldList n c = fix \go l -> case l of
   Nil -> n
@@ -167,6 +173,14 @@ concat = foldList [] append
 concatMap :: (a -> List b) -> List a -> List b
 concatMap f xs = concat (map f xs)
 
+catMaybes :: List (Maybe a) -> List a
+catMaybes = foldList [] \x r -> case x of
+  Nothing -> r
+  Just y  -> Cons y r
+
+mapMaybe :: (a -> Maybe b) -> List a -> List b
+mapMaybe f xs = catMaybes (map f xs)
+
 length :: List a -> Nat
 length = foldl (\r x -> Succ r) Zero
 
@@ -185,11 +199,14 @@ any p = foldList False \x -> or (p x)
 elem :: Nat -> List Nat -> Bool
 elem n = any (eq n)
 
+lookup :: Nat -> List a -> Maybe a
+lookup = foldrNat head \r -> elimList Nothing \x xs -> r xs
+
 take :: Nat -> List a -> List a
-take = foldrNat (const []) (\r -> elimList [] (\x xs -> Cons x (r xs)))
+take = foldrNat (const []) \r -> elimList [] \x xs -> Cons x (r xs)
 
 drop :: Nat -> List a -> List a
-drop = foldrNat id (\r -> elimList [] (\x xs -> r xs))
+drop = foldrNat id \r -> elimList [] \x xs -> r xs
 
 takeWhile :: (a -> Bool) -> List a -> List a
 takeWhile p = foldList [] \x r -> case p x of
