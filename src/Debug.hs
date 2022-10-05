@@ -10,7 +10,8 @@ import Language
 import Synthesis
 import qualified RIO.Text as T
 import System.IO.Unsafe
-import Prettyprinter
+import Prettyprinter hiding (fill)
+import Control.Monad.State
 import Control.Monad.Heap
 
 fromStr :: Parse a => String -> a
@@ -53,6 +54,12 @@ uneval' r e = tryUneval (uneval r $ toEx e)
 assert' :: Assert -> Maybe (Logic Constraints)
 assert' = tryUneval . unevalAssert mempty
 
+normConstraints :: Logic Constraints -> Logic Constraints
+normConstraints cs = Disjunction $ dnf cs & mapMaybe
+  \xs -> case nubOrd (mergeConstraints xs) of
+    [] -> Nothing
+    ys -> Just . Conjunction . fmap Pure $ ys
+
 merge :: Maybe (Logic Constraints) -> Doc ann
 merge = pretty . fmap (fmap mergeConstraints . dnf)
 
@@ -63,4 +70,30 @@ read s = let file = unsafePerformIO $ readFileUtf8 s in
     Nothing -> error "Could not parse file"
 
 synth' :: String -> Doc ann
-synth' = pretty . fmap snd . best . runNondet . runSynth prelude . synth . read
+synth' s = case run defs of
+  Nothing -> "Failed"
+  Just (n, hf) -> vsep
+    [ "depth:" <+> pretty (fromIntegral n :: Int)
+    , pretty hf
+    , pretty $ relBinds defs <&> \(MkBinding x e) ->
+      MkBinding x (fill (normalizeFilling hf) e)
+    ]
+  where
+    defs = read s
+    run = best . runNondet . runSynth prelude . synth
+
+synthN :: Int -> String -> Doc ann
+synthN n s = vsep $ run defs <&> \hf -> vsep
+    [ pretty hf
+    , pretty $ relBinds defs <&> \(MkBinding x e) ->
+      MkBinding x (fill (normalizeFilling hf) e)
+    ]
+  where
+    defs = read s
+    run = fmap fst . take n . search . runNondet . runSynth prelude . synth
+
+relBinds :: Defs Unit -> [Binding Hole]
+relBinds (Defs ds) = bs' <&> uncurry MkBinding
+  where
+    bs = [ (x, e) | Binding (MkBinding x e) <- ds, isNothing (holeFree e)]
+    bs' = evalState (forOf (each . _2 . holes) bs $ const fresh) mkFreshState
