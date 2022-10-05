@@ -1,4 +1,5 @@
-{-# INCLUDE zipWith, foldNat #-}
+{-# INCLUDE zipWith, foldrNat #-}
+-- {-# INCLUDE foldrNat #-}
 -- {-# INCLUDE zipWith, plus #-}
 
 zipPlus :: List Nat -> List Nat -> List Nat
