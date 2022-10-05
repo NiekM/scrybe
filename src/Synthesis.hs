@@ -151,11 +151,6 @@ init defs = do
       cs <- liftUneval 1000 (for (asserts defs) (unevalAssert m)) >>= \case
         Nothing -> fail "Out of fuel"
         Just xs -> mfold . fmap mergeConstraints . dnf $ Conjunction xs
-        -- |
-        -- TODO: is this better??? doesn't seem to make a difference, but might
-        -- be more correct
-        -- |
-        -- Just xs -> mfold . filter (not . null) . fmap mergeConstraints . dnf $ Conjunction xs
       updateConstraints cs
       -- TODO: how do we deal with running out of fuel? Can we still have
       -- assertions at some nodes of the computation?
@@ -509,6 +504,11 @@ refinements False (HoleCtx t ctx) = do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
+        "elimMoney" | [_, _, _, l] <- hs -> do
+          let one = Map.singleton l $ Ctr "One"
+          let two = Map.singleton l $ Ctr "Two"
+          let chk = Map.singleton l $ App (Ctr "Check") u
+          modifying forbidden (<> [one, two, chk])
         _ -> return ()
       -- }}}
 

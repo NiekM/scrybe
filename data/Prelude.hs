@@ -288,3 +288,13 @@ foldTree e f = fix \go t -> case t of
 
 mapTree :: (a -> b) -> Tree a -> Tree b
 mapTree f = foldTree Leaf \l x r -> Node l (f x) r
+
+-- || Other
+
+data Money = One | Two | Check Nat
+
+elimMoney :: a -> a -> (Nat -> a) -> Money -> a
+elimMoney one two check m = case m of
+  One -> one
+  Two -> two
+  Check n -> check n
