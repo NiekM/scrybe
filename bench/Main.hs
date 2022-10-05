@@ -54,7 +54,7 @@ main = do
   let m = fromMaybe undefined $ lexParse parser pre
   let benchmarks = "data/benchmarks"
   t <- getTree benchmarks
-  t' <- for t $ mapM \(s, x) -> timeout 1000000 (return $! force (trySyn m x))
+  t' <- for t $ mapM \(s, x) -> timeout 5000000 (return $! force (trySyn m x))
     <&> \case
       Nothing -> Nothing
       Just _ -> Just (s, x)
