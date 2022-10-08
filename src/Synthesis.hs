@@ -26,13 +26,20 @@ data SynState = SynState
 
   , _varOnly     :: Set Hole
   , _scrutinized :: Set Var
+  , _multiplier  :: Map Hole Dist
   }
 
 makeLenses ''SynState
 
 emptySynState :: SynState
 emptySynState = SynState mempty (Disjunction []) mempty mkFreshState
-  mempty [] mempty [] mempty mempty
+  mempty [] mempty [] mempty mempty mempty
+
+weigh :: Hole -> Dist -> Synth ()
+weigh h d = do
+  tell d
+  m <- Map.lookup h <$> use multiplier
+  tell $ d * fromMaybe 1 m
 
 newtype Nondet a = Nondet { runNondet :: Heap Dist a }
   deriving newtype (Functor, Applicative, Monad)
@@ -117,14 +124,16 @@ init defs = do
             Nothing ->
               error $ "Included function " <> show v <> " has wrong type"
             Just th -> poly (subst th t)
-    , case v of
-        "foldTree" -> 6
-        "elimNat" -> 3
-        "foldrNat" | Just _ <- a -> 10
-        "foldList" | Just _ <- a -> 10
+    ,
+      -- case v of
+        -- "foldTree" -> 6
+        -- "elimNat" -> 3
+        -- "foldrNat" | Just _ <- a -> 10
+        -- "foldList" | Just _ <- a -> 10
         -- "foldListIndexed" -> 10
         -- "paraList" -> 10
-        _ -> 1
+        -- _ ->
+          1
     )
 
   let addBinding (MkBinding a x) y = Let a x y
@@ -297,26 +306,25 @@ limit n (Space xs) = Space $ over (each . each . _2) (limit (n - 1)) xs
 -- constructors and variables makes the benchmarks an order of
 -- magnitude slower! The weight of global variables should probably be scaled
 -- further compared to constructors and local variables.
-refinements :: Bool -> HoleCtx -> Synth (Term (Hole, HoleCtx))
-refinements True (HoleCtx t ctx) = do
-  (e', th) <- do
-    (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
-    guard . Set.notMember v =<< use scrutinized
-    hs <- for ts $ const (fresh @Hole)
-    tell $ fromIntegral $ length ts
-    let e = apps (Var v) (Hole <$> hs)
-    modifying scrutinized $ Set.insert v
-    check ctx e $ Poly [] t
-  modifying contexts (subst th <$>)
-  return $ strip e'
-refinements False (HoleCtx t ctx) = do
+refinements :: Hole -> Bool -> HoleCtx -> Synth (Term (Hole, HoleCtx))
+refinements h b (HoleCtx t ctx) = do
   (e', th) <- join $ mfold
     -- TODO: make sure that recursive functions do not loop infinitely.
     -- For local variables, introduce a hole for every argument.
+    if b then
+    [ do
+      (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
+      guard . Set.notMember v =<< use scrutinized
+      hs <- for ts $ const (fresh @Hole)
+      weigh h $ fromIntegral $ length ts
+      let e = apps (Var v) (Hole <$> hs)
+      modifying scrutinized $ Set.insert v
+      check ctx e $ Poly [] t
+    ] else
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       hs <- for ts $ const (fresh @Hole)
-      tell $ fromIntegral $ length ts
+      weigh h $ fromIntegral $ length ts
       let e = apps (Var v) (Hole <$> hs)
       check ctx e $ Poly [] t
     -- For concrete types, try the corresponding constructors.
@@ -333,7 +341,7 @@ refinements False (HoleCtx t ctx) = do
     , do
       (v, p@(Poly _ (Args ts _)), w) <- mfold =<< use included
       -- TODO: do we update the weights?
-      tell $ fromIntegral $ w + length ts
+      weigh h $ fromIntegral $ w + length ts
       hs <- for ts $ const fresh
 
       -- Equivalences {{{
@@ -396,7 +404,7 @@ refinements False (HoleCtx t ctx) = do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
-          modifying varOnly $ Set.insert l
+          modifying multiplier $ Map.insert l 3
         "foldList" | _:_:l:_ <- hs -> do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
@@ -435,6 +443,7 @@ refinements False (HoleCtx t ctx) = do
           let zero = Map.singleton l z
           let succ = Map.singleton l s
           modifying forbidden (<> [zero, succ])
+          modifying multiplier $ Map.insert l 3
         "foldrNat" | _:_:l:_ <- hs -> do
           let zero = Map.singleton l z
           let succ = Map.singleton l s
@@ -444,11 +453,13 @@ refinements False (HoleCtx t ctx) = do
           let false = Map.singleton l $ Ctr "False"
           let true = Map.singleton l $ Ctr "True"
           modifying forbidden (<> [false, true])
+          modifying multiplier $ Map.insert l 3
         "elimOrd" | [_, _, _, l] <- hs -> do
           let lt = Map.singleton l $ Ctr "LT"
           let eq = Map.singleton l $ Ctr "EQ"
           let gt = Map.singleton l $ Ctr "GT"
           modifying forbidden (<> [lt, eq, gt])
+          modifying multiplier $ Map.insert l 3
         "compareNat" | [x, y] <- hs -> do
           let zz = Map.fromList [(x, z), (y, z)]
           let zs = Map.fromList [(x, z), (y, s)]
@@ -516,8 +527,13 @@ refinements False (HoleCtx t ctx) = do
       let help = set functions $ Map.singleton v p
       local help $ check ctx e $ Poly [] t
     ]
+  let result = strip e'
+  let hs = toListOf (holes . _1) result
+  m <- fromMaybe 1 . Map.lookup h <$> use multiplier
+  modifying multiplier $ Map.mapWithKey \k d ->
+    if k `elem` hs then m * d else d
   modifying contexts (subst th <$>)
-  return $ strip e'
+  return result
 
 removeMatching :: (Ord k, Eq v) => k -> v -> Map k v -> Maybe (Map k v)
 removeMatching k v m = case Map.lookup k m of
@@ -545,7 +561,8 @@ step hf = do
   -- Find a refinement to extend the hole filling.
   var <- Set.member hole <$> use varOnly
   modifying varOnly $ Set.delete hole
-  ref <- refinements var ctx
+  ref <- refinements hole var ctx
+  -- ref <- refinements False ctx
   updateForbidden hole $ over holes (const $ Unit ()) ref
   expr <- etaExpand _2 ref
   modifying contexts (<> Map.fromList (toListOf holes expr))
@@ -566,7 +583,7 @@ step hf = do
       liftUneval 32 (resumeUneval hf' cs) >>= \case
         Nothing -> do
           -- traceM "Out of fuel"
-          tell 1
+          weigh hole 1
           step hf'
         Just xs -> do
           let disjunctions = dnf xs
@@ -575,7 +592,7 @@ step hf = do
             then do
               -- traceM $ "Too many disjunctions: "
               --   <> (fromString . show . length $ disjunctions)
-              tell 1
+              weigh hole 1
               step hf'
             else updateConstraints $ disjunctions >>= mergeConstraints
 
