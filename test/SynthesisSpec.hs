@@ -1,7 +1,7 @@
 module SynthesisSpec where
 
 import Import
-import Synthesis hiding (Tree(..))
+import Synthesis
 import Test.Hspec
 import Language.Parser
 import Language.Syntax
@@ -37,7 +37,7 @@ specTree m = \case
 spec :: Spec
 spec = do
   pre <- runIO $ readFileUtf8 "data/prelude.hs"
-  let m = fromMaybe undefined $ lexParse parser pre
+  let m = maybe undefined (fromDefs . recDefs) $ lexParse parser pre
   let benchmarks = "data/benchmarks"
   t <- runIO $ getTree benchmarks
   specTree m $ Node "benchmarks" t

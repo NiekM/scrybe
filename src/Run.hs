@@ -9,10 +9,10 @@ import Data.Tree
 import qualified RIO.Map as Map
 import System.IO
 
-syntax :: Parse a => Text -> RIO Application a
-syntax t = case lexParse parser t of
-  Nothing -> fail "Parsing failed"
-  Just y -> return y
+-- syntax :: Parse a => Text -> RIO Application a
+-- syntax t = case lexParse parser t of
+--   Nothing -> fail "Parsing failed"
+--   Just y -> return y
 
 -- climb :: (a ~ (Hole, Ref, Term Hole, Refs)) =>
 --   [Tree a] -> RIO Application [a]
@@ -31,19 +31,19 @@ syntax t = case lexParse parser t of
 --       logInfo ""
 --       (y:) <$> climb ys
 
-readFiles :: String -> String -> String ->
-  RIO Application (Env, Sketch, Ann Type ('Term Hole))
-readFiles file sketch model = do
-  m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
-  sk@(Sketch _ t _) <- syntax =<< readFileUtf8
-    ("data/examples/sketch/" <> sketch <> ".hs")
-  Sketch _ u b <- syntax =<< readFileUtf8
-    ("data/examples/model/" <> model <> ".hs")
-  case alphaEq t u of
-    Nothing -> fail "Model and sketch signature do not match."
-    Just _ -> return ()
-  (a, _, _) <- evalTC (check' mempty b t) mkFreshState m
-  return (m, sk, a)
+-- readFiles :: String -> String -> String ->
+--   RIO Application (Env, Sketch, Ann Type ('Term Hole))
+-- readFiles file sketch model = do
+--   m <- syntax =<< readFileUtf8 ("data/" <> file <> ".hs")
+--   sk@(Sketch _ t _) <- syntax =<< readFileUtf8
+--     ("data/examples/sketch/" <> sketch <> ".hs")
+--   Sketch _ u b <- syntax =<< readFileUtf8
+--     ("data/examples/model/" <> model <> ".hs")
+--   case alphaEq t u of
+--     Nothing -> fail "Model and sketch signature do not match."
+--     Just _ -> return ()
+--   (a, _, _) <- evalTC (check' mempty b t) mkFreshState m
+--   return (m, sk, a)
 
 -- interactive :: String -> String -> String -> RIO Application ()
 -- interactive file sketch model = do

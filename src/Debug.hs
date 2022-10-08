@@ -28,7 +28,7 @@ deriving via Parseable Assert   instance IsString Assert
 
 prelude :: Env
 prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
-  case lexParse parser file of
+  case lexParse (fromDefs . recDefs <$> parser) file of
     Just x -> x
     Nothing -> error "Could not parse prelude"
 

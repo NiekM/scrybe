@@ -541,7 +541,7 @@ data Import = MkImport
 
 data Pragma
   = Desc String
-  | Include (NonEmpty (Var,Maybe Poly))
+  | Include (NonEmpty (Var, Maybe Poly))
   deriving (Eq, Ord, Show)
 
 data Assert = MkAssert (Term Hole) Example
@@ -603,6 +603,16 @@ class HasEnv a where
 
 instance HasEnv Env where
   env = id
+
+recBinding :: Binding a -> Binding a
+recBinding (MkBinding x e)
+  | x `elem` freeVars e = MkBinding x $ App Fix $ Lam x e
+  | otherwise = MkBinding x e
+
+recDefs :: Defs a -> Defs a
+recDefs (Defs ds) = Defs $ ds <&> \case
+  Binding b -> Binding $ recBinding b
+  x -> x
 
 -- }}}
 

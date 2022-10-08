@@ -67,22 +67,20 @@ elimNat z s n = case n of
   Zero -> z
   Succ m -> s m
 
--- TODO: automatically introduce fixpoint for global bindings
-
 foldrNat :: a -> (a -> a) -> Nat -> a
-foldrNat z s = fix \go n -> case n of
+foldrNat z s n = case n of
   Zero -> z
-  Succ m -> s (go m)
+  Succ m -> s (foldrNat z s m)
 
 foldlNat :: (a -> a) -> a -> Nat -> a
-foldlNat s = fix \go acc n -> case n of
+foldlNat s acc n = case n of
   Zero -> acc
-  Succ m -> go (s acc) m
+  Succ m -> foldlNat s (s acc) m
 
 paraNat :: a -> (Nat -> a -> a) -> Nat -> a
-paraNat z s = fix \go n -> case n of
+paraNat z s n = case n of
   Zero -> z
-  Succ m -> s m (go m)
+  Succ m -> s m (paraNat z s m)
 
 unfoldNat :: (a -> Maybe a) -> a -> Nat
 unfoldNat f x = case f x of
@@ -132,14 +130,14 @@ tail :: List a -> Maybe (List a)
 tail = elimList Nothing \x xs -> Just xs
 
 foldList :: b -> (a -> b -> b) -> List a -> b
-foldList n c = fix \go l -> case l of
+foldList n c l = case l of
   Nil -> n
-  Cons h t -> c h (go t)
+  Cons h t -> c h (foldList n c t)
 
 paraList :: b -> (a -> List a -> b -> b) -> List a -> b
-paraList n c = fix \go l -> case l of
+paraList n c l = case l of
   Nil -> n
-  Cons h t -> c h t (go t)
+  Cons h t -> c h t (paraList n c t)
 
 mapList :: (a -> b) -> List a -> List b
 mapList f = foldList [] (\x -> Cons (f x))
@@ -148,9 +146,9 @@ foldr :: (a -> b -> b) -> b -> List a -> b
 foldr f e = foldList e f
 
 foldl :: (b -> a -> b) -> b -> List a -> b
-foldl f = fix \go acc l -> case l of
+foldl f acc l = case l of
   Nil -> acc
-  Cons h t -> go (f acc h) t
+  Cons h t -> foldl f (f acc h) t
 
 map :: (a -> b) -> List a -> List b
 map = mapList
@@ -258,7 +256,12 @@ uncurry :: (a -> b -> c) -> Pair a b -> c
 uncurry f p = case p of Pair x y -> f x y
 
 zip :: List a -> List b -> List (Pair a b)
-zip = foldList (const []) \x r -> elimList [] \y ys -> Cons (Pair x y) (r ys)
+-- zip = foldList (const []) \x r -> elimList [] \y ys -> Cons (Pair x y) (r ys)
+zip xs ys = case xs of
+  Nil -> Nil
+  Cons z zs -> case ys of
+    Nil -> Nil
+    Cons w ws -> Cons (Pair z w) (zip zs ws)
 
 zipWith :: (a -> b -> c) -> List a -> List b -> List c
 zipWith f xs ys = mapList (uncurry f) (zip xs ys)
@@ -282,9 +285,9 @@ elimTree e f t = case t of
   Node l x r -> f l x r
 
 foldTree :: b -> (b -> a -> b -> b) -> Tree a -> b
-foldTree e f = fix \go t -> case t of
+foldTree e f t = case t of
   Leaf -> e
-  Node l x r -> f (go l) x (go r)
+  Node l x r -> f (foldTree e f l) x (foldTree e f r)
 
 mapTree :: (a -> b) -> Tree a -> Tree b
 mapTree f = foldTree Leaf \l x r -> Node l (f x) r
