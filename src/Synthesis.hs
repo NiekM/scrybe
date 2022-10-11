@@ -21,7 +21,7 @@ data SynState = SynState
   , _freshSt     :: FreshState
   , _mainScope   :: Scope
   , _examples    :: [Assert]
-  , _included    :: [(Var, Poly, Int)]
+  , _included    :: [(Var, Poly)]
   , _forbidden   :: [Map Hole (Term Unit)]
 
   , _varOnly     :: Set Hole
@@ -41,6 +41,8 @@ weigh h d = do
   m <- Map.lookup h <$> use multiplier
   tell $ d * fromMaybe 1 m
 
+-- TODO: maybe Prob is better than Dist, since we might want to use fractions
+-- for multipliers.
 newtype Nondet a = Nondet { runNondet :: Heap Dist a }
   deriving newtype (Functor, Applicative, Monad)
   deriving newtype (Alternative, MonadPlus, MonadWriter Dist)
@@ -124,16 +126,6 @@ init defs = do
             Nothing ->
               error $ "Included function " <> show v <> " has wrong type"
             Just th -> poly (subst th t)
-    ,
-      -- case v of
-        -- "foldTree" -> 6
-        -- "elimNat" -> 3
-        -- "foldrNat" | Just _ <- a -> 10
-        -- "foldList" | Just _ <- a -> 10
-        -- "foldListIndexed" -> 10
-        -- "paraList" -> 10
-        -- _ ->
-          1
     )
 
   let addBinding (MkBinding a x) y = Let a x y
@@ -316,7 +308,6 @@ refinements h b (HoleCtx t ctx) = do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       guard . Set.notMember v =<< use scrutinized
       hs <- for ts $ const (fresh @Hole)
-      weigh h $ fromIntegral $ length ts
       let e = apps (Var v) (Hole <$> hs)
       modifying scrutinized $ Set.insert v
       check ctx e $ Poly [] t
@@ -324,7 +315,6 @@ refinements h b (HoleCtx t ctx) = do
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       hs <- for ts $ const (fresh @Hole)
-      weigh h $ fromIntegral $ length ts
       let e = apps (Var v) (Hole <$> hs)
       check ctx e $ Poly [] t
     -- For concrete types, try the corresponding constructors.
@@ -339,9 +329,7 @@ refinements h b (HoleCtx t ctx) = do
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.
     , do
-      (v, p@(Poly _ (Args ts _)), w) <- mfold =<< use included
-      -- TODO: do we update the weights?
-      weigh h $ fromIntegral $ w + length ts
+      (v, p@(Poly _ (Args ts _))) <- mfold =<< use included
       hs <- for ts $ const fresh
 
       -- Equivalences {{{
@@ -524,11 +512,16 @@ refinements h b (HoleCtx t ctx) = do
       -- }}}
 
       let e = apps (Var v) (Hole <$> hs)
+
+      -- NOTE: this local is only needed to add the function with instantiated
+      -- types to the environment to check. It would be more efficient to not
+      -- call check, but simply do the type checking manually.
       let help = set functions $ Map.singleton v p
       local help $ check ctx e $ Poly [] t
     ]
   let result = strip e'
   let hs = toListOf (holes . _1) result
+  weigh h $ fromIntegral $ length hs
   m <- fromMaybe 1 . Map.lookup h <$> use multiplier
   modifying multiplier $ Map.mapWithKey \k d ->
     if k `elem` hs then m * d else d

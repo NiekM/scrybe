@@ -91,9 +91,3 @@ synthN n s = vsep $ run defs <&> \hf -> vsep
   where
     defs = read s
     run = fmap fst . take n . search . runNondet . runSynth prelude . synth
-
-relBinds :: Defs Unit -> [Binding Hole]
-relBinds (Defs ds) = bs' <&> uncurry MkBinding
-  where
-    bs = [ (x, e) | Binding (MkBinding x e) <- ds, isNothing (holeFree e)]
-    bs' = evalState (forOf (each . _2 . holes) bs $ const fresh) mkFreshState

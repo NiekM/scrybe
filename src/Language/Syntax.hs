@@ -15,6 +15,7 @@ import Data.Foldable
 import qualified RIO.List as List
 import qualified RIO.NonEmpty as NonEmpty
 import Prettyprinter hiding (list)
+import Control.Monad.State
 import qualified Prettyprinter as P
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
@@ -613,6 +614,12 @@ recDefs :: Defs a -> Defs a
 recDefs (Defs ds) = Defs $ ds <&> \case
   Binding b -> Binding $ recBinding b
   x -> x
+
+relBinds :: Defs Unit -> [Binding Hole]
+relBinds (Defs ds) = bs' <&> uncurry MkBinding
+  where
+    bs = [ (x, e) | Binding (MkBinding x e) <- ds, isNothing (holeFree e)]
+    bs' = evalState (forOf (each . _2 . holes) bs $ const fresh) mkFreshState
 
 -- }}}
 
