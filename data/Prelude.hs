@@ -185,6 +185,11 @@ length = foldl (\r x -> Succ r) Zero
 sum :: List Nat -> Nat
 sum = foldl plus 0
 
+sumrec :: List Nat -> Nat
+sumrec xs = case xs of
+  Nil -> Zero
+  Cons y ys -> plus y (sumrec ys)
+
 product :: List Nat -> Nat
 product = foldl mult 1
 
