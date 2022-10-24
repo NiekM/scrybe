@@ -114,6 +114,11 @@ leq n m = elimOrd True True False (compareNat n m)
 max :: Nat -> Nat -> Nat
 max n m = elimBool n m (leq n m)
 
+double :: Nat -> Nat
+double n = case n of
+  Zero -> Zero
+  Succ m -> Succ (Succ (double m))
+
 -- || Lists
 
 data List a = Nil | Cons a (List a)
@@ -260,16 +265,29 @@ curry f x y = f (Pair x y)
 uncurry :: (a -> b -> c) -> Pair a b -> c
 uncurry f p = case p of Pair x y -> f x y
 
-zip :: List a -> List b -> List (Pair a b)
+-- zip :: List a -> List b -> List (Pair a b)
 -- zip = foldList (const []) \x r -> elimList [] \y ys -> Cons (Pair x y) (r ys)
+
+zip :: List a -> List b -> List (Pair a b)
 zip xs ys = case xs of
   Nil -> Nil
   Cons z zs -> case ys of
     Nil -> Nil
     Cons w ws -> Cons (Pair z w) (zip zs ws)
 
+interleave :: List a -> List a -> List a
+interleave xs ys = case xs of
+  Nil -> ys
+  Cons z zs -> Cons z (interleave ys zs)
+
 zipWith :: (a -> b -> c) -> List a -> List b -> List c
 zipWith f xs ys = mapList (uncurry f) (zip xs ys)
+
+unfoldList :: (b -> Maybe (Pair a b)) -> b -> List a
+unfoldList f x = case f x of
+  Nothing -> Nil
+  Just y -> case y of
+    Pair a r -> Cons a (unfoldList f r)
 
 -- || Coproducts
 
