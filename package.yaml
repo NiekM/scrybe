@@ -16,7 +16,6 @@ description: Please see the README on Github at
 
 dependencies:
 - base >= 4.11 && < 10
-# - criterion
 - containers
 - megaparsec
 - microlens-platform
