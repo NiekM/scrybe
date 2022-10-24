@@ -1,8 +1,9 @@
 -- {-# INCLUDE foldList :: List Nat -> (Nat -> List Nat -> List Nat) -> List Nat -> List Nat #-}
 {-# INCLUDE elimList, elimBool, eq #-}
+{-# INCLUDE foldr #-}
 
 compress :: List Nat -> List Nat
-compress = foldList _ _
+compress = foldList _ (\x r -> _)
 -- compress = _
 
 assert compress [] <== []

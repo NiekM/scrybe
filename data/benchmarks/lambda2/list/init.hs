@@ -1,5 +1,8 @@
-{-# INCLUDE foldList, elimList, elimMaybe #-}
+-- {-# INCLUDE foldr, elimList, elimMaybe #-}
 -- {-# INCLUDE reverse, elimList #-}
+-- {-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE map, filter, foldr, elimList #-}
+{-# INCLUDE elimMaybe #-}
 
 init :: List a -> Maybe (List a)
 init = _

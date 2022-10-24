@@ -1,4 +1,4 @@
-{-# INCLUDE foldList #-}
+{-# INCLUDE unfoldList, elimList #-}
 
 map :: (a -> b) -> List a -> List b
 map = _

@@ -1,4 +1,7 @@
-{-# INCLUDE foldList #-}
+{-# INCLUDE foldr #-}
+-- {-# INCLUDE map, filter, foldl, foldr, elimList #-}
+-- {-# INCLUDE map, filter, foldl, foldr #-}
+-- {-# INCLUDE filter, foldl, foldr #-}
 
 cartesian :: List (List a) -> List (List a)
 cartesian = _

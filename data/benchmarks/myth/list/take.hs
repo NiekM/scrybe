@@ -1,4 +1,5 @@
-{-# INCLUDE foldList :: (c -> b) -> (a -> (c -> b) -> c -> b) -> List a -> c -> b #-}
+-- {-# INCLUDE foldList :: (c -> b) -> (a -> (c -> b) -> c -> b) -> List a -> c -> b #-}
+{-# INCLUDE foldr :: (a -> (c -> b) -> c -> b) -> (c -> b) -> List a -> c -> b #-}
 {-# INCLUDE elimNat #-}
 
 take :: Nat -> List a -> List a

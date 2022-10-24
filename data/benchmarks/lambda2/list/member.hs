@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, eq, elimBool #-}
+{-# INCLUDE foldr, eq, elimBool #-}
 -- {-# INCLUDE foldList, eq, or #-}
 -- {-# INCLUDE any, eq #-}
 

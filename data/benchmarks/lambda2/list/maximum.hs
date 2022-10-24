@@ -1,5 +1,5 @@
-{-# INCLUDE foldList, leq, elimBool #-}
--- {-# INCLUDE foldList, max #-}
+{-# INCLUDE foldr, leq, elimBool #-}
+-- {-# INCLUDE foldr, max #-}
 
 maximum :: List Nat -> Nat
 maximum = _

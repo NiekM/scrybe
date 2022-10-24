@@ -1,4 +1,4 @@
-{-# INCLUDE map #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
 
 incs :: List (List Nat) -> List (List Nat)
 incs = _

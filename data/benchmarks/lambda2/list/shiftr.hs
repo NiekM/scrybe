@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, elimList #-}
+{-# INCLUDE foldr, elimList #-}
 
 shiftr :: List a -> List a
 shiftr = _

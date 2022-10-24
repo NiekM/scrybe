@@ -1,4 +1,5 @@
-{-# INCLUDE map, plus #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE plus #-}
 
 add :: Nat -> List Nat -> List Nat
 add = _

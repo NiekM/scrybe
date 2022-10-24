@@ -1,4 +1,5 @@
-{-# INCLUDE filter, elimBool, even #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE elimBool, even #-}
 
 evens :: List Nat -> List Nat
 evens = _

@@ -1,4 +1,6 @@
-{-# INCLUDE map, foldList, plus #-}
+-- {-# INCLUDE map, foldr, plus #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE plus #-}
 
 sums :: List (List Nat) -> List Nat
 sums = _

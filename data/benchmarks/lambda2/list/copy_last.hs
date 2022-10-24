@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, elimList #-}
+{-# INCLUDE foldr, elimList #-}
 
 copy_last :: List a -> List a
 copy_last = _
