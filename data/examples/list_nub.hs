@@ -1,10 +1,12 @@
 -- {-# INCLUDE foldList, elem, elimBool #-}
-{-# INCLUDE foldList, not, eq, filter #-}
+-- {-# INCLUDE foldList, not, eq, filter #-}
+
+{-# INCLUDE foldr, elem, elimBool #-}
 
 nub :: List Nat -> List Nat
 -- nub = foldList [] \x r -> elimBool (Cons x r) _ (elem x r)
 -- nub = foldList [] \x r -> Cons x (filter (\y -> not _) r)
-nub = _
+nub = foldr (\x r -> _) _
 
 assert nub [] <== []
 assert nub [1] <== [1]

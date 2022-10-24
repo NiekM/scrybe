@@ -4,7 +4,7 @@
 -- {-# INCLUDE paraList, elimOrd, compareNat #-}
 
 insert :: Nat -> List Nat -> List Nat
-insert = _
+insert n = paraList [n] (\x xs r -> _)
 
 assert insert 0 []     <== [0]
 assert insert 1 []     <== [1]
