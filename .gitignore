@@ -4,3 +4,4 @@
 tarballs/
 .stack-work/
 dist
+dist-*
