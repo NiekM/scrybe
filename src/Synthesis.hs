@@ -294,12 +294,17 @@ limit n (Space xs) = Space $ over (each . each . _2) (limit (n - 1)) xs
 
 -- }}}
 
+elimWeight, schemeWeight, recVarWeight :: Dist
+elimWeight = 4
+schemeWeight = 4
+recVarWeight = 2
+
 -- TODO: should we have a weight here? Giving a weight of 1 to
 -- constructors and variables makes the benchmarks an order of
 -- magnitude slower! The weight of global variables should probably be scaled
 -- further compared to constructors and local variables.
-refinements :: Hole -> Bool -> HoleCtx -> Synth (Term (Hole, HoleCtx))
-refinements h b (HoleCtx t ctx) = do
+refinements :: (Scope, Hole) -> Bool -> HoleCtx -> Synth (Term (Hole, HoleCtx))
+refinements (m, h) b (HoleCtx t ctx) = do
   (e', th) <- join $ mfold
     -- TODO: make sure that recursive functions do not loop infinitely.
     -- For local variables, introduce a hole for every argument.
@@ -307,6 +312,7 @@ refinements h b (HoleCtx t ctx) = do
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       guard . Set.notMember v =<< use scrutinized
+      when (recVar v m) $ weigh h recVarWeight
       hs <- for ts $ const (fresh @Hole)
       let e = apps (Var v) (Hole <$> hs)
       modifying scrutinized $ Set.insert v
@@ -314,6 +320,7 @@ refinements h b (HoleCtx t ctx) = do
     ] else
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
+      when (recVar v m) $ weigh h recVarWeight
       hs <- for ts $ const (fresh @Hole)
       let e = apps (Var v) (Hole <$> hs)
       check ctx e $ Poly [] t
@@ -331,6 +338,7 @@ refinements h b (HoleCtx t ctx) = do
     , do
       (v, p@(Poly _ (Args ts _))) <- mfold =<< use included
       hs <- for ts $ const fresh
+      -- weigh h 1
 
       -- Equivalences {{{
       let u = Hole $ Unit ()
@@ -372,16 +380,22 @@ refinements h b (HoleCtx t ctx) = do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
+        "sumrec" | [l] <- hs -> do
+          let nil = Map.singleton l n
+          let cons = Map.singleton l c
+          modifying forbidden (<> [nil, cons])
         "elimTree" | [_, _, l] <- hs -> do
           let leaf = Map.singleton l $ Ctr "Leaf"
           let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
           modifying forbidden (<> [leaf, node])
           modifying varOnly $ Set.insert l
+          weigh h elimWeight
         "foldTree" | [_, _, l] <- hs -> do
           let leaf = Map.singleton l $ Ctr "Leaf"
           let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
           modifying forbidden (<> [leaf, node])
           modifying varOnly $ Set.insert l
+          weigh h schemeWeight
         "mapTree" | [_, l] <- hs -> do
           let leaf = Map.singleton l $ Ctr "Leaf"
           let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
@@ -392,32 +406,40 @@ refinements h b (HoleCtx t ctx) = do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
-          modifying multiplier $ Map.insert l 3
+          modifying multiplier $ Map.insert l 2
+          weigh h elimWeight
         "foldList" | _:_:l:_ <- hs -> do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
           modifying varOnly $ Set.insert l
+          weigh h schemeWeight
         "foldr" | _:_:l:_ <- hs -> do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
           modifying varOnly $ Set.insert l
+          weigh h schemeWeight
         "foldl" | _:_:l:_ <- hs -> do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
           modifying varOnly $ Set.insert l
+          weigh h schemeWeight
         "paraList" | [_, _, l] <- hs -> do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           modifying forbidden (<> [nil, cons])
           modifying varOnly $ Set.insert l
+          weigh h schemeWeight
         "map" | [_, l] <- hs -> do
           let nil = Map.singleton l n
           let cons = Map.singleton l c
           let fuse = Map.singleton l $ apps (Var "map") (replicate 2 u)
           modifying forbidden (<> [nil, cons, fuse])
+        "concat" | [l] <- hs -> do
+          let nil = Map.singleton l n
+          modifying forbidden (<> [nil])
         "concatMap" | [f, l] <- hs -> do
           let empty = Map.singleton f n
           let nil = Map.singleton l n
@@ -426,28 +448,33 @@ refinements h b (HoleCtx t ctx) = do
         "zipWith" | [_, l, r] <- hs -> do
           let left = Map.singleton l c
           let right = Map.singleton r c
-          modifying forbidden (<> [left, right])
+          let fuse = Map.singleton l $ apps (Var "zipWith") (replicate 3 u)
+          modifying forbidden (<> [left, right, fuse])
         "elimNat" | [_, _, l] <- hs -> do
           let zero = Map.singleton l z
           let succ = Map.singleton l s
           modifying forbidden (<> [zero, succ])
-          modifying multiplier $ Map.insert l 3
+          modifying multiplier $ Map.insert l 2
+          weigh h elimWeight
         "foldrNat" | _:_:l:_ <- hs -> do
           let zero = Map.singleton l z
           let succ = Map.singleton l s
           modifying forbidden (<> [zero, succ])
           modifying varOnly $ Set.insert l
+          weigh h schemeWeight
         "elimBool" | [_, _, l] <- hs -> do
           let false = Map.singleton l $ Ctr "False"
           let true = Map.singleton l $ Ctr "True"
           modifying forbidden (<> [false, true])
-          modifying multiplier $ Map.insert l 3
+          modifying multiplier $ Map.insert l 2
+          weigh h elimWeight
         "elimOrd" | [_, _, _, l] <- hs -> do
           let lt = Map.singleton l $ Ctr "LT"
           let eq = Map.singleton l $ Ctr "EQ"
           let gt = Map.singleton l $ Ctr "GT"
           modifying forbidden (<> [lt, eq, gt])
-          modifying multiplier $ Map.insert l 3
+          modifying multiplier $ Map.insert l 2
+          weigh h elimWeight
         "compareNat" | [x, y] <- hs -> do
           let zz = Map.fromList [(x, z), (y, z)]
           let zs = Map.fromList [(x, z), (y, s)]
@@ -508,6 +535,7 @@ refinements h b (HoleCtx t ctx) = do
           let two = Map.singleton l $ Ctr "Two"
           let chk = Map.singleton l $ App (Ctr "Check") u
           modifying forbidden (<> [one, two, chk])
+          weigh h elimWeight
         _ -> return ()
       -- }}}
 
@@ -522,9 +550,12 @@ refinements h b (HoleCtx t ctx) = do
   let result = strip e'
   let hs = toListOf (holes . _1) result
   weigh h $ fromIntegral $ length hs
-  m <- fromMaybe 1 . Map.lookup h <$> use multiplier
+  let ts = toListOf (holes . _2 . goalType) result
+  weigh h $ fromIntegral $
+    sum (map (\u -> max 0 (typeSize u - typeSize t)) ts)
+  n <- fromMaybe 1 . Map.lookup h <$> use multiplier
   modifying multiplier $ Map.mapWithKey \k d ->
-    if k `elem` hs then m * d else d
+    if k `elem` hs then n * d else d
   modifying contexts (subst th <$>)
   return result
 
@@ -542,19 +573,28 @@ updateForbidden h e = do
   guard $ not . any null $ fs'
   assign forbidden fs'
 
+unevalFuel :: Int
+unevalFuel = 32
+
+-- TODO: find a good amount of disjunctions allowed.
+maxDisjunctions :: Int
+maxDisjunctions = 32
+
 step :: Map Hole (Term Hole) -> Synth ()
 step hf = do
   -- traceShowM . pretty =<< use fillings
   -- Pick one blocking hole and remove it.
   s <- use mainScope
   rs <- use examples >>= mapM (liftEval . evalAssert s)
+  -- TODO: if there are multiple blocking holes, we could compute hole
+  -- dependencies and base the order on that
   (m, hole) <- mfold $ foldr (<|>) Nothing (blocking . fst <$> rs)
   ctx <- mfold . Map.lookup hole =<< use contexts
   modifying contexts $ Map.delete hole
   -- Find a refinement to extend the hole filling.
   var <- Set.member hole <$> use varOnly
   modifying varOnly $ Set.delete hole
-  ref <- refinements hole var ctx
+  ref <- refinements (m, hole) var ctx
   -- ref <- refinements False ctx
   updateForbidden hole $ over holes (const $ Unit ()) ref
   expr <- etaExpand _2 ref
@@ -565,29 +605,44 @@ step hf = do
     >>= assign mainScope
   modifying fillings (<> new)
   let hf' = hf <> new
-  recHole <- recursive <$> liftEval do
+  -- NOTE: we eagerly fill in scrutinized holes. Does that make sense? In some
+  -- cases it might be better to unevaluate, so that we know better how to fill
+  -- the scrutinized hole... TODO: find some good examples
+  scrHole <- scrutinizedHole <$> liftEval do
     eval m (over holes fst expr) >>= resume new
-  case recHole of
+  -- traceShowM (hole, pretty (over holes (const (Unit ())) expr))
+  case scrHole of
     Just _h -> do
+      -- traceM "Recursive"
       -- traceShowM $ "Recursive position: " <> show _h
       step hf'
     Nothing -> do
       cs <- use constraints
-      liftUneval 32 (resumeUneval hf' cs) >>= \case
-        Nothing -> do
-          -- traceM "Out of fuel"
-          weigh hole 1
+
+      let noUneval = False
+      ctxs <- use contexts
+      if noUneval && not (Map.null ctxs)
+        then do
           step hf'
-        Just xs -> do
-          let disjunctions = dnf xs
-          -- TODO: find a good amount of disjunctions allowed.
-          if length disjunctions > 32
-            then do
-              -- traceM $ "Too many disjunctions: "
-              --   <> (fromString . show . length $ disjunctions)
+        else do
+
+          liftUneval unevalFuel (resumeUneval hf' cs) >>= \case
+            Nothing -> do
+              -- traceM "Out of fuel"
               weigh hole 1
               step hf'
-            else updateConstraints $ disjunctions >>= mergeConstraints
+            Just xs -> do
+              let disjunctions = dnf xs
+              if length disjunctions > maxDisjunctions
+                then do
+                  -- NOTE: weights are added a bit too late. we add a weight
+                  -- for e.g. using a recursively defined variable, but that's
+                  -- because unevaluation takes so long, which will happen
+                  -- anyways, because the weight only affects hole fillings
+                  -- after that!
+                  weigh hole 4
+                  step hf'
+                else updateConstraints $ disjunctions >>= mergeConstraints
 
 -- TODO: add a testsuite testing the equivalence of different kinds and
 -- combinations of (un)evaluation resumptions.

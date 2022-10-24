@@ -105,13 +105,18 @@ blocking = cataExpr \case
   App f x -> f <|> x
   _ -> Nothing
 
-recursive :: Result -> Maybe Hole
-recursive = \case
-  App (Scoped m (Elim _)) r
+scrutinizedHole :: Result -> Maybe Hole
+scrutinizedHole = \case
+  App (Scoped _ (Elim _)) r
     | Just (_, h) <- blocking r
-    , h `elem` mapMaybe (fmap snd . blocking) (toList m) -> Just h
-  App f x -> recursive f <|> recursive x
+    -> Just h
+  App f x -> scrutinizedHole f <|> scrutinizedHole x
   _ -> Nothing
+
+recVar :: Var -> Scope -> Bool
+recVar x m = case Map.lookup x m of
+  Just (Scoped n _) -> Map.member x n
+  _ -> False
 
 -- }}}
 

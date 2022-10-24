@@ -431,6 +431,11 @@ etaExpand ctx = cataExprM \case
 
 -- }}}
 
+typeSize :: Type -> Int
+typeSize = cataExpr \case
+  App f a -> 1 + f + a
+  _ -> 0
+
 -- }}}
 
 -- Polytypes {{{
