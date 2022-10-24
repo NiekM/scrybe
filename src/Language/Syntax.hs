@@ -772,7 +772,7 @@ instance Pretty Pragma where
     where fancy x = "{-#" <+> x <+> "#-}"
 
 instance Pretty Assert where
-  pretty (MkAssert a ex) = "assert" <+> pretty a <+> pretty ex
+  pretty (MkAssert a ex) = "assert" <+> pretty a <+> "<==" <+> pretty ex
 
 instance Pretty Sketch where
   pretty (Sketch x s b) = vsep

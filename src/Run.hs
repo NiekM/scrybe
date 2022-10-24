@@ -2,10 +2,11 @@ module Run where
 
 import Types
 import Import
-import Language
+import Language hiding (indent)
 import Synthesis
 import Prettyprinter hiding (fill)
 import Control.Monad.Heap
+import qualified RIO.Map as Map
 
 parseDefs :: Parse a => String -> RIO Application (Defs a)
 parseDefs s = do
@@ -22,13 +23,24 @@ run = do
   problem <- parseDefs $ view optInput opts
   logInfo "Parsed problem..."
   logInfo ""
-  logInfo . display $ pretty problem
+  logInfo . display . indent 2 $ pretty problem
   logInfo ""
-  case best . runNondet . runSynth prelude $ synth problem of
-    Nothing -> logInfo "Synthesis failed"
-    Just (n, hf) -> do
-      logInfo "Synthesis succeeded!"
+  let syn = best . runNondet . runSynth prelude $ synth problem
+  let t = view optTimeout opts * 1000
+  res <- timeout t $ syn `seq` return syn
+  case res of
+    Nothing -> logInfo "Synthesis failed: Timeout"
+    Just Nothing -> logInfo "Synthesis failed: Exhaustive"
+    Just (Just (n, hf)) -> do
+      logInfo "Solution found!"
+      logInfo ""
       logInfo . display $ "Depth:" <+> pretty (fromIntegral n :: Int)
-      logInfo . display $ "Hole fillings:" <+> pretty hf
-      logInfo . display $ "Result:" <+> pretty (relBinds problem <&>
-        \(MkBinding x e) -> MkBinding x (fill (normalizeFilling hf) e))
+      logInfo ""
+      logInfo . display . nest 2 . vsep $ "Hole fillings:" :
+        (Map.assocs hf <&> \(h, e) -> pretty h <> ":" <+> pretty e)
+      logInfo ""
+      logInfo . display . nest 2 . vsep $ "Result:" :
+        ( relBinds problem <&> \(MkBinding x e) ->
+          pretty $ MkBinding x (fill (normalizeFilling hf) e)
+        )
+      logInfo ""

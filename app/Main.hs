@@ -25,14 +25,21 @@ runApp run = do
         )
       <*> strArgument
         ( metavar "INPUT"
-        <> help "Target to synthesize"
+        <> help "Program to synthesize"
         )
       <*> strOption
         ( long "prelude"
         <> short 'p'
         <> metavar "PRELUDE"
         <> value "data/prelude.hs"
-        <> help "Target to synthesize"
+        <> help "Prelude to use"
+        )
+      <*> option auto
+        ( long "timeout"
+        <> short 't'
+        <> metavar "TIMEOUT"
+        <> value 1000
+        <> help "Maximum time spent in ms"
         )
     )
     empty

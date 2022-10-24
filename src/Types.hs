@@ -10,6 +10,7 @@ data Options = Options
   { _optVerbose :: !Bool
   , _optInput :: !String
   , _optPrelude :: !String
+  , _optTimeout :: !Int
   }
 
 makeLenses ''Options

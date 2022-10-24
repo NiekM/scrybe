@@ -68,26 +68,3 @@ read s = let file = unsafePerformIO $ readFileUtf8 s in
   case lexParse parser file of
     Just x -> x
     Nothing -> error "Could not parse file"
-
-synth' :: String -> Doc ann
-synth' s = case run defs of
-  Nothing -> "Failed"
-  Just (n, hf) -> vsep
-    [ "depth:" <+> pretty (fromIntegral n :: Int)
-    , pretty hf
-    , pretty $ relBinds defs <&> \(MkBinding x e) ->
-      MkBinding x (fill (normalizeFilling hf) e)
-    ]
-  where
-    defs = read s
-    run = best . runNondet . runSynth prelude . synth
-
-synthN :: Int -> String -> Doc ann
-synthN n s = vsep $ run defs <&> \hf -> vsep
-    [ pretty hf
-    , pretty $ relBinds defs <&> \(MkBinding x e) ->
-      MkBinding x (fill (normalizeFilling hf) e)
-    ]
-  where
-    defs = read s
-    run = fmap fst . take n . search . runNondet . runSynth prelude . synth
