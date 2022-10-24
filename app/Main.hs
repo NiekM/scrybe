@@ -17,14 +17,26 @@ runApp run = do
     $(simpleVersion Paths_synthesis.version)
     "Header for command line arguments"
     "Program description, also for command line arguments"
-    (Options
-       <$> switch ( long "verbose"
-                 <> short 'v'
-                 <> help "Verbose output?"
-                  )
+    ( Options
+      <$> switch
+        ( long "verbose"
+        <> short 'v'
+        <> help "Verbose output?"
+        )
+      <*> strArgument
+        ( metavar "INPUT"
+        <> help "Target to synthesize"
+        )
+      <*> strOption
+        ( long "prelude"
+        <> short 'p'
+        <> metavar "PRELUDE"
+        <> value "data/prelude.hs"
+        <> help "Target to synthesize"
+        )
     )
     empty
-  lo <- logOptionsHandle stderr (optionsVerbose options)
+  lo <- logOptionsHandle stderr (view optVerbose options)
   pc <- mkDefaultProcessContext
   withLogFunc lo $ \lf ->
     let app = Application

@@ -1,13 +1,21 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Types where
 
-import RIO
+import Import
 import RIO.Process
 
 -- | Command line arguments
-newtype Options = Options { optionsVerbose :: Bool }
--- data Options = Options
---   { optionsVerbose :: !Bool
---   }
+data Options = Options
+  { _optVerbose :: !Bool
+  , _optInput :: !String
+  , _optPrelude :: !String
+  }
+
+makeLenses ''Options
+
+class HasOptions env where
+  optionsL :: Lens' env Options
 
 data Application = Application
   { appLogFunc :: !LogFunc
@@ -21,3 +29,6 @@ instance HasProcessContext Application where
   processContextL = lens appProcessContext \x y -> x { appProcessContext = y }
 instance MonadFail (RIO Application) where
   fail s = logInfo (displayShow s) >> exitFailure
+
+instance HasOptions Application where
+  optionsL = lens appOptions \x y -> x { appOptions = y }
