@@ -626,6 +626,11 @@ relBinds (Defs ds) = bs' <&> uncurry MkBinding
     bs = [ (x, e) | Binding (MkBinding x e) <- ds, isNothing (holeFree e)]
     bs' = evalState (forOf (each . _2 . holes) bs $ const fresh) mkFreshState
 
+ctrArity :: Env -> Ctr -> Int
+ctrArity en c = case Map.lookup c (view constructors en) of
+  Nothing -> error $ "Unknown constructor " <> show c
+  Just d -> arity d
+
 -- }}}
 
 -- Pretty printing {{{

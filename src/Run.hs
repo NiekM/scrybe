@@ -1,8 +1,8 @@
 module Run where
 
-import Types
+import Options
 import Import
-import Language hiding (indent)
+import Language hiding (indent, Assert)
 import Synthesis
 import Prettyprinter hiding (fill)
 import Control.Monad.Heap
@@ -15,13 +15,12 @@ parseDefs s = do
     Nothing -> fail "Could not parse file."
     Just y -> return y
 
-run :: RIO Application ()
-run = do
-  opts <- view optionsL
+synthesize :: String -> Options -> RIO Application ()
+synthesize file opts = do
   prelude <- fromDefs . recDefs <$> parseDefs (view optPrelude opts)
-  logInfo "Parsed prelude..."
-  problem <- parseDefs $ view optInput opts
-  logInfo "Parsed problem..."
+  logDebug "Parsed prelude..."
+  problem <- parseDefs file
+  logDebug "Parsed problem..."
   logInfo ""
   logInfo . display . indent 2 $ pretty problem
   logInfo ""
@@ -44,3 +43,41 @@ run = do
           pretty $ MkBinding x (fill (normalizeFilling hf) e)
         )
       logInfo ""
+
+live :: String -> Options -> RIO Application ()
+live input opts = do
+  prelude <- fromDefs . recDefs <$> parseDefs (view optPrelude opts)
+  logDebug "Parsed prelude..."
+  case lexParse parser $ fromString input of
+    Nothing -> fail "Parse failed"
+    Just expr -> case runTC (infer mempty expr) mkFreshState prelude of
+      Nothing -> fail "Type check failed"
+      Just ((x, _), _) -> do
+        let r = runEval prelude (eval mempty $ over holes fst $ strip x)
+        logInfo . display . pretty $ r
+
+assert :: String -> Options -> RIO Application ()
+assert input opts = do
+  prelude <- fromDefs . recDefs <$> parseDefs (view optPrelude opts)
+  logDebug "Parsed prelude..."
+  case lexParse parser $ fromString input of
+    Nothing -> fail "Parse failed"
+    Just (MkAssert e ex) -> case runTC (infer mempty e) mkFreshState prelude of
+      Nothing -> fail "Type check failed"
+      Just ((x, _), _) -> do
+        let r = runEval prelude (eval mempty $ over holes fst $ strip x)
+        case runUneval prelude 1000 $ uneval r $ toEx ex of
+          Nothing -> fail "Uneval failed"
+          Just cs -> do
+            let ds = dnf cs
+            -- case mergeConstraints <$> ds of
+            logInfo . display . pretty $ mergeConstraints <$> ds
+
+run :: RIO Application ()
+run = do
+  opts <- view optionsL
+  cmd <- view commandL
+  case cmd of
+    Synth f -> synthesize f opts
+    Live e -> live e opts
+    Assert a -> assert a opts

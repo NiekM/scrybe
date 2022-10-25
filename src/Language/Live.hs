@@ -212,6 +212,9 @@ type Uneval = RWST (Scope, Ctr -> Int) () Int Maybe
 instance LiftEval Uneval where
   liftEval x = ask <&> magnify _1 (runReader x)
 
+runUneval :: Env -> Int -> Uneval a -> Maybe a
+runUneval x i un = view _1 <$> runRWST un (view scope x, ctrArity x) i
+
 burnFuel :: Uneval ()
 burnFuel = get >>= \case
   n | n <= 0    -> fail "Out of fuel"

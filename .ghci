@@ -1,3 +1,4 @@
+import RIO
 import Text.Megaparsec
 import qualified RIO.Set as Set
 import qualified RIO.Map as Map
@@ -5,3 +6,7 @@ import Control.Monad.Heap
 
 :seti -w -XOverloadedStrings
 :set +s +t
+
+:def synthesize \f -> return $ unwords [":main synth" , f]
+:def live       \e -> return $ unwords [":main live"  , show e]
+:def assert     \a -> return $ unwords [":main assert", show a]

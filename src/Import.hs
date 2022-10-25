@@ -24,7 +24,7 @@ module Import
   , distr
   ) where
 
-import RIO hiding (local)
+import RIO hiding (local, assert)
 import RIO.Text (unpack)
 import RIO.List
 import qualified RIO.Map as Map

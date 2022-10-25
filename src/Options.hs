@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Types where
+module Options where
 
 import Import
 import RIO.Process
@@ -8,7 +8,6 @@ import RIO.Process
 -- | Command line arguments
 data Options = Options
   { _optVerbose :: !Bool
-  , _optInput :: !String
   , _optPrelude :: !String
   , _optTimeout :: !Int
   }
@@ -18,10 +17,19 @@ makeLenses ''Options
 class HasOptions env where
   optionsL :: Lens' env Options
 
+data Command
+  = Synth String
+  | Live String
+  | Assert String
+
+class HasCommand env where
+  commandL :: Lens' env Command
+
 data Application = Application
   { appLogFunc :: !LogFunc
   , appProcessContext :: !ProcessContext
   , appOptions :: !Options
+  , appCommand :: !Command
   }
 
 instance HasLogFunc Application where
@@ -33,3 +41,5 @@ instance MonadFail (RIO Application) where
 
 instance HasOptions Application where
   optionsL = lens appOptions \x y -> x { appOptions = y }
+instance HasCommand Application where
+  commandL = lens appCommand \x y -> x { appCommand = y }

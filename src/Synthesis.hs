@@ -76,11 +76,6 @@ liftUneval :: Int -> Uneval a -> Synth (Maybe a)
 liftUneval fuel x = ask <&> \e -> view _1 <$>
   runRWST x (view scope e, ctrArity e) fuel
 
-ctrArity :: Env -> Ctr -> Int
-ctrArity en c = case Map.lookup c (view constructors en) of
-  Nothing -> error $ "Unknown constructor " <> show c
-  Just d -> arity d
-
 -- TODO: figure out how to deal with diverging unevaluation, such as that of
 -- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
 -- example 'mult 0 {0} <= 0'.

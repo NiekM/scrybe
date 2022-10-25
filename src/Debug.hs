@@ -2,17 +2,12 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- NOTE: this module is purely for debugging purposes and to load some
--- functions and instances into ghci
+-- instances into ghci
 module Debug where
 
 import Import
 import Language
-import Synthesis
 import qualified RIO.Text as T
-import System.IO.Unsafe
-import Prettyprinter hiding (fill)
-import Control.Monad.State
-import Control.Monad.Heap
 
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
@@ -25,46 +20,3 @@ instance Parse a => IsString (Parseable a) where
 deriving via Parseable (Expr l) instance Parse (Expr l) => IsString (Expr l)
 deriving via Parseable Poly     instance IsString Poly
 deriving via Parseable Assert   instance IsString Assert
-
-prelude :: Env
-prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
-  case lexParse (fromDefs . recDefs <$> parser) file of
-    Just x -> x
-    Nothing -> error "Could not parse prelude"
-
-instance Pretty HoleCtx where
-  pretty (HoleCtx t xs) = parens ("::" <+> pretty t) <> "," <+> pretty xs
-
-instance Pretty SynState where
-  pretty st = align $ vsep
-    [ "Contexts:", pretty $ view contexts st
-    , "", "Constraints:", pretty $ view constraints st
-    , "", "Fillings:", pretty $ view fillings st
-    ]
-
-tryUneval :: Uneval a -> Maybe a
-tryUneval x = view _1 <$> runRWST x (view scope prelude, ctrArity prelude) 1000
-
-eval' :: Term Hole -> Result
-eval' e = runReader (eval mempty e) (view scope prelude)
-
-uneval' :: Result -> Example -> Maybe (Logic Constraints)
-uneval' r e = tryUneval (uneval r $ toEx e)
-
-assert' :: Assert -> Maybe (Logic Constraints)
-assert' = tryUneval . unevalAssert mempty
-
-normConstraints :: Logic Constraints -> Logic Constraints
-normConstraints cs = Disjunction $ dnf cs & mapMaybe
-  \xs -> case nubOrd (mergeConstraints xs) of
-    [] -> Nothing
-    ys -> Just . Conjunction . fmap Pure $ ys
-
-merge :: Maybe (Logic Constraints) -> Doc ann
-merge = pretty . fmap (fmap mergeConstraints . dnf)
-
-read :: Parse a => String -> Defs a
-read s = let file = unsafePerformIO $ readFileUtf8 s in
-  case lexParse parser file of
-    Just x -> x
-    Nothing -> error "Could not parse file"
