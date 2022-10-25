@@ -147,7 +147,7 @@ init defs = do
       cs <- liftUneval 1000 (for (asserts defs) (unevalAssert m)) >>= \case
         Nothing -> fail "Out of fuel"
         Just xs -> mfold . fmap mergeConstraints . dnf $ Conjunction xs
-      updateConstraints cs
+      updateConstraints $ toList cs
       -- TODO: how do we deal with running out of fuel? Can we still have
       -- assertions at some nodes of the computation?
       return y
@@ -613,14 +613,12 @@ step hf = do
       step hf'
     Nothing -> do
       cs <- use constraints
-
       let noUneval = False
       ctxs <- use contexts
       if noUneval && not (Map.null ctxs)
         then do
           step hf'
         else do
-
           liftUneval unevalFuel (resumeUneval hf' cs) >>= \case
             Nothing -> do
               -- traceM "Out of fuel"
@@ -637,7 +635,7 @@ step hf = do
                   -- after that!
                   weigh hole 4
                   step hf'
-                else updateConstraints $ disjunctions >>= mergeConstraints
+                else updateConstraints $ disjunctions >>= toList . mergeConstraints
 
 -- TODO: add a testsuite testing the equivalence of different kinds and
 -- combinations of (un)evaluation resumptions.

@@ -67,11 +67,29 @@ assert input opts = do
       Just ((x, _), _) -> do
         let r = runEval prelude (eval mempty $ over holes fst $ strip x)
         case runUneval prelude 1000 $ uneval r $ toEx ex of
-          Nothing -> fail "Uneval failed"
-          Just cs -> do
-            let ds = dnf cs
-            -- case mergeConstraints <$> ds of
-            logInfo . display . pretty $ mergeConstraints <$> ds
+          Nothing -> fail "Uneval failed: out of fuel"
+          Just cs -> case mergeConstraints <$> dnf cs of
+            [] -> logInfo "Uneval failed: structural constraint conflict"
+            ds -> case catMaybes ds of
+              []  -> logInfo "Uneval failed: inconsistent constraint"
+              [d] -> logInfo . display $ displayWorld d
+              ds' -> do
+                logInfo $ display (length ds) <> " possible worlds"
+                for_ ds' $ logInfo . display . displayWorld
+
+displayWorld :: Constraints -> Doc ann
+displayWorld w = ("-" <+>) . align . vsep $ Map.assocs w <&> \(h, c) ->
+  pretty h <> ":" <+> displayConstraint c
+
+displayConstraint :: Constraint -> Doc ann
+displayConstraint c = align . vsep $ Map.assocs c <&> \(k, ex) ->
+  if null k then displayEx ex else pretty k <+> "|-" <+> displayEx ex
+
+displayEx :: Ex -> Doc ann
+displayEx ex = case fromEx ex of
+  []  -> "T"
+  [e] -> pretty e
+  es  -> align . vsep $ pretty <$> es
 
 run :: RIO Application ()
 run = do

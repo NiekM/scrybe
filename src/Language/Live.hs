@@ -286,8 +286,8 @@ resumeUneval hf = fmap join . traverse \old -> do
       -- filled holes.
       return . fmap (Map.\\ hf) . Conjunction $ Pure upd : new
 
-mergeConstraints :: [Constraints] -> [Constraints]
-mergeConstraints = toList . mergeMaps (<?>)
+mergeConstraints :: [Constraints] -> Maybe Constraints
+mergeConstraints = mergeMaps (<?>)
 
 dnf :: Logic a -> [[a]]
 dnf = \case
