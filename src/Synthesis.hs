@@ -73,8 +73,7 @@ instance ExpandHole Hole Synth where
     return (xs, h)
 
 liftUneval :: Int -> Uneval a -> Synth (Maybe a)
-liftUneval fuel x = ask <&> \e -> view _1 <$>
-  runRWST x (view scope e, ctrArity e) fuel
+liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
 
 -- TODO: figure out how to deal with diverging unevaluation, such as that of
 -- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
@@ -106,7 +105,6 @@ liftUneval fuel x = ask <&> \e -> view _1 <$>
 init :: Defs Unit -> Synth (Term Hole)
 init defs = do
   let ws = [x | Include xs <- pragmas defs, x <- toList xs]
-  -- TODO: determine weights based on something
 
   gs <- asks $ view functions
   ws' <- forOf (each . _2 . each) ws refresh
@@ -123,7 +121,7 @@ init defs = do
             Just th -> poly (subst th t)
     )
 
-  let addBinding (MkBinding a x) y = Let a x y
+  let addBinding (MkBinding a x) = Let a x
   (x, _, ctx) <-
     infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
   let ss = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
@@ -137,7 +135,6 @@ init defs = do
         . subst th
   assign contexts ctx'
   y <- etaExpand id (strip x)
-  -- traceShowM . pretty $ y
   liftEval (eval mempty y) >>= \case
     Scoped m (Hole h) -> do
       assign mainScope m
@@ -301,8 +298,6 @@ recVarWeight = 2
 refinements :: (Scope, Hole) -> Bool -> HoleCtx -> Synth (Term (Hole, HoleCtx))
 refinements (m, h) b (HoleCtx t ctx) = do
   (e', th) <- join $ mfold
-    -- TODO: make sure that recursive functions do not loop infinitely.
-    -- For local variables, introduce a hole for every argument.
     if b then
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
@@ -577,7 +572,6 @@ maxDisjunctions = 32
 
 step :: Map Hole (Term Hole) -> Synth ()
 step hf = do
-  -- traceShowM . pretty =<< use fillings
   -- Pick one blocking hole and remove it.
   s <- use mainScope
   rs <- use examples >>= mapM (liftEval . evalAssert s)
@@ -590,7 +584,6 @@ step hf = do
   var <- Set.member hole <$> use varOnly
   modifying varOnly $ Set.delete hole
   ref <- refinements (m, hole) var ctx
-  -- ref <- refinements False ctx
   updateForbidden hole $ over holes (const $ Unit ()) ref
   expr <- etaExpand _2 ref
   modifying contexts (<> Map.fromList (toListOf holes expr))
@@ -605,11 +598,8 @@ step hf = do
   -- the scrutinized hole... TODO: find some good examples
   scrHole <- scrutinizedHole <$> liftEval do
     eval m (over holes fst expr) >>= resume new
-  -- traceShowM (hole, pretty (over holes (const (Unit ())) expr))
   case scrHole of
     Just _h -> do
-      -- traceM "Recursive"
-      -- traceShowM $ "Recursive position: " <> show _h
       step hf'
     Nothing -> do
       cs <- use constraints
@@ -621,7 +611,6 @@ step hf = do
         else do
           liftUneval unevalFuel (resumeUneval hf' cs) >>= \case
             Nothing -> do
-              -- traceM "Out of fuel"
               weigh hole 1
               step hf'
             Just xs -> do

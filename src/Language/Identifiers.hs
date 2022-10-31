@@ -1,8 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses, RankNTypes #-}
 module Language.Identifiers
   ( Hole(..), Free(..), Var(..), Ctr(..)
-  , VarId(), varId
-  , FreeId(), freeId
   , FreshHole, FreshFree, FreshVar
   , MonadFresh(..)
   , HasFreshState(..), FreshState()

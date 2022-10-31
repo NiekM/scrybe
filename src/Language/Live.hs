@@ -4,7 +4,6 @@ module Language.Live where
 import Import
 import Language.Syntax
 import qualified RIO.Map as Map
-import Data.SBV hiding (Logic)
 
 {-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
 pattern Scoped :: Scope -> Indet -> Expr' r 'Det
@@ -144,7 +143,7 @@ class PartialSemigroup a => PartialMonoid a where
   pempty :: a
 
 instance (Ord k, PartialSemigroup v) => PartialSemigroup (Map k v) where
-  (<?>) = mergeMap (<?>)
+  (<?>) = unionWithM (<?>)
 
 instance (Ord k, PartialSemigroup v) => PartialMonoid (Map k v) where
   pempty = Map.empty
@@ -208,13 +207,13 @@ fromEx = \case
 
 -- Live unevaluation {{{
 
-type Uneval = RWST (Scope, Ctr -> Int) () Int Maybe
+type Uneval = RWST Env () Int Maybe
 
 instance LiftEval Uneval where
-  liftEval x = ask <&> magnify _1 (runReader x)
+  liftEval x = ask <&> magnify scope (runReader x)
 
 runUneval :: Env -> Int -> Uneval a -> Maybe a
-runUneval x i un = view _1 <$> runRWST un (view scope x, ctrArity x) i
+runUneval x i un = view _1 <$> runRWST un x i
 
 burnFuel :: Uneval ()
 burnFuel = get >>= \case
@@ -225,23 +224,8 @@ burnFuel = get >>= \case
 type Constraint = Map Scope Ex
 type Constraints = Map Hole Constraint
 
--- TODO: this is a bounded lattice along with a way to capture a
--- (Scope, Hole, Ex) triple
-class BoundedLattice a where
-  top, bot :: a
-  top = conj []
-  bot = disj []
-  and, or :: a -> a -> a
-  and x y = conj [x,y]
-  or x y = disj [x,y]
-  conj, disj :: [a] -> a
-
 class UnevalConstraint a where
   constr :: Scope -> Hole -> Ex -> a
-
-instance BoundedLattice (Logic a) where
-  conj = Conjunction
-  disj = Disjunction
 
 instance Applicative f => UnevalConstraint (f Constraints) where
   constr m h ex = pure $ Map.singleton h $ Map.singleton m ex
@@ -269,16 +253,16 @@ uneval = curry \case
     return $ constr m h ex'
   (App (Prj c n) r, ex) -> do
     burnFuel
-    ar <- ($ c) <$> view _2 --ctrArity c
+    ar <- ask <&> flip ctrArity c --ctrArity c  --($ c) <$> view _2 --ctrArity c
     uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (Apps (Scoped m (Elim xs)) (r:rs), ex) -> burnFuel >>
     disj <$> for xs \(c, e) -> do
-      ar <- ($ c) <$> view _2
+      ar <- ask <&> flip ctrArity c -- ($ c) <$> view _2
       scrut <- uneval r . ExCtr c $ replicate ar ExTop
       let prjs = [App (Prj c n) r | n <- [1..ar]]
       e' <- liftEval (eval m e)
       arm <- liftEval (resume mempty (apps e' (prjs ++ rs))) >>= flip uneval ex
-      return $ conj [scrut, arm]
+      return $ scrut `and` arm
   (Scoped m (Lam a e), ExFun xs) ->
     conj <$> for (Map.assocs xs) \(v, ex) -> do
       r <- liftEval $ eval (Map.insert a (upcast v) m) e
@@ -299,7 +283,7 @@ resumeUneval :: Map Hole (Term Hole) -> Logic Constraints ->
 resumeUneval hf = fmap join . traverse \old -> do
   -- Update the old constraints by resuming their local scopes and then
   -- merging them.
-  foo <- mapM (mergeFromAssocs (<?>)) <$> for old \c ->
+  foo <- mapM (fromListM (<?>)) <$> for old \c ->
     forOf (each . _1) (Map.assocs c) $ traverseOf each (liftEval . resume hf)
   case foo of
     Nothing -> return $ Disjunction []
@@ -311,7 +295,7 @@ resumeUneval hf = fmap join . traverse \old -> do
       return . fmap (Map.\\ hf) . Conjunction $ Pure upd : new
 
 mergeConstraints :: [Constraints] -> Maybe Constraints
-mergeConstraints = mergeMaps (<?>)
+mergeConstraints = unionsWithM (<?>)
 
 dnf :: Logic a -> [[a]]
 dnf = \case

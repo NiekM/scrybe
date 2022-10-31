@@ -32,7 +32,7 @@ prelude = let file = unsafePerformIO $ readFileUtf8 "data/prelude.hs" in
     Nothing -> error "Could not parse prelude"
 
 tryUneval :: Uneval a -> Maybe a
-tryUneval x = view _1 <$> runRWST x (view scope prelude, ctrArity prelude) 1000
+tryUneval x = view _1 <$> runRWST x prelude 1000
 
 uneval' :: Result -> Example -> Maybe (Logic Constraints)
 uneval' r e = tryUneval (uneval r $ toEx e)
@@ -70,6 +70,6 @@ sAss (MkAssert e ex) = do
   let hm' = Map.fromListWith Set.union hm
   hms <- Map.unions . concat <$> for (Map.assocs hm') \(h, ms) -> do
     for (zip [0 :: Int ..] $ Set.toList ms) \(i, m) -> do
-      x <- free @Word64 ("h_" ++ show (pretty h) ++ '.' : show i)
+      x <- free ("h_" ++ show (pretty h) ++ '.' : show i)
       return $ Map.singleton (h, m) x
   sCstr hms c
