@@ -67,7 +67,7 @@ assert input opts = do
       Just ((x, _), _) -> do
         let r = runEval prelude (eval mempty $ over holes fst $ strip x)
         case runUneval prelude 1000 $ uneval r $ toEx ex of
-          Nothing -> fail "Uneval failed: out of fuel"
+          Nothing -> fail "Out of fuel"
           Just cs -> case mergeConstraints <$> dnf cs of
             [] -> logInfo "Uneval failed: structural constraint conflict"
             ds -> case catMaybes ds of

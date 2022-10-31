@@ -4,6 +4,7 @@ module Language.Live where
 import Import
 import Language.Syntax
 import qualified RIO.Map as Map
+import Data.SBV hiding (Logic)
 
 {-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
 pattern Scoped :: Scope -> Indet -> Expr' r 'Det
@@ -224,45 +225,68 @@ burnFuel = get >>= \case
 type Constraint = Map Scope Ex
 type Constraints = Map Hole Constraint
 
+-- TODO: this is a bounded lattice along with a way to capture a
+-- (Scope, Hole, Ex) triple
+class BoundedLattice a where
+  top, bot :: a
+  top = conj []
+  bot = disj []
+  and, or :: a -> a -> a
+  and x y = conj [x,y]
+  or x y = disj [x,y]
+  conj, disj :: [a] -> a
+
+class UnevalConstraint a where
+  constr :: Scope -> Hole -> Ex -> a
+
+instance BoundedLattice (Logic a) where
+  conj = Conjunction
+  disj = Disjunction
+
+instance Applicative f => UnevalConstraint (f Constraints) where
+  constr m h ex = pure $ Map.singleton h $ Map.singleton m ex
+
+type UnCstr a = (BoundedLattice a, UnevalConstraint a)
+
 -- Non-normalizing variant of uneval
-uneval :: Result -> Ex -> Uneval (Logic Constraints)
+uneval :: UnCstr a => Result -> Ex -> Uneval a
 uneval = curry \case
   -- Top always succeeds.
-  (_, ExTop) -> return $ Conjunction []
+  (_, ExTop) -> return top
   -- Constructors are handled as opaque functions and their unevaluation is
   -- extensional in the sense that only their arguments are compared.
   (r@(Apps (Ctr _) _), ExFun ys)
-    -> Conjunction <$> for (Map.assocs ys) \(v, ex) ->
+    -> conj <$> for (Map.assocs ys) \(v, ex) ->
       uneval (App r (upcast v)) ex
   (Apps (Ctr c) xs, ExCtr d ys)
     | c == d, length xs == length ys
-    -> Conjunction <$> zipWithM uneval xs ys
+    -> conj <$> zipWithM uneval xs ys
   -- Holes are simply added to the environment, with their arguments as inputs.
   -- The arguments should be values in order to obtain correct hole
   -- constraints.
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) -> do
     let ex' = foldr (\v -> ExFun . Map.singleton v) ex vs
-    return . Pure $ Map.singleton h $ Map.singleton m ex'
+    return $ constr m h ex'
   (App (Prj c n) r, ex) -> do
     burnFuel
     ar <- ($ c) <$> view _2 --ctrArity c
     uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (Apps (Scoped m (Elim xs)) (r:rs), ex) -> burnFuel >>
-    Disjunction <$> for xs \(c, e) -> do
+    disj <$> for xs \(c, e) -> do
       ar <- ($ c) <$> view _2
       scrut <- uneval r . ExCtr c $ replicate ar ExTop
       let prjs = [App (Prj c n) r | n <- [1..ar]]
       e' <- liftEval (eval m e)
       arm <- liftEval (resume mempty (apps e' (prjs ++ rs))) >>= flip uneval ex
-      return $ Conjunction [scrut, arm]
+      return $ conj [scrut, arm]
   (Scoped m (Lam a e), ExFun xs) ->
-    Conjunction <$> for (Map.assocs xs) \(v, ex) -> do
+    conj <$> for (Map.assocs xs) \(v, ex) -> do
       r <- liftEval $ eval (Map.insert a (upcast v) m) e
       uneval r ex
   -- Fixed points additionally add their own definition to the environment.
   (r@(App Fix (Scoped m (Lam f (Indet e)))), ex) ->
     uneval (Scoped (Map.insert f r m) e) ex
-  _ -> return $ Disjunction []
+  _ -> return bot
 
 resumeLive :: Map Hole (Term Hole) -> Term Hole -> Constraint ->
   Uneval (Logic Constraints)
@@ -299,5 +323,11 @@ unevalAssert :: Scope -> Assert -> Uneval (Logic Constraints)
 unevalAssert m (MkAssert e ex) = do
   r <- liftEval $ eval m e
   uneval r $ toEx ex
+
+-- TODO: use [] or NonEmpty?
+type Compact = [(Scope, [(Hole, [Ex])])]
+
+instance Applicative f => UnevalConstraint (f Compact) where
+  constr m h e = pure [(m, [(h, [e])])]
 
 -- }}}

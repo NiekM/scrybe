@@ -80,6 +80,7 @@ library
     , mtl
     , prettyprinter
     , rio >=0.1.12.0
+    , sbv
     , template-haskell
   default-language: Haskell2010
 
@@ -129,6 +130,7 @@ executable synthesis-exe
     , optparse-simple
     , prettyprinter
     , rio >=0.1.12.0
+    , sbv
     , synthesis
     , template-haskell
   default-language: Haskell2010
@@ -182,6 +184,7 @@ test-suite synthesis-test
     , mtl
     , prettyprinter
     , rio >=0.1.12.0
+    , sbv
     , synthesis
     , template-haskell
   default-language: Haskell2010
@@ -233,6 +236,7 @@ benchmark synthesis-bench
     , mtl
     , prettyprinter
     , rio >=0.1.12.0
+    , sbv
     , synthesis
     , template-haskell
   default-language: Haskell2010

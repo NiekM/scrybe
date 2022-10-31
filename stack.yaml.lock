@@ -7,13 +7,13 @@ packages:
 - completed:
     hackage: monus-weighted-search-0.1.0.0@sha256:7a0a5b36544067d774fce8d267eb0b23eb76ce46b6ca3e4446a78617765450c6,5012
     pantry-tree:
-      size: 1542
       sha256: 2e60df574c3e65085ec503c2c3c229dec40ccebee184394f4165c5576fa1e08c
+      size: 1542
   original:
     hackage: monus-weighted-search-0.1.0.0
 snapshots:
 - completed:
-    size: 590100
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/28.yaml
-    sha256: 428ec8d5ce932190d3cbe266b9eb3c175cd81e984babf876b64019e2cbe4ea68
-  original: lts-18.28
+    sha256: deca5d235f498c2216605522633fbee795993dcca1d94c4c6db9023fe8a1775b
+    size: 644486
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2022/10/25.yaml
+  original: nightly-2022-10-25

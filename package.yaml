@@ -18,6 +18,7 @@ dependencies:
 - base >= 4.11 && < 10
 - containers
 - megaparsec
+- sbv
 - microlens-platform
 - monus-weighted-search
 - mtl

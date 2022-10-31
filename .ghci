@@ -3,6 +3,7 @@ import Text.Megaparsec
 import qualified RIO.Set as Set
 import qualified RIO.Map as Map
 import Control.Monad.Heap
+import Data.SBV
 
 :seti -w -XOverloadedStrings
 -- :set +s +t
