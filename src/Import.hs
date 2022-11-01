@@ -1,5 +1,3 @@
-{-# LANGUAGE PolyKinds #-}
-
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Import
@@ -7,6 +5,9 @@ module Import
   , module Control.Monad.RWS
   , module Lens.Micro.Platform
   , module Data.Functor.Compose
+  , module Utils.BoundedLattice
+  , module Utils.Map
+  , module Utils.PartialSemigroup
   , Pretty(..)
   , Logic(..)
   , BoundedLattice(..)
@@ -15,8 +16,6 @@ module Import
   , mfold
   , failMaybe
   , readerState
-  , forMap
-  , unionWithM, unionsWithM, fromListM
   , distr
   ) where
 
@@ -30,6 +29,9 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Lens.Micro.Platform
 import Data.Functor.Compose
+import Utils.BoundedLattice
+import Utils.Map
+import Utils.PartialSemigroup
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case
@@ -49,45 +51,11 @@ instance Pretty a => Pretty (Set a) where
 instance Display (Doc ann) where
   textDisplay = fromString . show
 
-data Logic a
-  = Pure a
-  | Conjunction [Logic a]
-  | Disjunction [Logic a]
-  deriving (Eq, Ord, Show, Read)
-  deriving (Functor, Foldable, Traversable)
-
--- TODO: check that these instances make sense
-instance Applicative Logic where
-  pure = Pure
-  Pure f <*> x = f <$> x
-  Conjunction fs <*> x = Conjunction $ fs <&> (<*> x)
-  Disjunction fs <*> x = Disjunction $ fs <&> (<*> x)
-
-instance Monad Logic where
-  Pure x >>= f = f x
-  Conjunction xs >>= f = Conjunction $ xs <&> (>>= f)
-  Disjunction xs >>= f = Disjunction $ xs <&> (>>= f)
-
 instance Pretty a => Pretty (Logic a) where
   pretty = \case
     Pure a -> pretty a
     Conjunction xs -> "/\\" <+> align (pretty xs)
     Disjunction xs -> "\\/" <+> align (pretty xs)
-
--- TODO: this is a bounded lattice along with a way to capture a
--- (Scope, Hole, Ex) triple
-class BoundedLattice a where
-  top, bot :: a
-  top = conj []
-  bot = disj []
-  and, or :: a -> a -> a
-  and x y = conj [x,y]
-  or x y = disj [x,y]
-  conj, disj :: [a] -> a
-
-instance BoundedLattice (Logic a) where
-  conj = Conjunction
-  disj = Disjunction
 
 unsnoc :: NonEmpty a -> ([a], a)
 unsnoc (x :| []) = ([], x)
@@ -108,25 +76,6 @@ readerState :: State s (Reader s a) -> Reader s a
 readerState st = do
   (x, s) <- asks $ runState st
   local (const s) x
-
-forMap :: (Ord k, Monad m) => Map k v -> (k -> v -> m a) -> m (Map k a)
-forMap m f = Map.fromList <$> for (Map.assocs m) \(k, v) -> (k,) <$> f k v
-
--- TODO: rename these unionWithM, unionsWithM and fromListM
-unionWithM :: (Monad m, Ord k) => (v -> v -> m v) ->
-  Map k v -> Map k v -> m (Map k v)
-unionWithM f x y = sequence $ Map.unionWith
-  (\a b -> join $ liftM2 f a b)
-  (return <$> x)
-  (return <$> y)
-
-unionsWithM :: (Monad m, Foldable f, Ord k) => (v -> v -> m v) ->
-  f (Map k v) -> m (Map k v)
-unionsWithM f = foldl' (\x y -> x >>= unionWithM f y) $ return mempty
-
-fromListM :: (Monad m, Foldable f, Functor f, Ord k) =>
-  (v -> v -> m v) -> f (k, v) -> m (Map k v)
-fromListM f = unionsWithM f . fmap (uncurry Map.singleton)
 
 distr :: MonadPlus m => Int -> Int -> m [Int]
 distr _ k | k <= 0 = mzero

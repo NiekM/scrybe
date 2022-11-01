@@ -37,6 +37,9 @@ library
       Options
       Run
       Synthesis
+      Utils.BoundedLattice
+      Utils.Map
+      Utils.PartialSemigroup
   other-modules:
       Paths_synthesis
   hs-source-dirs:

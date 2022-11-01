@@ -50,9 +50,9 @@ live input opts = do
   logDebug "Parsed prelude..."
   case lexParse parser $ fromString input of
     Nothing -> fail "Parse failed"
-    Just expr -> case runTC (infer mempty expr) mkFreshState prelude of
+    Just expr -> case evalInfer (infer mempty expr) 0 prelude of
       Nothing -> fail "Type check failed"
-      Just ((x, _), _) -> do
+      Just (x, _) -> do
         let r = runEval prelude (eval mempty $ over holes fst $ strip x)
         logInfo . display . pretty $ r
 
@@ -62,9 +62,9 @@ assert input opts = do
   logDebug "Parsed prelude..."
   case lexParse parser $ fromString input of
     Nothing -> fail "Parse failed"
-    Just (MkAssert e ex) -> case runTC (infer mempty e) mkFreshState prelude of
+    Just (MkAssert e ex) -> case evalInfer (infer mempty e) 0 prelude of
       Nothing -> fail "Type check failed"
-      Just ((x, _), _) -> do
+      Just (x, _) -> do
         let r = runEval prelude (eval mempty $ over holes fst $ strip x)
         case runUneval prelude 1000 $ uneval r $ toEx ex of
           Nothing -> fail "Out of fuel"

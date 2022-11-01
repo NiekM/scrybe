@@ -1,0 +1,37 @@
+module Utils.BoundedLattice where
+
+import RIO hiding (and, or)
+
+class BoundedLattice a where
+  top, bot :: a
+  top = conj []
+  bot = disj []
+  and, or :: a -> a -> a
+  and x y = conj [x,y]
+  or x y = disj [x,y]
+  conj, disj :: [a] -> a
+  conj = foldl' and top
+  disj = foldl' or bot
+
+data Logic a
+  = Pure a
+  | Conjunction [Logic a]
+  | Disjunction [Logic a]
+  deriving (Eq, Ord, Show, Read)
+  deriving (Functor, Foldable, Traversable)
+
+-- TODO: check that these instances make sense
+instance Applicative Logic where
+  pure = Pure
+  Pure f <*> x = f <$> x
+  Conjunction fs <*> x = Conjunction $ fs <&> (<*> x)
+  Disjunction fs <*> x = Disjunction $ fs <&> (<*> x)
+
+instance Monad Logic where
+  Pure x >>= f = f x
+  Conjunction xs >>= f = Conjunction $ xs <&> (>>= f)
+  Disjunction xs >>= f = Disjunction $ xs <&> (>>= f)
+
+instance BoundedLattice (Logic a) where
+  conj = Conjunction
+  disj = Disjunction

@@ -12,154 +12,6 @@ import Control.Monad.Reader
 import Data.Monus.Dist
 import qualified Prettyprinter as Pretty
 
--- TODO: maybe we also want to keep track of a list of possible refinements
--- e.g. [Term Unit]
-data SynState = SynState
-  { _contexts    :: Map Hole HoleCtx
-  , _constraints :: Logic Constraints
-  , _fillings    :: Map Hole (Term Hole)
-  , _freshSt     :: FreshState
-  , _mainScope   :: Scope
-  , _examples    :: [Assert]
-  , _included    :: [(Var, Poly)]
-  , _forbidden   :: [Map Hole (Term Unit)]
-
-  , _varOnly     :: Set Hole
-  , _scrutinized :: Set Var
-  , _multiplier  :: Map Hole Dist
-  }
-
-makeLenses ''SynState
-
-emptySynState :: SynState
-emptySynState = SynState mempty (Disjunction []) mempty mkFreshState
-  mempty [] mempty [] mempty mempty mempty
-
-weigh :: Hole -> Dist -> Synth ()
-weigh h d = do
-  tell d
-  m <- Map.lookup h <$> use multiplier
-  tell $ d * fromMaybe 1 m
-
--- TODO: maybe Prob is better than Dist, since we might want to use fractions
--- for multipliers.
-newtype Nondet a = Nondet { runNondet :: Heap Dist a }
-  deriving newtype (Functor, Applicative, Monad)
-  deriving newtype (Alternative, MonadPlus, MonadWriter Dist)
-
-instance MonadFail Nondet where
-  fail _ = mzero
-
-runSynth :: Env -> Synth a -> Nondet a
-runSynth m x = fst <$> runReaderT (runStateT x emptySynState) m
-
-instance HasFreshState SynState where
-  freshState = freshSt
-
-type Synth = StateT SynState (ReaderT Env Nondet)
-
-instance LiftEval Synth where
-  liftEval x = runIdentity . runReaderT x <$> view (env . scope)
-
--- | Retrieve the context of a hole.
-getCtx :: Hole -> Synth HoleCtx
-getCtx h = use contexts >>=
-  maybe (fail $ "Missing holeCtx for hole " <> show h) return . Map.lookup h
-
-instance ExpandHole Hole Synth where
-  expandHole h = do
-    (xs, ctx') <- getCtx h >>= expandHole
-    modifying contexts $ Map.insert h ctx'
-    return (xs, h)
-
-liftUneval :: Int -> Uneval a -> Synth (Maybe a)
-liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
-
--- TODO: figure out how to deal with diverging unevaluation, such as that of
--- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
--- example 'mult 0 {0} <= 0'.
--- NOTE: it seems to keep trying to merge more and more elaborate examples
--- This seems to be a very specific example where unevaluation diverges, which
--- is usually not encountered during synthesis, but only in these specific
--- circumstances?
-
--- TODO: make sure that local type unifications don't leak to other places. For
--- example, when synthesizing 'map', we might define 'map_succ' (a helper
--- function for assertions) as 'map Succ', but this instantiates the type
--- variables of 'map' to 'Nat', which is incorrect. Not only does this lead to
--- the type incorrect synthesis of 'map' specialized to 'Succ', but if we had
--- another helper function such as 'map_unit = map (const Unit)', the resulting
--- unification error would stop synthesis from occuring altogether.
-
--- TODO: implement a function that reads and type checks the program correctly,
--- without leaking type information between functions. To what extend do we
--- consider the toplevel functions part of the global/local environment? It is
--- not great to mix the current local scope (based on unevaluation constraints
--- from the assertions) with the semi-local scope of toplevel functions (which
--- might still contain holes and are not necessarily globally available in
--- every hole context). The resulting function should be somewhat similar to
--- the fromDefs function in Language.Live.hs, in that it folds over all the
--- toplevel definitions.
--- ALTERNATIVELY: implement full let polymorphism.
-
-init :: Defs Unit -> Synth (Term Hole)
-init defs = do
-  let ws = [x | Include xs <- pragmas defs, x <- toList xs]
-
-  gs <- asks $ view functions
-  ws' <- forOf (each . _2 . each) ws refresh
-
-  assign included $ ws' <&> \(v, a) ->
-    ( v
-    , case Map.lookup v gs of
-        Nothing -> error $ "Unknown function " <> show v
-        Just b -> case a of
-          Nothing -> b
-          Just (Poly _ t) | Poly _ u <- b -> case unify t u of
-            Nothing ->
-              error $ "Included function " <> show v <> " has wrong type"
-            Just th -> poly (subst th t)
-    )
-
-  let addBinding (MkBinding a x) = Let a x
-  (x, _, ctx) <-
-    infer' mempty . foldr addBinding (Hole (Unit ())) . bindings $ defs
-  let ss = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
-  fs <- failMaybe $ view localEnv . fst <$> Map.maxView ctx
-  th <- failMaybe . unifies $
-    Map.intersectionWith (,) (fs <&> \(Poly _ t) -> t) (ss <&> \(Poly _ u) -> u)
-  -- TODO: make sure the correct variables are frozen!
-  let ctx' = ctx <&>
-        over goalType freezeAll
-        . over localEnv (freezeUnbound . instantiate th <$>)
-        . subst th
-  assign contexts ctx'
-  y <- etaExpand id (strip x)
-  liftEval (eval mempty y) >>= \case
-    Scoped m (Hole h) -> do
-      assign mainScope m
-      modifying contexts $ Map.delete h
-      assign examples $ asserts defs
-      -- TODO: find reasonable fuel
-      cs <- liftUneval 1000 (for (asserts defs) (unevalAssert m)) >>= \case
-        Nothing -> fail "Out of fuel"
-        Just xs -> mfold . fmap mergeConstraints . dnf $ Conjunction xs
-      updateConstraints $ toList cs
-      -- TODO: how do we deal with running out of fuel? Can we still have
-      -- assertions at some nodes of the computation?
-      return y
-    _ -> error "Should never happen"
-
--- TODO: maybe reintroduce some informativeness constraint
-informative :: Set Hole -> Constraints -> Bool
-informative hs cs = hs == Map.keysSet cs
-
-updateConstraints :: [Constraints] -> Synth ()
-updateConstraints xs = do
-  let ys = nubOrd xs
-  guard . not . null $ ys
-  assign constraints $ Disjunction . fmap Pure $ ys
-
 -- Experimental {{{
 
 newtype Space a = Space (Map Hole [(a, Space a)])
@@ -286,6 +138,160 @@ limit n (Space xs) = Space $ over (each . each . _2) (limit (n - 1)) xs
 
 -- }}}
 
+data SynState = SynState
+  { _contexts    :: Map Hole HoleCtx
+  , _constraints :: Logic Constraints
+  , _fillings    :: Map Hole (Term Hole)
+  , _freshSt     :: FreshState
+  , _mainScope   :: Scope
+  , _examples    :: [Assert]
+  , _included    :: [(Var, Poly)]
+  , _forbidden   :: [Map Hole (Term Unit)]
+
+  , _varOnly     :: Set Hole
+  , _scrutinized :: Set Var
+  , _multiplier  :: Map Hole Dist
+  }
+
+makeLenses ''SynState
+
+emptySynState :: SynState
+emptySynState = SynState mempty (Disjunction []) mempty mkFreshState
+  mempty [] mempty [] mempty mempty mempty
+
+weigh :: Hole -> Dist -> Synth ()
+weigh h d = do
+  m <- Map.lookup h <$> use multiplier
+  liftRWST . tell $ d * fromMaybe 1 m
+
+-- TODO: maybe Prob is better than Dist, since we might want to use fractions
+-- for multipliers.
+newtype Nondet a = Nondet { runNondet :: Heap Dist a }
+  deriving newtype (Functor, Applicative, Monad)
+  deriving newtype (Alternative, MonadPlus, MonadWriter Dist)
+
+instance MonadFail Nondet where
+  fail _ = mzero
+
+runSynth :: Env -> Synth a -> Nondet a
+runSynth m x = view _1 <$> runRWST x m emptySynState
+
+liftRWST :: (Monad m, Monoid w) => m a -> RWST r w s m a
+liftRWST m = RWST \_r s -> (,s,mempty) <$> m
+
+instance HasFreshState SynState where
+  freshState = freshSt
+
+type Synth = RWST Env () SynState Nondet
+
+instance LiftEval Synth where
+  liftEval x = runIdentity . runReaderT x <$> view (env . scope)
+
+-- | Retrieve the context of a hole.
+getCtx :: Hole -> Synth HoleCtx
+getCtx h = use contexts >>=
+  maybe (fail $ "Missing holeCtx for hole " <> show h) return . Map.lookup h
+
+instance ExpandHole Hole Synth where
+  expandHole h = do
+    (xs, ctx') <- getCtx h >>= expandHole
+    modifying contexts $ Map.insert h ctx'
+    return (xs, h)
+
+liftInfer :: Infer a -> Synth a
+liftInfer = mapRWST mfold . zoom (freshSt . freshFree)
+
+liftUneval :: Int -> Uneval a -> Synth (Maybe a)
+liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
+
+-- TODO: figure out how to deal with diverging unevaluation, such as that of
+-- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
+-- example 'mult 0 {0} <= 0'.
+-- NOTE: it seems to keep trying to merge more and more elaborate examples
+-- This seems to be a very specific example where unevaluation diverges, which
+-- is usually not encountered during synthesis, but only in these specific
+-- circumstances?
+
+-- TODO: make sure that local type unifications don't leak to other places. For
+-- example, when synthesizing 'map', we might define 'map_succ' (a helper
+-- function for assertions) as 'map Succ', but this instantiates the type
+-- variables of 'map' to 'Nat', which is incorrect. Not only does this lead to
+-- the type incorrect synthesis of 'map' specialized to 'Succ', but if we had
+-- another helper function such as 'map_unit = map (const Unit)', the resulting
+-- unification error would stop synthesis from occuring altogether.
+
+-- TODO: implement a function that reads and type checks the program correctly,
+-- without leaking type information between functions. To what extend do we
+-- consider the toplevel functions part of the global/local environment? It is
+-- not great to mix the current local scope (based on unevaluation constraints
+-- from the assertions) with the semi-local scope of toplevel functions (which
+-- might still contain holes and are not necessarily globally available in
+-- every hole context). The resulting function should be somewhat similar to
+-- the fromDefs function in Language.Live.hs, in that it folds over all the
+-- toplevel definitions.
+-- ALTERNATIVELY: implement full let polymorphism.
+
+init :: Defs Unit -> Synth (Term Hole)
+init defs = do
+  let ws = [x | Include xs <- pragmas defs, x <- toList xs]
+
+  gs <- asks $ view functions
+  ws' <- forOf (each . _2 . each) ws refresh
+
+  assign included $ ws' <&> \(v, a) ->
+    ( v
+    , case Map.lookup v gs of
+        Nothing -> error $ "Unknown function " <> show v
+        Just b -> case a of
+          Nothing -> b
+          Just (Poly _ t) | Poly _ u <- b -> case unify t u of
+            Nothing ->
+              error $ "Included function " <> show v <> " has wrong type"
+            Just th -> poly (subst th t)
+    )
+
+  (x, ctx) <- do
+    let addBinding (MkBinding a x) = Let a x
+    let e = foldr addBinding (Hole (Unit ())) . bindings $ defs
+    (a, _) <- liftInfer $ infer mempty e
+    freshHoles $ over holesAnn snd a
+
+  let ss = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
+  fs <- failMaybe $ view localEnv . fst <$> Map.maxView ctx
+  th <- failMaybe . unifies $
+    Map.intersectionWith (,) (fs <&> \(Poly _ t) -> t) (ss <&> \(Poly _ u) -> u)
+  -- TODO: make sure the correct variables are frozen!
+  let ctx' = ctx <&>
+        over goalType freezeAll
+        . over localEnv (freezeUnbound . instantiate th <$>)
+        . subst th
+  assign contexts ctx'
+  y <- etaExpand id (strip x)
+  liftEval (eval mempty y) >>= \case
+    Scoped m (Hole h) -> do
+      assign mainScope m
+      modifying contexts $ Map.delete h
+      assign examples $ asserts defs
+      -- TODO: find reasonable fuel
+      cs <- liftUneval 1000 (for (asserts defs) (unevalAssert m)) >>= \case
+        Nothing -> fail "Out of fuel"
+        Just xs -> mfold . fmap mergeConstraints . dnf $ Conjunction xs
+      updateConstraints $ toList cs
+      -- TODO: how do we deal with running out of fuel? Can we still have
+      -- assertions at some nodes of the computation?
+      return y
+    _ -> error "Should never happen"
+
+-- TODO: maybe reintroduce some informativeness constraint
+informative :: Set Hole -> Constraints -> Bool
+informative hs cs = hs == Map.keysSet cs
+
+updateConstraints :: [Constraints] -> Synth ()
+updateConstraints xs = do
+  let ys = nubOrd xs
+  guard . not . null $ ys
+  assign constraints $ Disjunction . fmap Pure $ ys
+
 elimWeight, schemeWeight, recVarWeight :: Dist
 elimWeight = 4
 schemeWeight = 4
@@ -306,14 +312,14 @@ refinements (m, h) b (HoleCtx t ctx) = do
       hs <- for ts $ const (fresh @Hole)
       let e = apps (Var v) (Hole <$> hs)
       modifying scrutinized $ Set.insert v
-      check ctx e $ Poly [] t
+      liftInfer $ check ctx e $ Poly [] t
     ] else
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       when (recVar v m) $ weigh h recVarWeight
       hs <- for ts $ const (fresh @Hole)
       let e = apps (Var v) (Hole <$> hs)
-      check ctx e $ Poly [] t
+      liftInfer $ check ctx e $ Poly [] t
     -- For concrete types, try the corresponding constructors.
     , case t of
       Apps (Ctr d) _ -> do
@@ -321,7 +327,7 @@ refinements (m, h) b (HoleCtx t ctx) = do
         (c, ts) <- mfold cs
         hs <- for ts $ const fresh
         let e = apps (Ctr c) (Hole <$> hs)
-        check ctx e $ Poly [] t
+        liftInfer $ check ctx e $ Poly [] t
       _ -> mzero
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.
@@ -535,7 +541,7 @@ refinements (m, h) b (HoleCtx t ctx) = do
       -- types to the environment to check. It would be more efficient to not
       -- call check, but simply do the type checking manually.
       let help = set functions $ Map.singleton v p
-      local help $ check ctx e $ Poly [] t
+      local help $ liftInfer $ check ctx e $ Poly [] t
     ]
   let result = strip e'
   let hs = toListOf (holes . _1) result

@@ -402,6 +402,16 @@ collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
 number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
 number = traverse \x -> (,x) <$> fresh
 
+-- | Uniquely number all holes in an expression.
+number_ :: (Count n, Traversable t, MonadState (Fresh n) m) => t a -> m (t (n, a))
+number_ = traverse \x -> (,x) <$> getFresh
+
+freshHoles :: FreshHole m => Ann Type ('Term h) ->
+  m (Ann Type ('Term Hole), Map Hole h)
+freshHoles x = do
+  y <- forOf holesAnn x \h -> (,h) <$> fresh
+  return (over holesAnn fst y, Map.fromList $ toListOf holesAnn y)
+
 -- | Check if an expression has no holes.
 holeFree :: Term a -> Maybe (Term Void)
 holeFree = traverseOf holes $ const Nothing
@@ -488,10 +498,22 @@ refresh (Poly as t) = do
   let u = subst (Var <$> Map.fromList th) t
   return $ Poly (snd <$> th) u
 
+refresh_ :: MonadState (Fresh Free) m => Poly -> m Poly
+refresh_ (Poly as t) = do
+  th <- for as \a -> (a,) <$> getFresh
+  let u = subst (Var <$> Map.fromList th) t
+  return $ Poly (snd <$> th) u
+
 -- | Instantiate all quantified variables of a polytype with fresh variables.
 instantiateFresh :: FreshFree m => Poly -> m Type
 instantiateFresh p = do
   Poly _ t <- refresh p
+  return t
+
+-- | Instantiate all quantified variables of a polytype with fresh variables.
+instantiateFresh_ :: MonadState (Fresh Free) m => Poly -> m Type
+instantiateFresh_ p = do
+  Poly _ t <- refresh_ p
   return t
 
 -- }}}
@@ -624,7 +646,7 @@ relBinds :: Defs Unit -> [Binding Hole]
 relBinds (Defs ds) = bs' <&> uncurry MkBinding
   where
     bs = [ (x, e) | Binding (MkBinding x e) <- ds, isNothing (holeFree e)]
-    bs' = evalState (forOf (each . _2 . holes) bs $ const fresh) mkFreshState
+    bs' = evalState (forOf (each . _2 . holes) bs $ const getFresh) 0
 
 ctrArity :: Env -> Ctr -> Int
 ctrArity en c = case Map.lookup c (view constructors en) of

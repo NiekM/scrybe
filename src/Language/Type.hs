@@ -1,5 +1,11 @@
 {-# LANGUAGE GADTs, MultiParamTypeClasses #-}
-module Language.Type where
+module Language.Type
+  ( Infer
+  , runInfer, evalInfer
+  , unify, unifies
+  , infer, check
+  , freshHoles
+  ) where
 
 import Import
 import Language.Syntax
@@ -7,22 +13,21 @@ import qualified RIO.Map as Map
 
 -- Type checking state {{{
 
-runTC :: Monad m => RWST Env () FreshState m a ->
-  FreshState -> Env -> m (a, FreshState)
-runTC tc fr m = do
+type Infer = RWST Env () (Fresh Free) Maybe
+
+runInfer :: Infer a -> Fresh Free -> Env -> Maybe (a, Fresh Free)
+runInfer tc fr m = do
   (x, s, _) <- runRWST tc m fr
   return (x, s)
 
-evalTC :: Monad m => RWST Env () FreshState m a -> FreshState -> Env -> m a
-evalTC tc fr m = fst <$> runTC tc fr m
+evalInfer :: Infer a -> Fresh Free -> Env -> Maybe a
+evalInfer tc fr m = fst <$> runInfer tc fr m
 
 -- }}}
 
 -- | Type unification & inference
 
 type Unify = Map Free Type
-
--- TODO: Add unit tests to test type unification, inference and checking
 
 -- | Unify two monotypes, by checking if their holes can be filled such that
 -- they are equivalent.
@@ -55,54 +60,50 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th1 th0
 
--- | Try to combine possibly conflicting unifications.
-combine :: Unify -> Unify -> Maybe Unify
-combine th1 th2 = foldr (\y z -> z >>= go y)
-  (return $ subst th1 <$> th2) $ Map.assocs th1 where
-    go (x, t) th = case Map.lookup x th of
-      Nothing -> return $ Map.insert x t th
-      Just u -> do
-        th' <- unify t u
-        combine th' th
-
-type TCMonad m = (FreshFree m, MonadFail m, MonadReader Env m)
+-- -- | Try to combine possibly conflicting unifications.
+-- combine :: Unify -> Unify -> Maybe Unify
+-- combine th1 th2 = foldr (\y z -> z >>= go y)
+--   (return $ subst th1 <$> th2) $ Map.assocs th1 where
+--     go (x, t) th = case Map.lookup x th of
+--       Nothing -> return $ Map.insert x t th
+--       Just u -> do
+--         th' <- unify t u
+--         combine th' th
 
 -- TODO: move holeCtxs to Monad
 -- TODO: implement as a cataExprM?
-infer :: TCMonad m => Map Var Poly -> Term h ->
-  m (Ann Type ('Term (h, HoleCtx)), Unify)
+infer :: Map Var Poly -> Term h ->
+  Infer (Ann Type ('Term (h, HoleCtx)), Unify)
 infer ts expr = do
   cs <- view constructors
   fs <- view functions
   (e, th) <- (ts &) $ expr & cataExpr \e loc -> case e of
     Hole h -> do
-      g <- Var <$> fresh
+      g <- Var <$> getFresh
       return (Hole (h, HoleCtx g loc) `Annot` g, Map.empty)
     Ctr c -> do
       t <- failMaybe $ Map.lookup c cs
-      u <- instantiateFresh t
+      u <- instantiateFresh_ t
       return (Annot (Ctr c) u, Map.empty)
     Var a | Just p <- Map.lookup a loc -> do
-      t <- instantiateFresh p
+      t <- instantiateFresh_ p
       return (Var a `Annot` t, Map.empty)
     Var a -> case Map.lookup a fs of
       Nothing -> fail $ "Variable not in scope: " <> show a
       Just t -> do
-        u <- instantiateFresh t
+        u <- instantiateFresh_ t
         return (Var a `Annot` u, Map.empty)
     App f x -> do
       (f'@(Annot _ a), th1) <- f loc
       (x'@(Annot _ b), th2) <- x (subst th1 <$> loc)
-      t <- Var <$> fresh
+      t <- Var <$> getFresh
       let th3 = th2 `compose` th1
       th4 <- failMaybe $ unify (subst th3 a) (Arr b t)
       let th5 = th4 `compose` th3
       return (App f' x' `Annot` subst th5 t, th5)
     Lam a x -> do
-      t <- Var <$> fresh
-      -- traceShowM t
+      t <- Var <$> getFresh
       (x'@(Annot _ u), th) <- x (Map.insert a (Mono t) loc)
-      -- traceShowM . fmap pretty $ th
       let t' = subst th t
       return (Lam a x' `Annot` Arr t' u, th)
     Let a x y -> do -- TODO: add let polymorphism
@@ -111,13 +112,13 @@ infer ts expr = do
       (y'@(Annot _ t2), th2) <- y loc'
       return (Let a x' y' `Annot` t2, th2 `compose` th1)
     Elim xs -> do
-      t <- Var <$> fresh
-      u <- Var <$> fresh
+      t <- Var <$> getFresh
+      u <- Var <$> getFresh
       (ys, t', u', th') <-
         xs & flip foldr (return ([], t, u, mempty)) \(c, y) r -> do
         (as, t1, u1, th1) <- r
         d <- failMaybe $ Map.lookup c cs
-        Args args res <- instantiateFresh d
+        Args args res <- instantiateFresh_ d
         (y'@(Annot _ t2), th2) <- y (subst th1 <$> loc)
         -- Check that the constructor type matches the scrutinee.
         th3 <- failMaybe $ unify res t1
@@ -127,31 +128,14 @@ infer ts expr = do
         return ((c, y'):as, subst th5 t1, subst th5 u1, th5)
       return (Elim (reverse ys) `Annot` Arr t' u', th')
     Fix -> do
-      t <- Var <$> fresh
+      t <- Var <$> getFresh
       return (Fix `Annot` Arr (Arr t t) t, mempty)
-
   return (over (holesAnn . _2) (subst th) . mapAnn (subst th) $ e, th)
 
-infer' :: (TCMonad m, FreshHole m) => Map Var Poly -> Term Unit ->
-  m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
-infer' ts e = do
-  (x, th) <- infer ts e
-  y <- forOf holesAnn x \(_, ctx) -> (,ctx) <$> fresh
-  return (over holesAnn fst y, th, Map.fromList $ toListOf holesAnn y)
-
--- TODO: perhaps we should allow `Ann (Maybe Type) 'Term Var Unit` as input, so
--- partially annotated expressions.
-check :: TCMonad m => Map Var Poly -> Term h -> Poly ->
-  m (Ann Type ('Term (h, HoleCtx)), Unify)
+check :: Map Var Poly -> Term h -> Poly ->
+  Infer (Ann Type ('Term (h, HoleCtx)), Unify)
 check ts e p = do
   (e'@(Annot _ u), th1) <- infer ts e
   th2 <- failMaybe $ unify (freeze p) u
   let th3 = compose th2 th1
   return (over (holesAnn . _2) (subst th3) . mapAnn (subst th3) $ e', th3)
-
-check' :: (TCMonad m, FreshHole m) => Map Var Poly -> Term Unit -> Poly ->
-  m (Ann Type ('Term Hole), Unify, Map Hole HoleCtx)
-check' ts e t = do
-  (x, th) <- check ts e t
-  y <- forOf holesAnn x \(_, ctx) -> (,ctx) <$> fresh
-  return (over holesAnn fst y, th, Map.fromList $ toListOf holesAnn y)

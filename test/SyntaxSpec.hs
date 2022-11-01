@@ -5,7 +5,6 @@ import Test.Hspec
 import Language.Syntax
 import Language.Parser
 import Language.Type
-import Language.Live
 import Prettyprinter
 import Prettyprinter.Render.Text
 import qualified RIO.Text as Text
@@ -32,8 +31,6 @@ spec = do
         let y = Map.assocs $ Map.intersectionWith (,) es ts
         let m = fromDefs x
         forM_ y \(v, (e, t)) -> describe (show (pretty v)) do
-          it "type checks" . isJust $ evalTC (check mempty e t) mkFreshState m
+          it "type checks" . isJust $ evalInfer (check mempty e t) 0 m
           it "type roundtrips" $ roundtrip t
           it "body roundtrips" $ roundtrip e
-
--- TODO: add unit tests to check some common synthesis examples
