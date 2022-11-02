@@ -6,6 +6,7 @@ import Language.Defs
 import Language.Syntax
 import Language.Parser
 import Language.Type
+import Run
 import Prettyprinter
 import Prettyprinter.Render.Text
 import qualified RIO.Text as Text
