@@ -3,9 +3,8 @@
 module Language.Live
   ( pattern Scoped
   -- Eval
-  , Eval, runEval
+  , Eval, runEval, liftEval
   , eval, resume
-  , LiftEval(..) -- TODO: really needed?
   -- Uneval
   , Uneval, runUneval
   , uneval, resumeUneval
@@ -48,8 +47,8 @@ type Eval = Reader Scope
 runEval :: Env -> Eval a -> a
 runEval = flip runReader . view scope
 
-class LiftEval m where
-  liftEval :: Eval a -> m a
+liftEval :: MonadReader Env m => Eval a -> m a
+liftEval x = runReader x <$> view scope
 
 eval :: MonadReader Scope m => Scope -> Term Hole -> m Result
 eval loc = \case
@@ -131,9 +130,6 @@ recVar x m = case Map.lookup x m of
 -- Live unevaluation {{{
 
 type Uneval = RWST Env () Int Maybe
-
-instance LiftEval Uneval where
-  liftEval x = ask <&> magnify scope (runReader x)
 
 runUneval :: Env -> Int -> Uneval a -> Maybe a
 runUneval x i un = view _1 <$> runRWST un x i

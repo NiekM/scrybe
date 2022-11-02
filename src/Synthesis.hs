@@ -176,9 +176,6 @@ runSynth m x = view _1 <$> runRWST x m mkSynState
 
 type Synth = RWST Env () SynState Nondet
 
-instance LiftEval Synth where
-  liftEval x = runIdentity . runReaderT x <$> view (env . scope)
-
 -- }}}
 
 -- | Retrieve the context of a hole.

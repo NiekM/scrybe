@@ -161,7 +161,7 @@ fromDefs defs = foldl' fromSigs bindEnv $ signatures defs
     fromSigs :: Env -> Signature -> Env
     fromSigs m (MkSignature x t) = m & over functions (Map.insert x t)
 
-evalAssert :: Scope -> Assert -> Eval (Result, Example)
+evalAssert :: MonadReader Scope m => Scope -> Assert -> m (Result, Example)
 evalAssert rs (MkAssert e (Lams vs ex)) = do
   v <- eval rs e
   fmap (,ex) . resume mempty $ apps v (upcast <$> vs)
