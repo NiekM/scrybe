@@ -3,6 +3,7 @@ module SynthesisSpec where
 import Import
 import Synthesis
 import Test.Hspec
+import Language.Defs
 import Language.Parser
 import Language.Syntax
 import RIO.FilePath

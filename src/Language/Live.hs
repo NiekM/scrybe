@@ -1,17 +1,33 @@
 {-# LANGUAGE UndecidableInstances #-}
-module Language.Live where
+
+module Language.Live
+  ( pattern Scoped
+  -- Eval
+  , runEval
+  , eval, resume
+  , evalAssert
+  , LiftEval(..) -- TODO: really needed?
+  -- Uneval
+  , Uneval, runUneval
+  , uneval, resumeUneval
+  , unevalAssert
+  -- Constraints
+  , Constraint, Constraints, mergeConstraints -- TODO: somewhere else?
+  , UnevalConstraint(..)
+  -- Utils
+  , blocking, scrutinizedHole -- TODO: somewhere else
+  , recVar, normalizeFilling -- TODO: somewhere else?
+  )
+  where
 
 import Import
 import Language.Syntax
+import Language.Defs
 import qualified RIO.Map as Map
 
 {-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
 pattern Scoped :: Scope -> Indet -> Expr' r 'Det
 pattern Scoped m e = Hole (Annot e m)
-
-{-# COMPLETE Top, App, Ctr, Lam #-}
-pattern Top :: Example
-pattern Top = Hole (Unit ())
 
 indet :: Term Hole -> Maybe Indet
 indet = \case
@@ -131,45 +147,6 @@ downcast = cataExprM \case
   App f x -> return $ App f x
   _ -> Nothing
 
--- Merged examples {{{
-
-data Ex
-  = ExFun (Map Value Ex)
-  | ExCtr Ctr [Ex]
-  | ExTop
-  deriving (Eq, Ord, Show)
-
-instance PartialSemigroup Ex where
-  ExTop <?> ex = Just ex
-  ex <?> ExTop = Just ex
-  ExFun fs <?> ExFun gs = ExFun <$> fs <?> gs
-  ExCtr c xs <?> ExCtr d ys | c == d = ExCtr c <$> partialZip xs ys
-  _ <?> _ = Nothing
-
-instance PartialMonoid Ex where
-  pempty = ExTop
-
-instance Pretty Ex where
-  pretty = pretty . fromEx
-
-toEx :: Example -> Ex
-toEx = \case
-  Top -> ExTop
-  Apps (Ctr c) xs -> ExCtr c (toEx <$> xs)
-  Lam v x -> ExFun (Map.singleton v $ toEx x)
-  _ -> error "Incorrect example"
-
-fromExamples :: [Example] -> Maybe Ex
-fromExamples = pfoldMap' toEx
-
-fromEx :: Ex -> [Example]
-fromEx = \case
-  ExTop -> [Top]
-  ExCtr c xs -> apps (Ctr c) <$> for xs fromEx
-  ExFun fs -> Map.assocs fs >>= \(v, x) -> Lam v <$> fromEx x
-
--- }}}
-
 -- Live unevaluation {{{
 
 type Uneval = RWST Env () Int Maybe
@@ -218,11 +195,11 @@ uneval = curry \case
     return $ constr m h ex'
   (App (Prj c n) r, ex) -> do
     burnFuel
-    ar <- ask <&> flip ctrArity c --ctrArity c  --($ c) <$> view _2 --ctrArity c
+    ar <- ask <&> flip ctrArity c
     uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (Apps (Scoped m (Elim xs)) (r:rs), ex) -> burnFuel >>
     disj <$> for xs \(c, e) -> do
-      ar <- ask <&> flip ctrArity c -- ($ c) <$> view _2
+      ar <- ask <&> flip ctrArity c
       scrut <- uneval r . ExCtr c $ replicate ar ExTop
       let prjs = [App (Prj c n) r | n <- [1..ar]]
       e' <- liftEval (eval m e)
@@ -262,21 +239,9 @@ resumeUneval hf = fmap join . traverse \old -> do
 mergeConstraints :: [Constraints] -> Maybe Constraints
 mergeConstraints = unionsWithM (<?>)
 
-dnf :: Logic a -> [[a]]
-dnf = \case
-  Pure a -> [[a]]
-  Conjunction xs -> concat <$> mapM dnf xs
-  Disjunction xs -> xs >>= dnf
-
 unevalAssert :: Scope -> Assert -> Uneval (Logic Constraints)
 unevalAssert m (MkAssert e ex) = do
   r <- liftEval $ eval m e
   uneval r $ toEx ex
-
--- TODO: use [] or NonEmpty?
-type Compact = [(Scope, [(Hole, [Ex])])]
-
-instance Applicative f => UnevalConstraint (f Compact) where
-  constr m h e = pure [(m, [(h, [e])])]
 
 -- }}}

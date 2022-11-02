@@ -406,10 +406,10 @@ number = traverse \x -> (,x) <$> fresh
 number_ :: (Count n, Traversable t, MonadState (Fresh n) m) => t a -> m (t (n, a))
 number_ = traverse \x -> (,x) <$> getFresh
 
-freshHoles :: FreshHole m => Ann Type ('Term h) ->
-  m (Ann Type ('Term Hole), Map Hole h)
+freshHoles :: (Ord h, Count h) => MonadState (Fresh h) m => Ann a ('Term b) ->
+  m (Ann a ('Term h), Map h b)
 freshHoles x = do
-  y <- forOf holesAnn x \h -> (,h) <$> fresh
+  y <- forOf holesAnn x \h -> (,h) <$> getFresh
   return (over holesAnn fst y, Map.fromList $ toListOf holesAnn y)
 
 -- | Check if an expression has no holes.
@@ -438,6 +438,19 @@ etaExpand ctx = cataExprM \case
     (xs, ctx') <- expandHole (view ctx h)
     return $ lams (fst <$> xs) (Hole $ set ctx ctx' h)
   e -> fixExprM e
+
+-- Generates the eta-expansion of a type.
+eta :: Type -> State (Fresh Var) (Term HoleCtx)
+eta (Args ts u) = do
+  xs <- for ts \t -> (,t) <$> getFresh
+  return . lams (fst <$> xs) . Hole . HoleCtx u . Map.fromList
+    $ fmap (second Mono) xs
+
+-- Applies eta-expanded holes to a term.
+expand :: Term Void -> Type -> State (Fresh Var) (Term HoleCtx, Type)
+expand x (Args ts u) = do
+  xs <- for ts eta
+  return (apps (over holes absurd x) xs, u)
 
 -- }}}
 
@@ -492,29 +505,61 @@ instantiate :: Map Free Type -> Poly -> Poly
 instantiate th (Poly fr ty) =
   Poly (filter (`notElem` Map.keys th) fr) (subst th ty)
 
-refresh :: FreshFree m => Poly -> m Poly
+refresh :: MonadState (Fresh Free) m => Poly -> m Poly
 refresh (Poly as t) = do
-  th <- for as \a -> (a,) <$> fresh
-  let u = subst (Var <$> Map.fromList th) t
-  return $ Poly (snd <$> th) u
-
-refresh_ :: MonadState (Fresh Free) m => Poly -> m Poly
-refresh_ (Poly as t) = do
   th <- for as \a -> (a,) <$> getFresh
   let u = subst (Var <$> Map.fromList th) t
   return $ Poly (snd <$> th) u
 
 -- | Instantiate all quantified variables of a polytype with fresh variables.
-instantiateFresh :: FreshFree m => Poly -> m Type
+instantiateFresh :: MonadState (Fresh Free) m => Poly -> m Type
 instantiateFresh p = do
   Poly _ t <- refresh p
   return t
 
--- | Instantiate all quantified variables of a polytype with fresh variables.
-instantiateFresh_ :: MonadState (Fresh Free) m => Poly -> m Type
-instantiateFresh_ p = do
-  Poly _ t <- refresh_ p
-  return t
+-- }}}
+
+-- Examples {{{
+
+{-# COMPLETE Top, App, Ctr, Lam #-}
+pattern Top :: Example
+pattern Top = Hole (Unit ())
+
+-- Merged examples {{{
+
+data Ex
+  = ExFun (Map Value Ex)
+  | ExCtr Ctr [Ex]
+  | ExTop
+  deriving (Eq, Ord, Show)
+
+instance PartialSemigroup Ex where
+  ExTop <?> ex = Just ex
+  ex <?> ExTop = Just ex
+  ExFun fs <?> ExFun gs = ExFun <$> fs <?> gs
+  ExCtr c xs <?> ExCtr d ys | c == d = ExCtr c <$> partialZip xs ys
+  _ <?> _ = Nothing
+
+instance PartialMonoid Ex where
+  pempty = ExTop
+
+toEx :: Example -> Ex
+toEx = \case
+  Top -> ExTop
+  Apps (Ctr c) xs -> ExCtr c (toEx <$> xs)
+  Lam v x -> ExFun (Map.singleton v $ toEx x)
+  _ -> error "Incorrect example"
+
+fromExamples :: [Example] -> Maybe Ex
+fromExamples = pfoldMap' toEx
+
+fromEx :: Ex -> [Example]
+fromEx = \case
+  ExTop -> [Top]
+  ExCtr c xs -> apps (Ctr c) <$> for xs fromEx
+  ExFun fs -> Map.assocs fs >>= \(v, x) -> Lam v <$> fromEx x
+
+-- }}}
 
 -- }}}
 
@@ -549,67 +594,6 @@ instance Subst HoleCtx where
 data Sketch = Sketch Var Poly (Term Unit)
   deriving (Eq, Ord, Show)
 
--- Defs {{{
-
--- TODO: move this to its own file
-
-data Signature = MkSignature Var Poly
-  deriving (Eq, Ord, Show)
-
-data Binding h = MkBinding Var (Term h)
-  deriving (Eq, Ord, Show)
-
-data Datatype = MkDatatype Ctr [Free] [(Ctr, [Type])]
-  deriving (Eq, Ord, Show)
-
-data Import = MkImport
-  { name :: Text
-  , expose :: Maybe [Var]
-  } deriving (Eq, Ord, Show)
-
-data Pragma
-  = Desc String
-  | Include (NonEmpty (Var, Maybe Poly))
-  deriving (Eq, Ord, Show)
-
-data Assert = MkAssert (Term Hole) Example
-  deriving (Eq, Ord, Show)
-
-data Def a
-  = Import Import
-  | Signature Signature
-  | Binding (Binding a)
-  | Datatype Datatype
-  | Pragma Pragma
-  | Assert Assert
-  deriving (Eq, Ord, Show)
-
-newtype Defs a = Defs { getDefs :: [Def a] }
-  deriving (Eq, Ord, Show)
-
-imports :: Defs a -> [Import]
-imports (Defs ds) = [i | Import i <- ds]
-
-signatures :: Defs a -> [Signature]
-signatures (Defs ds) = [s | Signature s <- ds]
-
-bindings :: Defs a -> [Binding a]
-bindings (Defs ds) = [b | Binding b <- ds]
-
-datatypes :: Defs a -> [Datatype]
-datatypes (Defs ds) = [d | Datatype d <- ds]
-
-pragmas :: Defs a -> [Pragma]
-pragmas (Defs ds) = [p | Pragma p <- ds]
-
-asserts :: Defs a -> [Assert]
-asserts (Defs ds) = [a | Assert a <- ds]
-
-arity :: Poly -> Int
-arity (Poly _ (Args as _)) = length as
-
-type LiveEnv = Map Var Result
-
 data Env = Env
   { _functions    :: Map Var Poly
   , _scope        :: Scope
@@ -632,28 +616,13 @@ class HasEnv a where
 instance HasEnv Env where
   env = id
 
-recBinding :: Binding a -> Binding a
-recBinding (MkBinding x e)
-  | x `elem` freeVars e = MkBinding x $ App Fix $ Lam x e
-  | otherwise = MkBinding x e
-
-recDefs :: Defs a -> Defs a
-recDefs (Defs ds) = Defs $ ds <&> \case
-  Binding b -> Binding $ recBinding b
-  x -> x
-
-relBinds :: Defs Unit -> [Binding Hole]
-relBinds (Defs ds) = bs' <&> uncurry MkBinding
-  where
-    bs = [ (x, e) | Binding (MkBinding x e) <- ds, isNothing (holeFree e)]
-    bs' = evalState (forOf (each . _2 . holes) bs $ const getFresh) 0
+arity :: Poly -> Int
+arity (Poly _ (Args as _)) = length as
 
 ctrArity :: Env -> Ctr -> Int
 ctrArity en c = case Map.lookup c (view constructors en) of
   Nothing -> error $ "Unknown constructor " <> show c
   Just d -> arity d
-
--- }}}
 
 -- Pretty printing {{{
 
@@ -759,6 +728,9 @@ instance Pretty Value where
 instance Pretty Example where
   pretty = withSugar (sLit `orTry` sExample)
 
+instance Pretty Ex where
+  pretty = pretty . fromEx
+
 instance Pretty Result where
   pretty = withSugar (sLit `orTry` sRes)
 
@@ -769,52 +741,10 @@ instance (Pretty (Ann a ('Term h)), Pretty h)
 instance (Pretty a, Consts Pretty l) => Pretty (Base a l) where
   pretty = pExpr (const pretty) 0
 
-instance Pretty Import where
-  pretty (MkImport name Nothing) = "import" <+> pretty name
-  pretty (MkImport name (Just exports)) = "import" <+> pretty name <+>
-    parens (mconcat $ List.intersperse ", " (pretty <$> exports))
-
-instance Pretty Datatype where
-  pretty (MkDatatype d as cs) =
-    "data" <+> sep (pretty d : fmap pretty as) <+>
-      ( align . sep . zipWith (<+>) ("=" : List.repeat "|")
-      $ cs <&> \(c, xs) -> pretty (apps (Ctr c) xs)
-      )
-
-instance Pretty Signature where
-  pretty (MkSignature x t) = pretty x <+> "::" <+> pretty t
-
-instance Pretty h => Pretty (Binding h) where
-  pretty (MkBinding x (Lams as e)) =
-    sep (pretty x : fmap pretty as) <+> "=" <+> pretty e
-
-instance Pretty Pragma where
-  pretty = fancy . \case
-    Desc s -> "DESC" <+> pretty (show s)
-    Include xs ->
-     let ys = xs <&> \case
-           (x, Nothing) -> pretty x
-           (x, Just t) -> pretty x <+> "::" <+> pretty t
-     in "INCLUDE" <+> fold (NonEmpty.intersperse ", " ys)
-    where fancy x = "{-#" <+> x <+> "#-}"
-
-instance Pretty Assert where
-  pretty (MkAssert a ex) = "assert" <+> pretty a <+> "<==" <+> pretty ex
-
 instance Pretty Sketch where
-  pretty (Sketch x s b) = vsep
-    [pretty $ MkSignature x s, pretty $ MkBinding x b]
-
-instance Pretty a => Pretty (Def a) where
-  pretty = \case
-    Import i -> pretty i
-    Signature s -> pretty s
-    Binding b -> pretty b
-    Datatype d -> pretty d
-    Pragma p -> pretty p
-    Assert a -> pretty a
-
-instance Pretty a => Pretty (Defs a) where
-  pretty (Defs cs) = vsep $ fmap pretty cs
+  pretty (Sketch x s (Lams as e)) = vsep
+    [ pretty x <+> "::" <+> pretty s
+    , sep (pretty x : fmap pretty as) <+> "=" <+> pretty e
+    ]
 
 -- }}}

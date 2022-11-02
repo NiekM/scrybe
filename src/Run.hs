@@ -2,7 +2,7 @@ module Run where
 
 import Options
 import Import
-import Language hiding (indent, Assert)
+import Language hiding (Assert)
 import Synthesis
 import Prettyprinter hiding (fill)
 import Control.Monad.Heap
@@ -14,6 +14,32 @@ parseDefs s = do
   case lexParse parser f of
     Nothing -> fail "Could not parse file."
     Just y -> return y
+
+-- TODO: type checking and imports
+fromDefs :: Defs Void -> Env
+fromDefs defs = foldl' fromSigs bindEnv $ signatures defs
+  where
+    dataEnv :: Env
+    dataEnv = foldl' fromData mempty $ datatypes defs
+
+    bindEnv :: Env
+    bindEnv = foldl' fromBind dataEnv $ bindings defs
+
+    fromData :: Env -> Datatype -> Env
+    fromData m (MkDatatype t as cs) = m
+      & over dataTypes (Map.insert t (as, cs))
+      & over constructors (Map.union cs')
+      where
+        t' = apps (Ctr t) (Var <$> as)
+        cs' = Map.fromList cs <&> \ts -> Poly as $ arrs $ ts ++ [t']
+
+    fromBind :: Env -> Binding Void -> Env
+    fromBind m (MkBinding x e) =
+      let r = runReader (magnify scope $ eval mempty (over holes absurd e)) m
+      in m & over scope (Map.insert x r)
+
+    fromSigs :: Env -> Signature -> Env
+    fromSigs m (MkSignature x t) = m & over functions (Map.insert x t)
 
 synthesize :: String -> Options -> RIO Application ()
 synthesize file opts = do

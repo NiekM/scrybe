@@ -2,6 +2,7 @@ module SyntaxSpec where
 
 import Import
 import Test.Hspec
+import Language.Defs
 import Language.Syntax
 import Language.Parser
 import Language.Type

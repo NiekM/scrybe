@@ -35,3 +35,9 @@ instance Monad Logic where
 instance BoundedLattice (Logic a) where
   conj = Conjunction
   disj = Disjunction
+
+dnf :: Logic a -> [[a]]
+dnf = \case
+  Pure a -> [[a]]
+  Conjunction xs -> concat <$> mapM dnf xs
+  Disjunction xs -> xs >>= dnf

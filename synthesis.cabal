@@ -29,6 +29,7 @@ library
       Debug
       Import
       Language
+      Language.Defs
       Language.Identifiers
       Language.Live
       Language.Parser

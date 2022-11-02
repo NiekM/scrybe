@@ -64,6 +64,9 @@ getFresh = do
   put (1 + n)
   return $ fromCounter n
 
+
+
+
 class Monad m => MonadFresh s m where
   fresh :: m s
 

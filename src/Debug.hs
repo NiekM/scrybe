@@ -12,6 +12,7 @@ import System.IO.Unsafe
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import Data.SBV hiding (Logic)
+import Run
 
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack

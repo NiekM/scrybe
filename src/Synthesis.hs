@@ -51,16 +51,16 @@ refreshPoly (Poly as t) = do
   return $ subst (Var <$> Map.fromList th) t
 
 -- Generates the eta-expansion of a type.
-eta :: Type -> State (Fresh Var) (Term Goal)
-eta (Args ts u) = do
+eta_ :: Type -> State (Fresh Var) (Term Goal)
+eta_ (Args ts u) = do
   xs <- for ts \t -> (,t) <$> getFresh
   return . lams (fst <$> xs) . Hole . Goal u . Map.fromList
     $ fmap (Var *** Mono) xs
 
 -- Applies eta-expanded holes to a term.
-expand :: Term Void -> Type -> State (Fresh Var) (Term Goal, Type)
-expand x (Args ts u) = do
-  xs <- for ts eta
+expand_ :: Term Void -> Type -> State (Fresh Var) (Term Goal, Type)
+expand_ x (Args ts u) = do
+  xs <- for ts eta_
   return (apps (over holes absurd x) xs, u)
 
 -- Gives each hole a name and returns a mapping from hole names to the original
@@ -77,7 +77,7 @@ gen = do
   xs <- forMap cs \h (Goal t ctx) ->
     for (Map.assocs ctx) \(v, p) -> readerState do
       m        <- zoom genFree $ refreshPoly p
-      (x, u)   <- zoom genVar  $ expand v m
+      (x, u)   <- zoom genVar  $ expand_ v m
       (y, cs') <- zoom genHole $ renumber x
       case unify u t of
         Nothing -> return $ return Nothing
@@ -236,7 +236,7 @@ init defs = do
   let ws = [x | Include xs <- pragmas defs, x <- toList xs]
 
   gs <- asks $ view functions
-  ws' <- forOf (each . _2 . each) ws refresh
+  ws' <- zoom (freshSt . freshFree) $ forOf (each . _2 . each) ws refresh
 
   assign included $ ws' <&> \(v, a) ->
     ( v
@@ -254,7 +254,7 @@ init defs = do
     let addBinding (MkBinding a x) = Let a x
     let e = foldr addBinding (Hole (Unit ())) . bindings $ defs
     (a, _) <- liftInfer $ infer mempty e
-    freshHoles $ over holesAnn snd a
+    zoom (freshSt . freshHole) . freshHoles $ over holesAnn snd a
 
   let ss = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
   fs <- failMaybe $ view localEnv . fst <$> Map.maxView ctx
@@ -266,6 +266,7 @@ init defs = do
         . over localEnv (freezeUnbound . instantiate th <$>)
         . subst th
   assign contexts ctx'
+  -- TODO: do eta-expansion more by hand
   y <- etaExpand id (strip x)
   liftEval (eval mempty y) >>= \case
     Scoped m (Hole h) -> do
@@ -309,7 +310,7 @@ refinements (m, h) b (HoleCtx t ctx) = do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       guard . Set.notMember v =<< use scrutinized
       when (recVar v m) $ weigh h recVarWeight
-      hs <- for ts $ const (fresh @Hole)
+      hs <- zoom (freshSt . freshHole) . for ts $ const getFresh
       let e = apps (Var v) (Hole <$> hs)
       modifying scrutinized $ Set.insert v
       liftInfer $ check ctx e $ Poly [] t
@@ -317,7 +318,7 @@ refinements (m, h) b (HoleCtx t ctx) = do
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       when (recVar v m) $ weigh h recVarWeight
-      hs <- for ts $ const (fresh @Hole)
+      hs <- zoom (freshSt . freshHole) . for ts $ const getFresh
       let e = apps (Var v) (Hole <$> hs)
       liftInfer $ check ctx e $ Poly [] t
     -- For concrete types, try the corresponding constructors.
@@ -325,7 +326,7 @@ refinements (m, h) b (HoleCtx t ctx) = do
       Apps (Ctr d) _ -> do
         (_, cs) <- mfold . Map.lookup d =<< view dataTypes
         (c, ts) <- mfold cs
-        hs <- for ts $ const fresh
+        hs <- zoom (freshSt . freshHole) . for ts $ const getFresh
         let e = apps (Ctr c) (Hole <$> hs)
         liftInfer $ check ctx e $ Poly [] t
       _ -> mzero
@@ -333,7 +334,7 @@ refinements (m, h) b (HoleCtx t ctx) = do
     -- explicitly imported.
     , do
       (v, p@(Poly _ (Args ts _))) <- mfold =<< use included
-      hs <- for ts $ const fresh
+      hs <- zoom (freshSt . freshHole) . for ts $ const getFresh
       -- weigh h 1
 
       -- Equivalences {{{

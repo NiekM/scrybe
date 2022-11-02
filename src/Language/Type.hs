@@ -83,15 +83,15 @@ infer ts expr = do
       return (Hole (h, HoleCtx g loc) `Annot` g, Map.empty)
     Ctr c -> do
       t <- failMaybe $ Map.lookup c cs
-      u <- instantiateFresh_ t
+      u <- instantiateFresh t
       return (Annot (Ctr c) u, Map.empty)
     Var a | Just p <- Map.lookup a loc -> do
-      t <- instantiateFresh_ p
+      t <- instantiateFresh p
       return (Var a `Annot` t, Map.empty)
     Var a -> case Map.lookup a fs of
       Nothing -> fail $ "Variable not in scope: " <> show a
       Just t -> do
-        u <- instantiateFresh_ t
+        u <- instantiateFresh t
         return (Var a `Annot` u, Map.empty)
     App f x -> do
       (f'@(Annot _ a), th1) <- f loc
@@ -118,7 +118,7 @@ infer ts expr = do
         xs & flip foldr (return ([], t, u, mempty)) \(c, y) r -> do
         (as, t1, u1, th1) <- r
         d <- failMaybe $ Map.lookup c cs
-        Args args res <- instantiateFresh_ d
+        Args args res <- instantiateFresh d
         (y'@(Annot _ t2), th2) <- y (subst th1 <$> loc)
         -- Check that the constructor type matches the scrutinee.
         th3 <- failMaybe $ unify res t1

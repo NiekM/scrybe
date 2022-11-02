@@ -15,6 +15,7 @@ module Import
   , maximumDef
   , mfold
   , failMaybe
+  , evalState
   , readerState
   , distr
   ) where

@@ -1,14 +1,13 @@
-module Language.Parser where
+module Language.Parser (Parse(..), lexParse) where
 
 import Import hiding (some, many, lift, bracket)
 import RIO.Partial (read)
 import RIO.List
 import Language.Syntax
-import Language.Live
+import Language.Defs
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
-import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 
 type Lexer = Parsec Void Text
@@ -295,39 +294,6 @@ instance Parse a => Parse (Def a) where
 
 instance Parse a => Parse (Defs a) where
   parser = Defs . catMaybes <$> alt (optional parser) (single $ Newline 0)
-
--- TODO: type checking and imports
-fromDefs :: Defs Void -> Env
-fromDefs defs = foldl' fromSigs bindEnv $ signatures defs
-  where
-    dataEnv :: Env
-    dataEnv = foldl' fromData mempty $ datatypes defs
-
-    bindEnv :: Env
-    bindEnv = foldl' fromBind dataEnv $ bindings defs
-
-    fromData :: Env -> Datatype -> Env
-    fromData m (MkDatatype t as cs) = m
-      & over dataTypes (Map.insert t (as, cs))
-      & over constructors (Map.union cs')
-      where
-        t' = apps (Ctr t) (Var <$> as)
-        cs' = Map.fromList cs <&> \ts -> Poly as $ arrs $ ts ++ [t']
-
-    fromBind :: Env -> Binding Void -> Env
-    fromBind m (MkBinding x e) =
-      let r = runReader (magnify scope $ eval mempty (over holes absurd e)) m
-      in m & over scope (Map.insert x r)
-
-    fromSigs :: Env -> Signature -> Env
-    fromSigs m (MkSignature x t) = m & over functions (Map.insert x t)
-
--- instance Parse Env where
---   parser = do
---     defs <- parser
---     guard . null $ imports defs
---     guard . null $ asserts defs
---     return $ fromDefs defs
 
 instance Parse Sketch where
   parser = do
