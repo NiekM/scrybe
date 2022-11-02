@@ -15,6 +15,7 @@ module Import
   , maximumDef
   , mfold
   , failMaybe
+  , liftRWST
   , evalState
   , readerState
   , distr
@@ -72,6 +73,9 @@ failMaybe :: MonadFail m => Maybe a -> m a
 failMaybe = \case
   Nothing -> fail ""
   Just x -> return x
+
+liftRWST :: (Monad m, Monoid w) => m a -> RWST r w s m a
+liftRWST m = RWST \_r s -> (,s,mempty) <$> m
 
 readerState :: State s (Reader s a) -> Reader s a
 readerState st = do

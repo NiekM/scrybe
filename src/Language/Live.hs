@@ -51,7 +51,7 @@ runEval = flip runReader . view scope
 class LiftEval m where
   liftEval :: Eval a -> m a
 
-eval :: Scope -> Term Hole -> Eval Result
+eval :: MonadReader Scope m => Scope -> Term Hole -> m Result
 eval loc = \case
   Var v -> do
     rs <- ask
@@ -68,7 +68,7 @@ eval loc = \case
   -- Indeterminate results
   Indet i -> return $ Scoped loc i
 
-evalApp :: Result -> Result -> Eval Result
+evalApp :: MonadReader Scope m => Result -> Result -> m Result
 evalApp f x = case f of
   App Fix (Scoped m (Lam g (Indet e))) ->
     evalApp (Scoped (Map.insert g f m) e) x
@@ -93,7 +93,7 @@ normalizeFilling hf
 -- TODO: Note that resumption loops forever if the hole fillings are (mutually)
 -- recursive. An alternative would be to only allow resumption of one hole at a
 -- time.
-resume :: Map Hole (Term Hole) -> Result -> Eval Result
+resume :: MonadReader Scope m => Map Hole (Term Hole) -> Result -> m Result
 resume hf = cataExprM \case
   App f x -> evalApp f x
   Ctr c   -> return $ Ctr c

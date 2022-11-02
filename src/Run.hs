@@ -2,6 +2,7 @@ module Run where
 
 import Options
 import Import
+import Utils.Weighted
 import Language hiding (Assert)
 import Synthesis
 import Prettyprinter hiding (fill)
@@ -24,7 +25,7 @@ synthesize file opts = do
   logInfo ""
   logInfo . display . indent 2 $ pretty problem
   logInfo ""
-  let syn = best . runNondet . runSynth prelude $ synth problem
+  let syn = best . runSearch . runSynth prelude $ synth problem
   let t = view optTimeout opts * 1000
   res <- timeout t $ syn `seq` return syn
   case res of

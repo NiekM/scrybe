@@ -41,6 +41,7 @@ library
       Utils.BoundedLattice
       Utils.Map
       Utils.PartialSemigroup
+      Utils.Weighted
   other-modules:
       Paths_synthesis
   hs-source-dirs:

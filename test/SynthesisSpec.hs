@@ -6,6 +6,7 @@ import Test.Hspec
 import Language.Defs
 import Language.Parser
 import Language.Syntax
+import Utils.Weighted
 import RIO.FilePath
 import RIO.Directory
 import Control.Monad.Heap hiding (Leaf)
@@ -33,7 +34,7 @@ specTree :: Env -> FileTree -> Spec
 specTree m = \case
   Node x xs -> describe x . for_ xs $ specTree m
   Leaf (f, x) -> describe f do
-    it "synthesizes" . isJust . best . runNondet . runSynth m $ synth x
+    it "synthesizes" . isJust . best . runSearch . runSynth m $ synth x
 
 spec :: Spec
 spec = do

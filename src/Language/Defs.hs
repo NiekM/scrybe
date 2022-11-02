@@ -1,4 +1,17 @@
-module Language.Defs where
+module Language.Defs
+  ( Signature(..)
+  , Binding(..)
+  , Datatype(..)
+  , Import(..)
+  , Pragma(..)
+  , Assert(..)
+  , Def(..)
+  , Defs(..)
+  , signatures, bindings, datatypes, imports, pragmas, asserts
+  , fromDefs
+  , recDefs, relBinds
+  , evalAssert, unevalAssert
+  ) where
 
 import qualified RIO.List as List
 import qualified RIO.Map as Map
@@ -105,8 +118,6 @@ instance Pretty a => Pretty (Def a) where
 
 instance Pretty a => Pretty (Defs a) where
   pretty (Defs cs) = vsep $ fmap pretty cs
-
-type LiveEnv = Map Var Result
 
 recBinding :: Binding a -> Binding a
 recBinding (MkBinding x e)

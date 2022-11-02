@@ -3,10 +3,10 @@
 module Synthesis where
 
 import Import
+import qualified Utils.Weighted as Weighted
 import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
-import Control.Monad.Heap
 import Control.Monad.State
 import Control.Monad.Reader
 import Data.Monus.Dist
@@ -138,6 +138,8 @@ limit n (Space xs) = Space $ over (each . each . _2) (limit (n - 1)) xs
 
 -- }}}
 
+-- Synthesis Monad {{{
+
 data SynState = SynState
   { _contexts    :: Map Hole HoleCtx
   , _constraints :: Logic Constraints
@@ -155,37 +157,29 @@ data SynState = SynState
 
 makeLenses ''SynState
 
-emptySynState :: SynState
-emptySynState = SynState mempty (Disjunction []) mempty mkFreshState
+instance HasFreshState SynState where
+  freshState = freshSt
+
+mkSynState :: SynState
+mkSynState = SynState mempty (Disjunction []) mempty mkFreshState
   mempty [] mempty [] mempty mempty mempty
+
+type Nondet = Weighted.Search Dist
 
 weigh :: Hole -> Dist -> Synth ()
 weigh h d = do
   m <- Map.lookup h <$> use multiplier
-  liftRWST . tell $ d * fromMaybe 1 m
-
--- TODO: maybe Prob is better than Dist, since we might want to use fractions
--- for multipliers.
-newtype Nondet a = Nondet { runNondet :: Heap Dist a }
-  deriving newtype (Functor, Applicative, Monad)
-  deriving newtype (Alternative, MonadPlus, MonadWriter Dist)
-
-instance MonadFail Nondet where
-  fail _ = mzero
+  Weighted.weigh $ d * fromMaybe 1 m
 
 runSynth :: Env -> Synth a -> Nondet a
-runSynth m x = view _1 <$> runRWST x m emptySynState
-
-liftRWST :: (Monad m, Monoid w) => m a -> RWST r w s m a
-liftRWST m = RWST \_r s -> (,s,mempty) <$> m
-
-instance HasFreshState SynState where
-  freshState = freshSt
+runSynth m x = view _1 <$> runRWST x m mkSynState
 
 type Synth = RWST Env () SynState Nondet
 
 instance LiftEval Synth where
   liftEval x = runIdentity . runReaderT x <$> view (env . scope)
+
+-- }}}
 
 -- | Retrieve the context of a hole.
 getCtx :: Hole -> Synth HoleCtx
