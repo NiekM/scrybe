@@ -9,7 +9,6 @@ import Import
 import Language hiding (free)
 import qualified RIO.Text as T
 import System.IO.Unsafe
-import Run
 
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack

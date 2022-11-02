@@ -3,14 +3,12 @@
 module Language.Live
   ( pattern Scoped
   -- Eval
-  , runEval
+  , Eval, runEval
   , eval, resume
-  , evalAssert
   , LiftEval(..) -- TODO: really needed?
   -- Uneval
   , Uneval, runUneval
   , uneval, resumeUneval
-  , unevalAssert
   -- Constraints
   , Constraint, Constraints, mergeConstraints -- TODO: somewhere else?
   , UnevalConstraint(..)
@@ -22,7 +20,6 @@ module Language.Live
 
 import Import
 import Language.Syntax
-import Language.Defs
 import qualified RIO.Map as Map
 
 {-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
@@ -110,11 +107,6 @@ resume hf = cataExprM \case
     m' <- mapM (resume hf) m
     return . Scoped m' $ over rec (fill $ normalizeFilling hf) e
 
-evalAssert :: Scope -> Assert -> Eval (Result, Example)
-evalAssert rs (MkAssert e (Lams vs ex)) = do
-  v <- eval rs e
-  fmap (,ex) . resume mempty $ apps v (upcast <$> vs)
-
 blocking :: Result -> Maybe (Scope, Hole)
 blocking = cataExpr \case
   Scoped m (Hole h) -> Just (m, h)
@@ -135,17 +127,6 @@ recVar x m = case Map.lookup x m of
   _ -> False
 
 -- }}}
-
-upcast :: Value -> Result
-upcast = cataExpr \case
-  Ctr c -> Ctr c
-  App f x -> App f x
-
-downcast :: Result -> Maybe Value
-downcast = cataExprM \case
-  Ctr c -> return $ Ctr c
-  App f x -> return $ App f x
-  _ -> Nothing
 
 -- Live unevaluation {{{
 
@@ -238,10 +219,5 @@ resumeUneval hf = fmap join . traverse \old -> do
 
 mergeConstraints :: [Constraints] -> Maybe Constraints
 mergeConstraints = unionsWithM (<?>)
-
-unevalAssert :: Scope -> Assert -> Uneval (Logic Constraints)
-unevalAssert m (MkAssert e ex) = do
-  r <- liftEval $ eval m e
-  uneval r $ toEx ex
 
 -- }}}

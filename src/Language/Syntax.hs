@@ -459,6 +459,17 @@ typeSize = cataExpr \case
   App f a -> 1 + f + a
   _ -> 0
 
+upcast :: Value -> Result
+upcast = cataExpr \case
+  Ctr c -> Ctr c
+  App f x -> App f x
+
+downcast :: Result -> Maybe Value
+downcast = cataExprM \case
+  Ctr c -> return $ Ctr c
+  App f x -> return $ App f x
+  _ -> Nothing
+
 -- }}}
 
 -- Polytypes {{{

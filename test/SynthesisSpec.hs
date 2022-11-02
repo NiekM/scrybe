@@ -6,7 +6,6 @@ import Test.Hspec
 import Language.Defs
 import Language.Parser
 import Language.Syntax
-import Run
 import RIO.FilePath
 import RIO.Directory
 import Control.Monad.Heap hiding (Leaf)

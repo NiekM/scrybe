@@ -1,9 +1,11 @@
 module Language.Defs where
 
 import qualified RIO.List as List
+import qualified RIO.Map as Map
 import qualified RIO.NonEmpty as NonEmpty
 import Import
 import Language.Syntax
+import Language.Live
 import Prettyprinter
 
 -- TODO: move this to its own file
@@ -121,3 +123,39 @@ relBinds (Defs ds) = bs' <&> uncurry MkBinding
   where
     bs = [ (x, e) | Binding (MkBinding x e) <- ds, isNothing (holeFree e)]
     bs' = evalState (forOf (each . _2 . holes) bs $ const getFresh) 0
+
+-- TODO: type checking and imports
+fromDefs :: Defs Void -> Env
+fromDefs defs = foldl' fromSigs bindEnv $ signatures defs
+  where
+    dataEnv :: Env
+    dataEnv = foldl' fromData mempty $ datatypes defs
+
+    bindEnv :: Env
+    bindEnv = foldl' fromBind dataEnv $ bindings defs
+
+    fromData :: Env -> Datatype -> Env
+    fromData m (MkDatatype t as cs) = m
+      & over dataTypes (Map.insert t (as, cs))
+      & over constructors (Map.union cs')
+      where
+        t' = apps (Ctr t) (Var <$> as)
+        cs' = Map.fromList cs <&> \ts -> Poly as $ arrs $ ts ++ [t']
+
+    fromBind :: Env -> Binding Void -> Env
+    fromBind m (MkBinding x e) =
+      let r = runReader (magnify scope $ eval mempty (over holes absurd e)) m
+      in m & over scope (Map.insert x r)
+
+    fromSigs :: Env -> Signature -> Env
+    fromSigs m (MkSignature x t) = m & over functions (Map.insert x t)
+
+evalAssert :: Scope -> Assert -> Eval (Result, Example)
+evalAssert rs (MkAssert e (Lams vs ex)) = do
+  v <- eval rs e
+  fmap (,ex) . resume mempty $ apps v (upcast <$> vs)
+
+unevalAssert :: Scope -> Assert -> Uneval (Logic Constraints)
+unevalAssert m (MkAssert e ex) = do
+  r <- liftEval $ eval m e
+  uneval r $ toEx ex

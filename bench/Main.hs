@@ -4,6 +4,7 @@ import Import hiding (timeout)
 import Synthesis
 import Language.Parser
 import Language.Syntax hiding (env)
+import Language.Defs
 import RIO.FilePath
 import RIO.Directory
 import Criterion.Main
