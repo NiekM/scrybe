@@ -15,7 +15,6 @@ import Data.Foldable
 import qualified RIO.List as List
 import qualified RIO.NonEmpty as NonEmpty
 import Prettyprinter hiding (list)
-import Control.Monad.State
 import qualified Prettyprinter as P
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
@@ -304,6 +303,19 @@ pattern Arrs a bs <- (unArrs -> (a :| bs))
 pattern Args :: HasCtr l Ctr => [Expr l] -> Expr l -> Expr l
 pattern Args as b <- (unsnoc . unArrs -> (as, b))
 
+lets :: (Foldable f, HasLet l v) => f (v, Expr l) -> Expr l -> Expr l
+lets as x = foldr (uncurry Let) x as
+
+unLets :: HasLet l v => Expr l -> ([(v, Expr l)], Expr l)
+unLets = \case
+  Let a x y -> first ((a, x):) $ unLets y
+  t -> pure t
+
+{-# COMPLETE Lets #-}
+pattern Lets :: HasLet l v => [(v, Expr l)] -> Expr l -> Expr l
+pattern Lets as x <- (unLets -> (as, x))
+  where Lets as x = lets as x
+
 apps :: (Foldable f, HasApp l) => Expr l -> f (Expr l) -> Expr l
 apps = foldl App
 
@@ -440,17 +452,30 @@ etaExpand ctx = cataExprM \case
   e -> fixExprM e
 
 -- Generates the eta-expansion of a type.
-eta :: Type -> State (Fresh Var) (Term HoleCtx)
+eta :: MonadState (Fresh Var) m => Type -> m (Term HoleCtx)
 eta (Args ts u) = do
   xs <- for ts \t -> (,t) <$> getFresh
   return . lams (fst <$> xs) . Hole . HoleCtx u . Map.fromList
     $ fmap (second Mono) xs
 
+-- Generates the eta-expansion of a type.
+eta2 :: MonadState (Fresh Var) m => HoleCtx -> m (Term HoleCtx)
+eta2 (HoleCtx (Args ts u) ctx) = do
+  xs <- for ts \t -> (,t) <$> getFresh
+  return . lams (fst <$> xs) . Hole . HoleCtx u $
+    ctx <> Map.fromList (second Mono <$> xs)
+
 -- Applies eta-expanded holes to a term.
-expand :: Term Void -> Type -> State (Fresh Var) (Term HoleCtx, Type)
+expand :: MonadState (Fresh Var) m => Term Void -> Type -> m (Term HoleCtx, Type)
 expand x (Args ts u) = do
   xs <- for ts eta
   return (apps (over holes absurd x) xs, u)
+
+expand' :: MonadState (Fresh Var) m => Term Type -> m (Term HoleCtx)
+expand' x = forOf holes' x eta
+
+expand2 :: MonadState (Fresh Var) m => Term HoleCtx -> m (Term HoleCtx)
+expand2 x = forOf holes' x eta2
 
 -- }}}
 
@@ -644,6 +669,9 @@ instance Pretty Poly where
   pretty = \case
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
+
+instance Pretty HoleCtx where
+  pretty (HoleCtx t ts) = pretty ts <+> "|-" <+> pretty t
 
 instance (Pretty b, Pretty (Annot a b)) => Pretty (Annot (Maybe a) b) where
   pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a

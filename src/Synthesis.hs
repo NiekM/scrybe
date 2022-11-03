@@ -222,6 +222,27 @@ liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
 -- toplevel definitions.
 -- ALTERNATIVELY: implement full let polymorphism.
 
+checkBindings :: [Signature] -> [Binding Unit] -> Infer (Term HoleCtx)
+checkBindings ss fs = do
+  let sigs = Map.fromList $ ss <&> \(MkSignature a (Poly _ t)) -> (a, t)
+  let e = Lets (fs <&> \(MkBinding a x) -> (a, x)) (Hole (Unit ()))
+  (a, _) <- infer mempty e
+  case over holes snd $ strip a of
+    x@(Lets _ (Hole (HoleCtx _ cs))) -> do
+      let funs = cs <&> \(Poly _ t) -> t
+      th <- failMaybe . unifies $ Map.intersectionWith (,) funs sigs
+      return $ over holes (subst th) x
+    _ -> error "Impossible"
+
+extract :: (Ord h, Count h, MonadState (Fresh h) m) =>
+  Term a -> m (Term h, Map h a)
+extract x = do
+  y <- forOf holes x \h -> (,h) <$> getFresh
+  return
+    ( over holes fst y
+    , Map.fromList $ toListOf holes y
+    )
+
 init :: Defs Unit -> Synth (Term Hole)
 init defs = do
   let ws = [x | Include xs <- pragmas defs, x <- toList xs]
@@ -241,25 +262,15 @@ init defs = do
             Just th -> poly (subst th t)
     )
 
-  (x, ctx) <- do
-    let addBinding (MkBinding a x) = Let a x
-    let e = foldr addBinding (Hole (Unit ())) . bindings $ defs
-    (a, _) <- liftInfer $ infer mempty e
-    zoom (freshSt . freshHole) . freshHoles $ over holesAnn snd a
+  -- Type check
+  expr <- liftInfer $ checkBindings (signatures defs) (bindings defs)
+  -- Eta expand
+  expanded <- zoom (freshSt . freshVar) $ expand2 expr
+  -- Name holes and extract context
+  (e, ctx) <- zoom (freshSt . freshHole) $ extract expanded
+  assign contexts ctx
 
-  let ss = Map.fromList $ signatures defs <&> \(MkSignature a t) -> (a, t)
-  fs <- failMaybe $ view localEnv . fst <$> Map.maxView ctx
-  th <- failMaybe . unifies $
-    Map.intersectionWith (,) (fs <&> \(Poly _ t) -> t) (ss <&> \(Poly _ u) -> u)
-  -- TODO: make sure the correct variables are frozen!
-  let ctx' = ctx <&>
-        over goalType freezeAll
-        . over localEnv (freezeUnbound . instantiate th <$>)
-        . subst th
-  assign contexts ctx'
-  -- TODO: do eta-expansion more by hand
-  y <- etaExpand id (strip x)
-  liftEval (eval mempty y) >>= \case
+  liftEval (eval mempty e) >>= \case
     Scoped m (Hole h) -> do
       assign mainScope m
       modifying contexts $ Map.delete h
@@ -271,7 +282,7 @@ init defs = do
       updateConstraints $ toList cs
       -- TODO: how do we deal with running out of fuel? Can we still have
       -- assertions at some nodes of the computation?
-      return y
+      return e
     _ -> error "Should never happen"
 
 -- TODO: maybe reintroduce some informativeness constraint

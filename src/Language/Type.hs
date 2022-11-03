@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs, MultiParamTypeClasses #-}
 module Language.Type
-  ( Infer
+  ( Unify, Infer
   , runInfer, evalInfer
   , unify, unifies
   , infer, check
@@ -108,7 +108,8 @@ infer ts expr = do
       return (Lam a x' `Annot` Arr t' u, th)
     Let a x y -> do -- TODO: add let polymorphism
       (x'@(Annot _ t1), th1) <- x loc
-      let loc' = Map.insert a (poly t1) $ subst th1 <$> loc
+      -- let loc' = Map.insert a (poly t1) $ subst th1 <$> loc
+      let loc' = Map.insert a (Mono t1) $ subst th1 <$> loc
       (y'@(Annot _ t2), th2) <- y loc'
       return (Let a x' y' `Annot` t2, th2 `compose` th1)
     Elim xs -> do
