@@ -5,6 +5,7 @@ import Synthesis
 import Language.Parser
 import Language.Syntax hiding (env)
 import Language.Defs
+import Utils.Weighted
 import RIO.FilePath
 import RIO.Directory
 import Criterion.Main
@@ -25,7 +26,7 @@ removeMaybes = \case
   Leaf l -> Leaf <$> l
 
 trySyn :: Env -> Defs Unit -> Bool
-trySyn m = isJust . best . runNondet . runSynth m . synth
+trySyn m = isJust . best . runSearch . runSynth m . synth
 
 getTree :: MonadIO m => FilePath -> m [FileTree]
 getTree p = do
