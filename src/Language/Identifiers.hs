@@ -1,5 +1,3 @@
-{-# LANGUAGE MultiParamTypeClasses, RankNTypes #-}
-
 -- TODO: move this to Utils.Fresh
 module Language.Identifiers
   ( Fresh, fresh

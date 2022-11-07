@@ -1,4 +1,3 @@
-{-# LANGUAGE GADTs, MultiParamTypeClasses #-}
 module Language.Type
   ( Unify, Infer
   , runInfer, evalInfer

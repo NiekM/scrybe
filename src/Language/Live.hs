@@ -1,5 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Language.Live
   ( pattern Scoped
   -- Eval

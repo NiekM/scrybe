@@ -1,7 +1,6 @@
-{-# LANGUAGE RankNTypes, PolyKinds, UndecidableInstances #-}
-{-# LANGUAGE TemplateHaskell, MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 module Language.Syntax
   ( module Language.Syntax
   , module Language.Identifiers
