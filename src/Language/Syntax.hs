@@ -131,7 +131,7 @@ instance Leveled ('Term h) where
   type HasFix'  ('Term _) = 'True
 
 instance Leveled 'Det where
-  type Hole'   'Det = 'Just (Annot Scope Indet)
+  type Hole'   'Det = 'Just (Scope, Indet)
   type Var'    'Det = 'Nothing
   type HasFix' 'Det = 'True
   type HasPrj' 'Det = 'True
@@ -175,25 +175,17 @@ data Expr' (r :: Func) (l :: Level) where
   Fix  :: HasFix  l   => Expr' r l
   Prj  :: HasPrj  l c => c -> Int -> Expr' r l
 
-data Func' a = Fixed | Base a | Ann a
+data Func' a = Fixed | Base a
   deriving (Eq, Ord, Show, Read)
 
 type Func = Func' Kind.Type
 
--- TODO: perhaps we should remove Fixed and just have Ann, as it would make
--- things much simpler with generalizing functions, but it would be slightly
--- less efficient. For optional annotations, it might be better to have an
--- actual Ann constructor in Expr', as well as some functions converting from
--- `Ann a l v h -> Expr' ('Annotate l a) v h` and
--- `Expr' ('Annotate l a) v h -> Ann (Maybe a) l v h`.
 type family Rec (f :: Func) (l :: Level) where
   Rec 'Fixed l = Expr l
   Rec ('Base c) _ = c
-  Rec ('Ann a) l = Ann a l
 
 type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
-type Ann a l = Annot a (Expr' ('Ann a) l)
 
 deriving instance (Consts Eq l, Eq (Rec r l)) => Eq (Expr' r l)
 deriving instance (Consts Eq l, Consts Ord l, Ord (Rec r l)) => Ord (Expr' r l)
@@ -265,15 +257,6 @@ fixExprM = flip (forOf rec) return
 fixExpr :: Base (Expr l) l -> Expr l
 fixExpr = over rec id
 
-mapAnn :: (a -> b) -> Ann a l -> Ann b l
-mapAnn f (Annot e a) = Annot (over rec (mapAnn f) e) (f a)
-
-paraAnn :: (Ann a l -> Base c l -> c) -> Ann a l -> c
-paraAnn g (Annot e a) = g (Annot e a) (over rec (paraAnn g) e)
-
-cataAnn :: (a -> Base c l -> c) -> Ann a l -> c
-cataAnn = paraAnn . (. view ann)
-
 -- }}}
 
 -- Lenses {{{
@@ -297,17 +280,6 @@ free g = cataExpr \case
   Ctr c -> pure $ Ctr c
   Var v -> Var <$> g v
   App f x -> App <$> f <*> x
-
-holesAnn :: Traversal (Ann a ('Term h)) (Ann a ('Term h')) h h'
-holesAnn g = cataAnn \t -> fmap (`Annot` t) . \case
-  Hole h -> Hole <$> g h
-  Ctr c -> pure $ Ctr c
-  Var v -> pure $ Var v
-  App f x -> App <$> f <*> x
-  Lam a x -> Lam a <$> x
-  Let a x y -> Let a <$> x <*> y
-  Elim xs -> Elim <$> traverse sequenceA xs
-  Fix -> pure Fix
 
 -- }}}
 
@@ -425,13 +397,9 @@ freeVars = cataExpr \case
 dissect :: Expr l -> [Expr l]
 dissect = paraExpr \e -> (e:) . view rec
 
--- | Remove all annotations from an expression.
-strip :: Ann a l -> Expr l
-strip = cataAnn (const fixExpr)
-
--- | Gather all subexpressions along with their annotation.
-collect :: Ann a l -> [Annot a (Expr l)]
-collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
+-- | Check if an expression has no holes.
+magic :: Term Void -> Term a
+magic = over holes absurd
 
 -- | Check if an expression has no holes.
 holeFree :: Term a -> Maybe (Term Void)
@@ -448,14 +416,14 @@ extract x = do
     )
 
 -- | Generate the eta-expansion of a type.
-eta :: MonadState (Fresh Var) m => HoleCtx -> m (Term HoleCtx)
-eta (HoleCtx (Args ts u) ctx) = do
+eta :: MonadState (Fresh Var) m => Goal -> m (Term Goal)
+eta (Goal ctx (Args ts u)) = do
   xs <- for ts \t -> (,t) <$> fresh
-  return . lams (fst <$> xs) . Hole . HoleCtx u $
+  return . lams (fst <$> xs) . Hole . flip Goal u $
     ctx <> Map.fromList (second Mono <$> xs)
 
 -- | Eta expand an expression.
-expand :: MonadState (Fresh Var) m => Term HoleCtx -> m (Term HoleCtx)
+expand :: MonadState (Fresh Var) m => Term Goal -> m (Term Goal)
 expand x = forOf holes' x eta
 
 -- | The number of applications in a type.
@@ -474,6 +442,9 @@ downcast = cataExprM \case
   Ctr c -> return $ Ctr c
   App f x -> return $ App f x
   _ -> Nothing
+
+arity :: Poly -> Int
+arity (Poly _ (Args as _)) = length as
 
 -- }}}
 
@@ -581,40 +552,24 @@ fromEx = \case
 
 -- TODO: maybe move these definitions somewhere else
 
-newtype Annot a x = MkAnnot (a, x)
-  deriving newtype (Eq, Ord, Show)
-  deriving newtype (Functor, Foldable, Applicative, Monad)
-
-{-# COMPLETE Annot #-}
-pattern Annot :: x -> a -> Annot a x
-pattern Annot x a = MkAnnot (a, x)
-
-ann :: Lens' (Annot a x) a
-ann = lens (\(Annot _ a) -> a) \(Annot x _) a -> Annot x a
-
 newtype Unit = Unit ()
   deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
 
-data HoleCtx = HoleCtx Type (Map Var Poly)
-  deriving (Eq, Ord, Show)
+data Goal = Goal
+  { _goalCtx  :: Map Var Poly
+  , _goalType :: Type
+  } deriving (Eq, Ord, Show)
 
-goalType :: Lens' HoleCtx Type
-goalType = lens (\(HoleCtx t _) -> t) \(HoleCtx _ vs) t -> HoleCtx t vs
+makeLenses ''Goal
 
-localEnv :: Lens' HoleCtx (Map Var Poly)
-localEnv = lens (\(HoleCtx _ vs) -> vs) \(HoleCtx t _) vs -> HoleCtx t vs
-
-instance Subst HoleCtx where
-  subst th = over goalType (subst th) . over localEnv (subst th <$>)
-
-data Sketch = Sketch Var Poly (Term Unit)
-  deriving (Eq, Ord, Show)
+instance Subst Goal where
+  subst th = over goalType (subst th) . over goalCtx (subst th <$>)
 
 data Env = Env
-  { _functions    :: Map Var Poly
-  , _scope        :: Scope
-  , _dataTypes    :: Map Ctr ([Free], [(Ctr, [Type])])
-  , _constructors :: Map Ctr Poly
+  { _envScope :: Scope
+  , _envFuns  :: Map Var Poly
+  , _envData  :: Map Ctr ([Free], [(Ctr, [Type])])
+  , _envCstr  :: Map Ctr Poly
   } deriving (Eq, Ord)
 
 makeLenses 'Env
@@ -626,17 +581,8 @@ instance Semigroup Env where
 instance Monoid Env where
   mempty = Env mempty mempty mempty mempty
 
-class HasEnv a where
-  env :: Lens' a Env
-
-instance HasEnv Env where
-  env = id
-
-arity :: Poly -> Int
-arity (Poly _ (Args as _)) = length as
-
 ctrArity :: Env -> Ctr -> Int
-ctrArity en c = case Map.lookup c (view constructors en) of
+ctrArity en c = case Map.lookup c (view envCstr en) of
   Nothing -> error $ "Unknown constructor " <> show c
   Just d -> arity d
 
@@ -650,20 +596,8 @@ instance Pretty Poly where
     Poly [] t -> pretty t
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
-instance Pretty HoleCtx where
-  pretty (HoleCtx t ts) = pretty ts <+> "|-" <+> pretty t
-
-instance (Pretty b, Pretty (Annot a b)) => Pretty (Annot (Maybe a) b) where
-  pretty (Annot x a) = maybe (pretty x) (pretty . Annot x) a
-
-instance Pretty a => Pretty (Annot Scope a) where
-  pretty (Annot x s) = pretty s <> pretty x
-
-instance Pretty a => Pretty (Annot Type a) where
-  pretty (Annot x t) = pretty x <+> "::" <+> pretty t
-
-instance Pretty a => Pretty (Annot Text a) where
-  pretty (Annot x p) = "{-#" <+> pretty p <+> "#-}" <+> pretty x
+instance Pretty Goal where
+  pretty (Goal t ts) = pretty ts <+> "|-" <+> pretty t
 
 prettyParen :: Bool -> Doc ann -> Doc ann
 prettyParen b t
@@ -715,9 +649,9 @@ sLit p _ = \case
   List xs -> Just $ P.list (p 0 <$> xs)
   _ -> Nothing
 
-sRes :: HasHole l (Annot Scope Indet) => Sugar l ann
+sRes :: HasHole l (Scope, Indet) => Sugar l ann
 sRes _ _ = \case
-  Hole (Annot e m) -> Just . parens $ pretty m <+> "|-" <+> pretty e
+  Hole (m, e) -> Just . parens $ pretty m <+> "|-" <+> pretty e
   _ -> Nothing
 
 sExample :: Sugar 'Example ann
@@ -753,17 +687,7 @@ instance Pretty Ex where
 instance Pretty Result where
   pretty = withSugar (sLit `orTry` sRes)
 
-instance (Pretty (Ann a ('Term h)), Pretty h)
-  => Pretty (Expr' ('Ann a) ('Term h)) where
-  pretty = pExpr (const pretty) 0
-
 instance (Pretty a, Consts Pretty l) => Pretty (Base a l) where
   pretty = pExpr (const pretty) 0
-
-instance Pretty Sketch where
-  pretty (Sketch x s (Lams as e)) = vsep
-    [ pretty x <+> "::" <+> pretty s
-    , sep (pretty x : fmap pretty as) <+> "=" <+> pretty e
-    ]
 
 -- }}}

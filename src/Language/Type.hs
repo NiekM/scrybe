@@ -10,7 +10,7 @@ import Import
 import Language.Syntax
 import qualified RIO.Map as Map
 
--- Type checking state {{{
+-- || Type checking state
 
 type Infer = RWST Env () (Fresh Free) Maybe
 
@@ -22,9 +22,7 @@ runInfer tc fr m = do
 evalInfer :: Infer a -> Fresh Free -> Env -> Maybe a
 evalInfer tc fr m = fst <$> runInfer tc fr m
 
--- }}}
-
--- | Type unification & inference
+-- || Type unification
 
 type Unify = Map Free Type
 
@@ -39,12 +37,10 @@ unify t u = case (t, u) of
   (_, Var a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
 
+-- | Occurs check.
 occurs :: Free -> Type -> Bool
 occurs a tau = a `notElem` toListOf free tau
 
--- NOTE: it seems that the left hand side of the composition should be the
--- newer composition, in effect updating the old substitution according to the
--- new ones
 -- | Compose two non-conflicting unifications.
 compose :: Unify -> Unify -> Unify
 compose sigma gamma = Map.unions
@@ -59,58 +55,47 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th1 <- unify (subst th0 t1) (subst th0 t2)
   return $ compose th1 th0
 
--- -- | Try to combine possibly conflicting unifications.
--- combine :: Unify -> Unify -> Maybe Unify
--- combine th1 th2 = foldr (\y z -> z >>= go y)
---   (return $ subst th1 <$> th2) $ Map.assocs th1 where
---     go (x, t) th = case Map.lookup x th of
---       Nothing -> return $ Map.insert x t th
---       Just u -> do
---         th' <- unify t u
---         combine th' th
+-- || Type inference and checking.
 
--- TODO: move holeCtxs to Monad
--- TODO: implement as a cataExprM?
-infer :: Map Var Poly -> Term h ->
-  Infer (Ann Type ('Term (h, HoleCtx)), Unify)
+-- | Type inference.
+infer :: Map Var Poly -> Term h -> Infer (Type, Term Goal)
 infer ts expr = do
-  cs <- view constructors
-  fs <- view functions
-  (e, th) <- (ts &) $ expr & cataExpr \e loc -> case e of
-    Hole h -> do
+  cs <- view envCstr
+  fs <- view envFuns
+  (t, e, th) <- (ts &) $ expr & cataExpr \e loc -> case e of
+    Hole _ -> do
       g <- Var <$> fresh
-      return (Hole (h, HoleCtx g loc) `Annot` g, Map.empty)
+      return (g, Hole (Goal loc g), Map.empty)
     Ctr c -> do
       t <- failMaybe $ Map.lookup c cs
       u <- instantiateFresh t
-      return (Annot (Ctr c) u, Map.empty)
+      return (u, Ctr c, Map.empty)
     Var a | Just p <- Map.lookup a loc -> do
       t <- instantiateFresh p
-      return (Var a `Annot` t, Map.empty)
+      return (t, Var a, Map.empty)
     Var a -> case Map.lookup a fs of
       Nothing -> fail $ "Variable not in scope: " <> show a
       Just t -> do
         u <- instantiateFresh t
-        return (Var a `Annot` u, Map.empty)
+        return (u, Var a, Map.empty)
     App f x -> do
-      (f'@(Annot _ a), th1) <- f loc
-      (x'@(Annot _ b), th2) <- x (subst th1 <$> loc)
+      (a, f', th1) <- f loc
+      (b, x', th2) <- x (subst th1 <$> loc)
       t <- Var <$> fresh
       let th3 = th2 `compose` th1
       th4 <- failMaybe $ unify (subst th3 a) (Arr b t)
       let th5 = th4 `compose` th3
-      return (App f' x' `Annot` subst th5 t, th5)
+      return (subst th5 t, App f' x', th5)
     Lam a x -> do
       t <- Var <$> fresh
-      (x'@(Annot _ u), th) <- x (Map.insert a (Mono t) loc)
+      (u, x', th) <- x (Map.insert a (Mono t) loc)
       let t' = subst th t
-      return (Lam a x' `Annot` Arr t' u, th)
+      return (Arr t' u, Lam a x', th)
     Let a x y -> do -- TODO: add let polymorphism
-      (x'@(Annot _ t1), th1) <- x loc
-      -- let loc' = Map.insert a (poly t1) $ subst th1 <$> loc
+      (t1, x', th1) <- x loc
       let loc' = Map.insert a (Mono t1) $ subst th1 <$> loc
-      (y'@(Annot _ t2), th2) <- y loc'
-      return (Let a x' y' `Annot` t2, th2 `compose` th1)
+      (t2, y', th2) <- y loc'
+      return (t2, Let a x' y', th2 `compose` th1)
     Elim xs -> do
       t <- Var <$> fresh
       u <- Var <$> fresh
@@ -119,23 +104,22 @@ infer ts expr = do
         (as, t1, u1, th1) <- r
         d <- failMaybe $ Map.lookup c cs
         Args args res <- instantiateFresh d
-        (y'@(Annot _ t2), th2) <- y (subst th1 <$> loc)
+        (t2, y', th2) <- y (subst th1 <$> loc)
         -- Check that the constructor type matches the scrutinee.
         th3 <- failMaybe $ unify res t1
         -- Check that the branch type matches the resulting type.
         th4 <- failMaybe $ unify (foldr Arr u1 args) t2
         let th5 = th4 `compose` th3 `compose` th2 `compose` th1
         return ((c, y'):as, subst th5 t1, subst th5 u1, th5)
-      return (Elim (reverse ys) `Annot` Arr t' u', th')
+      return (Arr t' u', Elim (reverse ys), th')
     Fix -> do
       t <- Var <$> fresh
-      return (Fix `Annot` Arr (Arr t t) t, mempty)
-  return (over (holesAnn . _2) (subst th) . mapAnn (subst th) $ e, th)
+      return (Arr (Arr t t) t, Fix, mempty)
+  return (subst th t, over holes (subst th) e)
 
-check :: Map Var Poly -> Term h -> Poly ->
-  Infer (Ann Type ('Term (h, HoleCtx)), Unify)
+-- | Type checking.
+check :: Map Var Poly -> Term h -> Poly -> Infer (Type, Term Goal, Unify)
 check ts e p = do
-  (e'@(Annot _ u), th1) <- infer ts e
-  th2 <- failMaybe $ unify (freeze p) u
-  let th3 = compose th2 th1
-  return (over (holesAnn . _2) (subst th3) . mapAnn (subst th3) $ e', th3)
+  (u, e') <- infer ts e
+  th <- failMaybe $ unify (freeze p) u
+  return (subst th u, over holes (subst th) e', th)

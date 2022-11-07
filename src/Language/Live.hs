@@ -23,7 +23,7 @@ import qualified RIO.Map as Map
 
 {-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
 pattern Scoped :: Scope -> Indet -> Expr' r 'Det
-pattern Scoped m e = Hole (Annot e m)
+pattern Scoped m e = Hole (m, e)
 
 indet :: Term Hole -> Maybe Indet
 indet = \case
@@ -45,10 +45,10 @@ pattern Indet i <- (indet -> Just i) where
 type Eval = Reader Scope
 
 runEval :: Env -> Eval a -> a
-runEval = flip runReader . view scope
+runEval = flip runReader . view envScope
 
 liftEval :: MonadReader Env m => Eval a -> m a
-liftEval x = runReader x <$> view scope
+liftEval x = runReader x <$> view envScope
 
 eval :: MonadReader Scope m => Scope -> Term Hole -> m Result
 eval loc = \case

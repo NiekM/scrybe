@@ -2,7 +2,6 @@ module Language.Parser (Parse(..), lexParse) where
 
 import Import hiding (some, many, lift, bracket)
 import RIO.Partial (read)
-import RIO.List
 import Language.Syntax
 import Language.Defs
 import Text.Megaparsec
@@ -244,9 +243,6 @@ instance Parse Value where
 instance Parse Example where
   parser = parseApps
 
-instance Parse a => Parse (Annot a Type) where
-  parser = Annot <$> parser <* op "::" <*> parser
-
 instance Parse Poly where
   parser = Poly <$ key "forall" <*> many parser <* op "." <*> parser
     <|> poly <$> parser
@@ -294,10 +290,3 @@ instance Parse a => Parse (Def a) where
 
 instance Parse a => Parse (Defs a) where
   parser = Defs . catMaybes <$> alt (optional parser) (single $ Newline 0)
-
-instance Parse Sketch where
-  parser = do
-    [Signature (MkSignature x s), Binding (MkBinding y b)] <-
-      sort . getDefs <$> parser
-    guard (x == y)
-    return $ Sketch x s b

@@ -7,141 +7,12 @@ import qualified Utils.Weighted as Weighted
 import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
-import Control.Monad.State
-import Control.Monad.Reader
 import Data.Monus.Dist
-import qualified Prettyprinter as Pretty
-
--- Experimental {{{
-
-newtype Space a = Space (Map Hole [(a, Space a)])
-  deriving (Eq, Ord, Show)
-  deriving (Functor, Foldable, Traversable)
-
-instance Pretty a => Pretty (Space a) where
-  pretty (Space xs) = Pretty.vsep $ Map.assocs xs <&> \(h, es) ->
-    Pretty.nest 2 $ Pretty.vsep (pretty h <> ":" :
-      (es <&> \(e, sp) -> Pretty.nest 2 (Pretty.vsep [pretty e, pretty sp])))
-
-data Goal = Goal
-  { _goalTyp :: Type
-  , _goalEnv :: Map (Term Void) Poly
-  } deriving (Eq, Ord, Show)
-
-makeLenses ''Goal
-
-instance Subst Goal where
-  subst th = over goalTyp (subst th) . over goalEnv (subst th <$>)
-
-data GenSt = GenSt
-  { _genCtxs :: Map Hole Goal
-  , _genHole :: Fresh Hole
-  , _genVar  :: Fresh Var
-  , _genFree :: Fresh Free
-  } deriving (Eq, Ord, Show)
-
-makeLenses ''GenSt
-
-type Gen = Reader GenSt
-
--- Instantiates a polymorphic type with fresh variables.
-refreshPoly :: Poly -> State (Fresh Free) Type
-refreshPoly (Poly as t) = do
-  th <- for as \a -> (a,) <$> fresh
-  return $ subst (Var <$> Map.fromList th) t
-
--- Generates the eta-expansion of a type.
-eta_ :: Type -> State (Fresh Var) (Term Goal)
-eta_ (Args ts u) = do
-  xs <- for ts \t -> (,t) <$> fresh
-  return . lams (fst <$> xs) . Hole . Goal u . Map.fromList
-    $ fmap (Var *** Mono) xs
-
--- Applies eta-expanded holes to a term.
-expand_ :: Term Void -> Type -> State (Fresh Var) (Term Goal, Type)
-expand_ x (Args ts u) = do
-  xs <- for ts eta_
-  return (apps (over holes absurd x) xs, u)
-
--- Gives each hole a name and returns a mapping from hole names to the original
--- holes' contents.
-renumber :: Term a -> State (Fresh Hole) (Term Hole, Map Hole a)
-renumber x = do
-  e <- forOf holes x \a -> (,a) <$> fresh
-  let m = Map.fromList $ toListOf holes e
-  return (over holes fst e, m)
-
-gen :: Gen (Space (Term Hole))
-gen = do
-  cs <- view genCtxs
-  xs <- forMap cs \h (Goal t ctx) ->
-    for (Map.assocs ctx) \(v, p) -> readerState do
-      m        <- zoom genFree $ refreshPoly p
-      (x, u)   <- zoom genVar  $ expand_ v m
-      (y, cs') <- zoom genHole $ renumber x
-      case unify u t of
-        Nothing -> return $ return Nothing
-        Just th -> do
-          zoom genCtxs do
-            modify $ Map.delete h
-            modify $ Map.union $ cs' <&> over goalEnv (ctx <>)
-            modify (subst th <$>)
-          return $ Just . (y,) <$> gen
-  return . Space $ catMaybes <$> xs
-
-updSpace :: (Hole -> a -> State r (Maybe b)) -> Space a -> Reader r (Space b)
-updSpace f (Space xs) =
-  Space <$> forMap xs \h ys -> catMaybes <$> for ys \(y, sp) -> readerState do
-    f h y >>= \case
-      Nothing -> return $ return Nothing
-      Just z -> return $ Just . (z,) <$> updSpace f sp
-
-fillSpace :: Space (Term Hole) -> Reader (Term Hole) (Space (Term Hole))
-fillSpace = updSpace \h x -> do
-  modify $ fill (Map.singleton h x)
-  gets Just
-
-evalSpace :: Space (Term Hole) -> Reader (Scope, Result) (Space Result)
-evalSpace = updSpace \h x -> do
-  (en, y) <- get
-  let r = runReader (resume (Map.singleton h x) y) en
-  assign _2 r
-  return $ Just r
-
--- TODO: equivalence pruning
-
-pruneHoles :: Space Result -> Reader Result (Space Result)
-pruneHoles = updSpace \h x -> do
-  gets blocking >>= \case
-    Nothing -> gets Just
-    Just (_, h')
-      | h == h' -> do
-        put x
-        gets Just
-      | otherwise -> return Nothing
-
--- TODO: unevaluation pruning
-
-pipeline :: Reader (GenSt, Term Hole, Scope) (Space Result)
-pipeline = do
-  es <- magnify _1 gen
-  e <- view _2
-  magnify _3 do
-    r <- eval mempty e
-    withReader (,r) $ evalSpace es >>= withReader snd . pruneHoles
-
-limit :: Int -> Space a -> Space a
-limit 0 (Space xs) = Space $ set each [] xs
-limit n (Space xs) = Space $ over (each . each . _2) (limit (n - 1)) xs
-
--- TODO: enumerate fairly
-
--- }}}
 
 -- Synthesis Monad {{{
 
 data SynState = SynState
-  { _contexts    :: Map Hole HoleCtx
+  { _contexts    :: Map Hole Goal
   , _constraints :: Logic Constraints
   , _fillings    :: Map Hole (Term Hole)
   , _freshHole   :: Fresh Hole
@@ -178,7 +49,7 @@ type Synth = RWST Env () SynState Nondet
 -- }}}
 
 -- | Retrieve the context of a hole.
-getCtx :: Hole -> Synth HoleCtx
+getCtx :: Hole -> Synth Goal
 getCtx h = use contexts >>=
   maybe (fail $ "Missing holeCtx for hole " <> show h) return . Map.lookup h
 
@@ -215,13 +86,13 @@ liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
 -- toplevel definitions.
 -- ALTERNATIVELY: implement full let polymorphism.
 
-checkBindings :: [Signature] -> [Binding Unit] -> Infer (Term HoleCtx)
+checkBindings :: [Signature] -> [Binding Unit] -> Infer (Term Goal)
 checkBindings ss fs = do
   let sigs = Map.fromList $ ss <&> \(MkSignature a (Poly _ t)) -> (a, t)
   let e = Lets (fs <&> \(MkBinding a x) -> (a, x)) (Hole (Unit ()))
-  (a, _) <- infer mempty e
-  case over holes snd $ strip a of
-    x@(Lets _ (Hole (HoleCtx _ cs))) -> do
+  (_, a) <- infer mempty e
+  case a of
+    x@(Lets _ (Hole (Goal cs _))) -> do
       let funs = cs <&> \(Poly _ t) -> t
       th <- failMaybe . unifies $ Map.intersectionWith (,) funs sigs
       return $ over holes (subst th) x
@@ -231,7 +102,7 @@ init :: Defs Unit -> Synth (Term Hole)
 init defs = do
   let ws = [x | Include xs <- pragmas defs, x <- toList xs]
 
-  gs <- asks $ view functions
+  gs <- asks $ view envFuns
   ws' <- zoom freshFree $ forOf (each . _2 . each) ws refresh
 
   assign included $ ws' <&> \(v, a) ->
@@ -288,8 +159,8 @@ recVarWeight = 2
 -- constructors and variables makes the benchmarks an order of
 -- magnitude slower! The weight of global variables should probably be scaled
 -- further compared to constructors and local variables.
-refinements :: (Scope, Hole) -> HoleCtx -> Synth (Term Hole)
-refinements (m, h) (HoleCtx t ctx) = do
+refinements :: (Scope, Hole) -> Goal -> Synth (Term Hole)
+refinements (m, h) (Goal ctx t) = do
   onlyVar <- Set.member h <$> use varOnly
   (e, ts) <- join $ mfold
     [ do
@@ -304,7 +175,7 @@ refinements (m, h) (HoleCtx t ctx) = do
     -- For concrete types, try the corresponding constructors.
     , case t of
       Apps (Ctr d) _ | not onlyVar -> do
-        (_, cs) <- mfold . Map.lookup d =<< view dataTypes
+        (_, cs) <- mfold . Map.lookup d =<< view envData
         (c, ts) <- mfold cs
         return (Ctr c, ts)
       _ -> mzero
@@ -315,23 +186,22 @@ refinements (m, h) (HoleCtx t ctx) = do
       (v, Poly _ (Args ts _)) <- mfold =<< use included
       return (Var v, ts)
     ]
-  (e1, th) <- liftInfer . check ctx (apps e (Hole <$> ts)) $ Poly [] t
+  (_, e1, th) <- liftInfer . check ctx (apps e (Hole <$> ts)) $ Poly [] t
   modifying contexts (subst th <$>)
-  let e2 = over holes snd $ strip e1
-  e3 <- zoom freshVar $ expand e2
-  (e4, ctx') <- zoom freshHole $ extract e3
+  e2         <- zoom freshVar  $ expand e1
+  (e3, ctx') <- zoom freshHole $ extract e2
   modifying contexts (<> ctx')
   let hs = Map.keys ctx'
   -- Weights
   weigh h $ fromIntegral $ length ts
-  let us = toListOf (holes . goalType) e2
+  let us = toListOf (holes . goalType) e1
   weigh h $ fromIntegral $
     sum (map (\u -> max 0 (typeSize u - typeSize t)) us)
   mul <- fromMaybe 1 . Map.lookup h <$> use multiplier
   modifying multiplier $ Map.mapWithKey \k d ->
     if k `elem` hs then mul * d else d
   -- Forbidden
-  updateForbidden h $ over holes (const $ Unit ()) e2
+  updateForbidden h $ over holes (const $ Unit ()) e1
   case e2 of
     Apps (Var v) _ -> do
       -- Equivalences {{{
@@ -534,7 +404,7 @@ refinements (m, h) (HoleCtx t ctx) = do
       -- }}}
     _ -> return ()
   --
-  return e4
+  return e3
 
 removeMatching :: (Ord k, Eq v) => k -> v -> Map k v -> Maybe (Map k v)
 removeMatching k v m = case Map.lookup k m of

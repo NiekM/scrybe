@@ -147,19 +147,19 @@ fromDefs defs = foldl' fromSigs bindEnv $ signatures defs
 
     fromData :: Env -> Datatype -> Env
     fromData m (MkDatatype t as cs) = m
-      & over dataTypes (Map.insert t (as, cs))
-      & over constructors (Map.union cs')
+      & over envData (Map.insert t (as, cs))
+      & over envCstr (Map.union cs')
       where
         t' = apps (Ctr t) (Var <$> as)
         cs' = Map.fromList cs <&> \ts -> Poly as $ arrs $ ts ++ [t']
 
     fromBind :: Env -> Binding Void -> Env
     fromBind m (MkBinding x e) =
-      let r = runReader (magnify scope $ eval mempty (over holes absurd e)) m
-      in m & over scope (Map.insert x r)
+      let r = runReader (magnify envScope $ eval mempty (magic e)) m
+      in m & over envScope (Map.insert x r)
 
     fromSigs :: Env -> Signature -> Env
-    fromSigs m (MkSignature x t) = m & over functions (Map.insert x t)
+    fromSigs m (MkSignature x t) = m & over envFuns (Map.insert x t)
 
 evalAssert :: MonadReader Scope m => Scope -> Assert -> m (Result, Example)
 evalAssert rs (MkAssert e (Lams vs ex)) = do

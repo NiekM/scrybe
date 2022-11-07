@@ -53,8 +53,8 @@ live input opts = do
     Nothing -> fail "Parse failed"
     Just expr -> case evalInfer (infer mempty expr) 0 prelude of
       Nothing -> fail "Type check failed"
-      Just (x, _) -> do
-        let r = runEval prelude (eval mempty $ over holes fst $ strip x)
+      Just _ -> do
+        let r = runEval prelude (eval mempty expr)
         logInfo . display . pretty $ r
 
 assert :: String -> Options -> RIO Application ()
@@ -65,8 +65,8 @@ assert input opts = do
     Nothing -> fail "Parse failed"
     Just (MkAssert e ex) -> case evalInfer (infer mempty e) 0 prelude of
       Nothing -> fail "Type check failed"
-      Just (x, _) -> do
-        let r = runEval prelude (eval mempty $ over holes fst $ strip x)
+      Just _ -> do
+        let r = runEval prelude (eval mempty e)
         case runUneval prelude 1000 $ uneval r $ toEx ex of
           Nothing -> fail "Out of fuel"
           Just cs -> case mergeConstraints <$> dnf cs of
