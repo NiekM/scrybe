@@ -47,13 +47,13 @@ type Gen = Reader GenSt
 -- Instantiates a polymorphic type with fresh variables.
 refreshPoly :: Poly -> State (Fresh Free) Type
 refreshPoly (Poly as t) = do
-  th <- for as \a -> (a,) <$> getFresh
+  th <- for as \a -> (a,) <$> fresh
   return $ subst (Var <$> Map.fromList th) t
 
 -- Generates the eta-expansion of a type.
 eta_ :: Type -> State (Fresh Var) (Term Goal)
 eta_ (Args ts u) = do
-  xs <- for ts \t -> (,t) <$> getFresh
+  xs <- for ts \t -> (,t) <$> fresh
   return . lams (fst <$> xs) . Hole . Goal u . Map.fromList
     $ fmap (Var *** Mono) xs
 
@@ -67,7 +67,7 @@ expand_ x (Args ts u) = do
 -- holes' contents.
 renumber :: Term a -> State (Fresh Hole) (Term Hole, Map Hole a)
 renumber x = do
-  e <- forOf holes x \a -> (,a) <$> getFresh
+  e <- forOf holes x \a -> (,a) <$> fresh
   let m = Map.fromList $ toListOf holes e
   return (over holes fst e, m)
 
@@ -144,7 +144,9 @@ data SynState = SynState
   { _contexts    :: Map Hole HoleCtx
   , _constraints :: Logic Constraints
   , _fillings    :: Map Hole (Term Hole)
-  , _freshSt     :: FreshState
+  , _freshHole   :: Fresh Hole
+  , _freshFree   :: Fresh Free
+  , _freshVar    :: Fresh Var
   , _mainScope   :: Scope
   , _examples    :: [Assert]
   , _included    :: [(Var, Poly)]
@@ -157,11 +159,8 @@ data SynState = SynState
 
 makeLenses ''SynState
 
-instance HasFreshState SynState where
-  freshState = freshSt
-
 mkSynState :: SynState
-mkSynState = SynState mempty (Disjunction []) mempty mkFreshState
+mkSynState = SynState mempty (Disjunction []) mempty mempty mempty mempty
   mempty [] mempty [] mempty mempty mempty
 
 type Nondet = Weighted.Search Dist
@@ -183,14 +182,8 @@ getCtx :: Hole -> Synth HoleCtx
 getCtx h = use contexts >>=
   maybe (fail $ "Missing holeCtx for hole " <> show h) return . Map.lookup h
 
-instance ExpandHole Hole Synth where
-  expandHole h = do
-    (xs, ctx') <- getCtx h >>= expandHole
-    modifying contexts $ Map.insert h ctx'
-    return (xs, h)
-
 liftInfer :: Infer a -> Synth a
-liftInfer = mapRWST mfold . zoom (freshSt . freshFree)
+liftInfer = mapRWST mfold . zoom freshFree
 
 liftUneval :: Int -> Uneval a -> Synth (Maybe a)
 liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
@@ -234,21 +227,12 @@ checkBindings ss fs = do
       return $ over holes (subst th) x
     _ -> error "Impossible"
 
-extract :: (Ord h, Count h, MonadState (Fresh h) m) =>
-  Term a -> m (Term h, Map h a)
-extract x = do
-  y <- forOf holes x \h -> (,h) <$> getFresh
-  return
-    ( over holes fst y
-    , Map.fromList $ toListOf holes y
-    )
-
 init :: Defs Unit -> Synth (Term Hole)
 init defs = do
   let ws = [x | Include xs <- pragmas defs, x <- toList xs]
 
   gs <- asks $ view functions
-  ws' <- zoom (freshSt . freshFree) $ forOf (each . _2 . each) ws refresh
+  ws' <- zoom freshFree $ forOf (each . _2 . each) ws refresh
 
   assign included $ ws' <&> \(v, a) ->
     ( v
@@ -265,9 +249,9 @@ init defs = do
   -- Type check
   expr <- liftInfer $ checkBindings (signatures defs) (bindings defs)
   -- Eta expand
-  expanded <- zoom (freshSt . freshVar) $ expand2 expr
+  expanded <- zoom freshVar $ expand expr
   -- Name holes and extract context
-  (e, ctx) <- zoom (freshSt . freshHole) $ extract expanded
+  (e, ctx) <- zoom freshHole $ extract expanded
   assign contexts ctx
 
   liftEval (eval mempty e) >>= \case
@@ -304,41 +288,52 @@ recVarWeight = 2
 -- constructors and variables makes the benchmarks an order of
 -- magnitude slower! The weight of global variables should probably be scaled
 -- further compared to constructors and local variables.
-refinements :: (Scope, Hole) -> Bool -> HoleCtx -> Synth (Term (Hole, HoleCtx))
-refinements (m, h) b (HoleCtx t ctx) = do
-  (e', th) <- join $ mfold
-    if b then
+refinements :: (Scope, Hole) -> HoleCtx -> Synth (Term Hole)
+refinements (m, h) (HoleCtx t ctx) = do
+  onlyVar <- Set.member h <$> use varOnly
+  (e, ts) <- join $ mfold
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
-      guard . Set.notMember v =<< use scrutinized
-      when (recVar v m) $ weigh h recVarWeight
-      hs <- zoom (freshSt . freshHole) . for ts $ const getFresh
-      let e = apps (Var v) (Hole <$> hs)
-      modifying scrutinized $ Set.insert v
-      liftInfer $ check ctx e $ Poly [] t
-    ] else
-    [ do
-      (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
-      when (recVar v m) $ weigh h recVarWeight
-      hs <- zoom (freshSt . freshHole) . for ts $ const getFresh
-      let e = apps (Var v) (Hole <$> hs)
-      liftInfer $ check ctx e $ Poly [] t
+      when onlyVar do
+        guard . Set.notMember v =<< use scrutinized
+        modifying scrutinized $ Set.insert v
+        modifying varOnly $ Set.delete h
+      when (recVar v m) do
+        weigh h recVarWeight
+      return (Var v, ts)
     -- For concrete types, try the corresponding constructors.
     , case t of
-      Apps (Ctr d) _ -> do
+      Apps (Ctr d) _ | not onlyVar -> do
         (_, cs) <- mfold . Map.lookup d =<< view dataTypes
         (c, ts) <- mfold cs
-        hs <- zoom (freshSt . freshHole) . for ts $ const getFresh
-        let e = apps (Ctr c) (Hole <$> hs)
-        liftInfer $ check ctx e $ Poly [] t
+        return (Ctr c, ts)
       _ -> mzero
     -- Global variables are handled like local variables, but only if they are
     -- explicitly imported.
     , do
-      (v, p@(Poly _ (Args ts _))) <- mfold =<< use included
-      hs <- zoom (freshSt . freshHole) . for ts $ const getFresh
-      -- weigh h 1
-
+      guard $ not onlyVar
+      (v, Poly _ (Args ts _)) <- mfold =<< use included
+      return (Var v, ts)
+    ]
+  (e1, th) <- liftInfer . check ctx (apps e (Hole <$> ts)) $ Poly [] t
+  modifying contexts (subst th <$>)
+  let e2 = over holes snd $ strip e1
+  e3 <- zoom freshVar $ expand e2
+  (e4, ctx') <- zoom freshHole $ extract e3
+  modifying contexts (<> ctx')
+  let hs = Map.keys ctx'
+  -- Weights
+  weigh h $ fromIntegral $ length ts
+  let us = toListOf (holes . goalType) e2
+  weigh h $ fromIntegral $
+    sum (map (\u -> max 0 (typeSize u - typeSize t)) us)
+  mul <- fromMaybe 1 . Map.lookup h <$> use multiplier
+  modifying multiplier $ Map.mapWithKey \k d ->
+    if k `elem` hs then mul * d else d
+  -- Forbidden
+  updateForbidden h $ over holes (const $ Unit ()) e2
+  case e2 of
+    Apps (Var v) _ -> do
       -- Equivalences {{{
       let u = Hole $ Unit ()
       let z = Ctr "Zero"
@@ -537,26 +532,9 @@ refinements (m, h) b (HoleCtx t ctx) = do
           weigh h elimWeight
         _ -> return ()
       -- }}}
-
-      let e = apps (Var v) (Hole <$> hs)
-
-      -- NOTE: this local is only needed to add the function with instantiated
-      -- types to the environment to check. It would be more efficient to not
-      -- call check, but simply do the type checking manually.
-      let help = set functions $ Map.singleton v p
-      local help $ liftInfer $ check ctx e $ Poly [] t
-    ]
-  let result = strip e'
-  let hs = toListOf (holes . _1) result
-  weigh h $ fromIntegral $ length hs
-  let ts = toListOf (holes . _2 . goalType) result
-  weigh h $ fromIntegral $
-    sum (map (\u -> max 0 (typeSize u - typeSize t)) ts)
-  n <- fromMaybe 1 . Map.lookup h <$> use multiplier
-  modifying multiplier $ Map.mapWithKey \k d ->
-    if k `elem` hs then n * d else d
-  modifying contexts (subst th <$>)
-  return result
+    _ -> return ()
+  --
+  return e4
 
 removeMatching :: (Ord k, Eq v) => k -> v -> Map k v -> Maybe (Map k v)
 removeMatching k v m = case Map.lookup k m of
@@ -589,14 +567,10 @@ step hf = do
   (m, hole) <- mfold $ foldr (<|>) Nothing (blocking . fst <$> rs)
   ctx <- mfold . Map.lookup hole =<< use contexts
   modifying contexts $ Map.delete hole
-  -- Find a refinement to extend the hole filling.
-  var <- Set.member hole <$> use varOnly
-  modifying varOnly $ Set.delete hole
-  ref <- refinements (m, hole) var ctx
-  updateForbidden hole $ over holes (const $ Unit ()) ref
-  expr <- etaExpand _2 ref
-  modifying contexts (<> Map.fromList (toListOf holes expr))
-  let new = Map.singleton hole $ over holes fst expr
+  -- Find a possible refinement.
+  expr <- refinements (m, hole) ctx
+  -- Update hole fillings.
+  let new = Map.singleton hole expr
   use mainScope
     >>= mapM (liftEval . resume new)
     >>= assign mainScope
@@ -606,7 +580,7 @@ step hf = do
   -- cases it might be better to unevaluate, so that we know better how to fill
   -- the scrutinized hole... TODO: find some good examples
   scrHole <- scrutinizedHole <$> liftEval do
-    eval m (over holes fst expr) >>= resume new
+    eval m expr >>= resume new
   case scrHole of
     Just _h -> do
       step hf'

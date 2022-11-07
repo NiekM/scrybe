@@ -133,7 +133,7 @@ relBinds :: Defs Unit -> [Binding Hole]
 relBinds (Defs ds) = bs' <&> uncurry MkBinding
   where
     bs = [ (x, e) | Binding (MkBinding x e) <- ds, isNothing (holeFree e)]
-    bs' = evalState (forOf (each . _2 . holes) bs $ const getFresh) 0
+    bs' = evalState (forOf (each . _2 . holes) bs $ const fresh) 0
 
 -- TODO: type checking and imports
 fromDefs :: Defs Void -> Env

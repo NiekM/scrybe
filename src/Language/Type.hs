@@ -4,7 +4,6 @@ module Language.Type
   , runInfer, evalInfer
   , unify, unifies
   , infer, check
-  , freshHoles
   ) where
 
 import Import
@@ -79,7 +78,7 @@ infer ts expr = do
   fs <- view functions
   (e, th) <- (ts &) $ expr & cataExpr \e loc -> case e of
     Hole h -> do
-      g <- Var <$> getFresh
+      g <- Var <$> fresh
       return (Hole (h, HoleCtx g loc) `Annot` g, Map.empty)
     Ctr c -> do
       t <- failMaybe $ Map.lookup c cs
@@ -96,13 +95,13 @@ infer ts expr = do
     App f x -> do
       (f'@(Annot _ a), th1) <- f loc
       (x'@(Annot _ b), th2) <- x (subst th1 <$> loc)
-      t <- Var <$> getFresh
+      t <- Var <$> fresh
       let th3 = th2 `compose` th1
       th4 <- failMaybe $ unify (subst th3 a) (Arr b t)
       let th5 = th4 `compose` th3
       return (App f' x' `Annot` subst th5 t, th5)
     Lam a x -> do
-      t <- Var <$> getFresh
+      t <- Var <$> fresh
       (x'@(Annot _ u), th) <- x (Map.insert a (Mono t) loc)
       let t' = subst th t
       return (Lam a x' `Annot` Arr t' u, th)
@@ -113,8 +112,8 @@ infer ts expr = do
       (y'@(Annot _ t2), th2) <- y loc'
       return (Let a x' y' `Annot` t2, th2 `compose` th1)
     Elim xs -> do
-      t <- Var <$> getFresh
-      u <- Var <$> getFresh
+      t <- Var <$> fresh
+      u <- Var <$> fresh
       (ys, t', u', th') <-
         xs & flip foldr (return ([], t, u, mempty)) \(c, y) r -> do
         (as, t1, u1, th1) <- r
@@ -129,7 +128,7 @@ infer ts expr = do
         return ((c, y'):as, subst th5 t1, subst th5 u1, th5)
       return (Elim (reverse ys) `Annot` Arr t' u', th')
     Fix -> do
-      t <- Var <$> getFresh
+      t <- Var <$> fresh
       return (Fix `Annot` Arr (Arr t t) t, mempty)
   return (over (holesAnn . _2) (subst th) . mapAnn (subst th) $ e, th)
 

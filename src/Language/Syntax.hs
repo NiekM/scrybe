@@ -19,6 +19,32 @@ import qualified Prettyprinter as P
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 
+-- Identifiers {{{
+
+newtype Hole = MkHole Natural
+  deriving stock (Eq, Ord, Read, Show)
+  deriving newtype (Num, Pretty)
+  deriving Count via Natural
+
+newtype Free = MkFree Text
+  deriving stock (Eq, Ord, Read, Show)
+  deriving newtype (IsString, Pretty)
+  deriving Count via TextVar "t"
+
+newtype Var = MkVar Text
+  deriving stock (Eq, Ord, Read, Show)
+  deriving newtype (IsString, Pretty)
+  deriving Count via TextVar "a"
+
+-- NOTE: we assume that variables are always lowercase and constructors are
+-- always uppercase.
+
+newtype Ctr = MkCtr Text
+  deriving stock (Eq, Ord, Read, Show)
+  deriving newtype (IsString, Pretty)
+
+-- }}}
+
 -- Levels {{{
 
 type family May (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint where
@@ -383,9 +409,6 @@ instance Subst Poly where
   subst th (Poly as t) =
     Poly as $ subst (Map.withoutKeys th (Set.fromList as)) t
 
-instance (Subst t, Subst a) => Subst (Ann t ('Term a)) where
-  subst th = over holesAnn (subst th) . mapAnn (subst th)
-
 -- | Fill holes in an expression according to a map of hole fillings.
 fill :: (HasHole l h, Ord h) => Map h (Expr l) -> Expr l -> Expr l
 fill th = cataExpr \case
@@ -410,75 +433,32 @@ strip = cataAnn (const fixExpr)
 collect :: Ann a l -> [Annot a (Expr l)]
 collect = paraAnn \a t -> Annot (strip a) (view ann a) : view rec t
 
--- | Uniquely number all holes in an expression.
-number :: (Traversable t, MonadFresh n m) => t a -> m (t (n, a))
-number = traverse \x -> (,x) <$> fresh
-
--- | Uniquely number all holes in an expression.
-number_ :: (Count n, Traversable t, MonadState (Fresh n) m) => t a -> m (t (n, a))
-number_ = traverse \x -> (,x) <$> getFresh
-
-freshHoles :: (Ord h, Count h) => MonadState (Fresh h) m => Ann a ('Term b) ->
-  m (Ann a ('Term h), Map h b)
-freshHoles x = do
-  y <- forOf holesAnn x \h -> (,h) <$> getFresh
-  return (over holesAnn fst y, Map.fromList $ toListOf holesAnn y)
-
 -- | Check if an expression has no holes.
 holeFree :: Term a -> Maybe (Term Void)
 holeFree = traverseOf holes $ const Nothing
 
--- Eta expansion {{{
+-- | Extract hole information by mapping to fresh hole variables.
+extract :: (Ord h, Count h, MonadState (Fresh h) m) =>
+  Term a -> m (Term h, Map h a)
+extract x = do
+  y <- forOf holes x \h -> (,h) <$> fresh
+  return
+    ( over holes fst y
+    , Map.fromList $ toListOf holes y
+    )
 
-class ExpandHole h m where
-  expandHole :: h -> m ([(Var, Type)], h)
-
-instance FreshVar m => ExpandHole Type m where
-  expandHole (Args ts t) = (,t) <$> number ts --expandHole t
-    -- (xs, u) <- (,t) <$> number ts --expandHole t
-    -- return (xs, HoleCtx u (vs <> (Mono <$> Map.fromList xs)))
-
-instance FreshVar m => ExpandHole HoleCtx m where
-  expandHole (HoleCtx t vs) = do
-    (xs, u) <- expandHole t
-    return (xs, HoleCtx u (vs <> (Mono <$> Map.fromList xs)))
-
-etaExpand :: (ExpandHole h' m, FreshVar m) =>
-  Lens' h h' -> Term h -> m (Term h)
-etaExpand ctx = cataExprM \case
-  Hole h -> do
-    (xs, ctx') <- expandHole (view ctx h)
-    return $ lams (fst <$> xs) (Hole $ set ctx ctx' h)
-  e -> fixExprM e
-
--- Generates the eta-expansion of a type.
-eta :: MonadState (Fresh Var) m => Type -> m (Term HoleCtx)
-eta (Args ts u) = do
-  xs <- for ts \t -> (,t) <$> getFresh
-  return . lams (fst <$> xs) . Hole . HoleCtx u . Map.fromList
-    $ fmap (second Mono) xs
-
--- Generates the eta-expansion of a type.
-eta2 :: MonadState (Fresh Var) m => HoleCtx -> m (Term HoleCtx)
-eta2 (HoleCtx (Args ts u) ctx) = do
-  xs <- for ts \t -> (,t) <$> getFresh
+-- | Generate the eta-expansion of a type.
+eta :: MonadState (Fresh Var) m => HoleCtx -> m (Term HoleCtx)
+eta (HoleCtx (Args ts u) ctx) = do
+  xs <- for ts \t -> (,t) <$> fresh
   return . lams (fst <$> xs) . Hole . HoleCtx u $
     ctx <> Map.fromList (second Mono <$> xs)
 
--- Applies eta-expanded holes to a term.
-expand :: MonadState (Fresh Var) m => Term Void -> Type -> m (Term HoleCtx, Type)
-expand x (Args ts u) = do
-  xs <- for ts eta
-  return (apps (over holes absurd x) xs, u)
+-- | Eta expand an expression.
+expand :: MonadState (Fresh Var) m => Term HoleCtx -> m (Term HoleCtx)
+expand x = forOf holes' x eta
 
-expand' :: MonadState (Fresh Var) m => Term Type -> m (Term HoleCtx)
-expand' x = forOf holes' x eta
-
-expand2 :: MonadState (Fresh Var) m => Term HoleCtx -> m (Term HoleCtx)
-expand2 x = forOf holes' x eta2
-
--- }}}
-
+-- | The number of applications in a type.
 typeSize :: Type -> Int
 typeSize = cataExpr \case
   App f a -> 1 + f + a
@@ -543,7 +523,7 @@ instantiate th (Poly fr ty) =
 
 refresh :: MonadState (Fresh Free) m => Poly -> m Poly
 refresh (Poly as t) = do
-  th <- for as \a -> (a,) <$> getFresh
+  th <- for as \a -> (a,) <$> fresh
   let u = subst (Var <$> Map.fromList th) t
   return $ Poly (snd <$> th) u
 

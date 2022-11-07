@@ -156,7 +156,7 @@ instance Parse Ctr where
   parser = MkCtr <$> constructor
 
 instance Parse Hole where
-  parser = MkHole <$> int
+  parser = MkHole . fromIntegral <$> int
 
 instance Parse Free where
   parser = MkFree <$> identifier
