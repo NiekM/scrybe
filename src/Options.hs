@@ -17,8 +17,14 @@ makeLenses ''Options
 class HasOptions env where
   optionsL :: Lens' env Options
 
+newtype SynOptions = SynOptions
+  { _synPropagate :: Bool
+  }
+
+makeLenses ''SynOptions
+
 data Command
-  = Synth String
+  = Synth String SynOptions
   | Live String
   | Assert String
 

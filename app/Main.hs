@@ -39,10 +39,19 @@ runApp run = do
         )
     )
     do
-      addCommand "synth" "Synthesize a program from a sketch" Synth $
-        strArgument ( metavar "INPUT"
+      addCommand "synth" "Synthesize a program from a sketch" id $
+        Synth
+        <$> strArgument ( metavar "INPUT"
           <> help "Program to synthesize"
           )
+        <*>
+        ( SynOptions
+          <$> option auto
+            ( long "propagate"
+            <> value True
+            <> help "Whether to prune using example propagation"
+            )
+        )
       addCommand "live" "Live evaluate an expression" Live $
         strArgument ( metavar "EXPR"
           <> help "Expression to live evaluate"

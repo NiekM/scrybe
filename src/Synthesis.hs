@@ -3,6 +3,7 @@
 module Synthesis where
 
 import Import
+import Options (SynOptions(..), synPropagate)
 import qualified Utils.Weighted as Weighted
 import Language
 import qualified RIO.Map as Map
@@ -11,18 +12,22 @@ import Data.Monus.Dist
 
 -- Synthesis Monad {{{
 
+type Fillings = Map Hole (Term Hole)
+
 data SynState = SynState
-  { _contexts    :: Map Hole Goal
+  { _options     :: SynOptions
+  , _contexts    :: Map Hole Goal
   , _constraints :: Logic Constraints
-  , _fillings    :: Map Hole (Term Hole)
-  , _freshHole   :: Fresh Hole
-  , _freshFree   :: Fresh Free
-  , _freshVar    :: Fresh Var
-  , _mainScope   :: Scope
   , _examples    :: [Assert]
   , _included    :: [(Var, Poly)]
   , _forbidden   :: [Map Hole (Term Unit)]
-
+  , _mainScope   :: Scope
+  , _fillings    :: Fillings
+  -- Fresh variables
+  , _freshHole   :: Fresh Hole
+  , _freshFree   :: Fresh Free
+  , _freshVar    :: Fresh Var
+  -- Heuristics
   , _varOnly     :: Set Hole
   , _scrutinized :: Set Var
   , _multiplier  :: Map Hole Dist
@@ -30,61 +35,28 @@ data SynState = SynState
 
 makeLenses ''SynState
 
-mkSynState :: SynState
-mkSynState = SynState mempty (Disjunction []) mempty mempty mempty mempty
-  mempty [] mempty [] mempty mempty mempty
+mkSynState :: SynOptions -> SynState
+mkSynState opts = SynState opts mempty (Disjunction []) mempty mempty mempty
+  mempty mempty mempty mempty mempty mempty mempty mempty
 
 type Nondet = Weighted.Search Dist
+type Synth = RWST Env () SynState Nondet
 
 weigh :: Hole -> Dist -> Synth ()
 weigh h d = do
   m <- Map.lookup h <$> use multiplier
   Weighted.weigh $ d * fromMaybe 1 m
 
-runSynth :: Env -> Synth a -> Nondet a
-runSynth m x = view _1 <$> runRWST x m mkSynState
-
-type Synth = RWST Env () SynState Nondet
+runSynth :: SynOptions -> Env -> Synth a -> Nondet a
+runSynth opts m x = view _1 <$> runRWST x m (mkSynState opts)
 
 -- }}}
-
--- | Retrieve the context of a hole.
-getCtx :: Hole -> Synth Goal
-getCtx h = use contexts >>=
-  maybe (fail $ "Missing holeCtx for hole " <> show h) return . Map.lookup h
 
 liftInfer :: Infer a -> Synth a
 liftInfer = mapRWST mfold . zoom freshFree
 
 liftUneval :: Int -> Uneval a -> Synth (Maybe a)
 liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
-
--- TODO: figure out how to deal with diverging unevaluation, such as that of
--- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
--- example 'mult 0 {0} <= 0'.
--- NOTE: it seems to keep trying to merge more and more elaborate examples
--- This seems to be a very specific example where unevaluation diverges, which
--- is usually not encountered during synthesis, but only in these specific
--- circumstances?
-
--- TODO: make sure that local type unifications don't leak to other places. For
--- example, when synthesizing 'map', we might define 'map_succ' (a helper
--- function for assertions) as 'map Succ', but this instantiates the type
--- variables of 'map' to 'Nat', which is incorrect. Not only does this lead to
--- the type incorrect synthesis of 'map' specialized to 'Succ', but if we had
--- another helper function such as 'map_unit = map (const Unit)', the resulting
--- unification error would stop synthesis from occuring altogether.
-
--- TODO: implement a function that reads and type checks the program correctly,
--- without leaking type information between functions. To what extend do we
--- consider the toplevel functions part of the global/local environment? It is
--- not great to mix the current local scope (based on unevaluation constraints
--- from the assertions) with the semi-local scope of toplevel functions (which
--- might still contain holes and are not necessarily globally available in
--- every hole context). The resulting function should be somewhat similar to
--- the fromDefs function in Language.Live.hs, in that it folds over all the
--- toplevel definitions.
--- ALTERNATIVELY: implement full let polymorphism.
 
 checkBindings :: [Signature] -> [Binding Unit] -> Infer (Term Goal)
 checkBindings ss fs = do
@@ -155,14 +127,17 @@ elimWeight = 4
 schemeWeight = 4
 recVarWeight = 2
 
--- TODO: should we have a weight here? Giving a weight of 1 to
--- constructors and variables makes the benchmarks an order of
--- magnitude slower! The weight of global variables should probably be scaled
--- further compared to constructors and local variables.
+computeWeight :: Type -> Term Goal -> Dist
+computeWeight t e = fromIntegral $ sum
+  [ length us
+  , sum (us <&> \u -> max 0 (typeSize u - typeSize t))
+  ] where us = toListOf (holes . goalType) e
+
 refinements :: (Scope, Hole) -> Goal -> Synth (Term Hole)
 refinements (m, h) (Goal ctx t) = do
   onlyVar <- Set.member h <$> use varOnly
   (e, ts) <- join $ mfold
+    -- Local variables
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
       when onlyVar do
@@ -172,15 +147,14 @@ refinements (m, h) (Goal ctx t) = do
       when (recVar v m) do
         weigh h recVarWeight
       return (Var v, ts)
-    -- For concrete types, try the corresponding constructors.
+    -- Constructors
     , case t of
       Apps (Ctr d) _ | not onlyVar -> do
         (_, cs) <- mfold . Map.lookup d =<< view envData
         (c, ts) <- mfold cs
         return (Ctr c, ts)
       _ -> mzero
-    -- Global variables are handled like local variables, but only if they are
-    -- explicitly imported.
+    -- Imported functions
     , do
       guard $ not onlyVar
       (v, Poly _ (Args ts _)) <- mfold =<< use included
@@ -193,10 +167,7 @@ refinements (m, h) (Goal ctx t) = do
   modifying contexts (<> ctx')
   let hs = Map.keys ctx'
   -- Weights
-  weigh h $ fromIntegral $ length ts
-  let us = toListOf (holes . goalType) e1
-  weigh h $ fromIntegral $
-    sum (map (\u -> max 0 (typeSize u - typeSize t)) us)
+  weigh h $ computeWeight t e1
   mul <- fromMaybe 1 . Map.lookup h <$> use multiplier
   modifying multiplier $ Map.mapWithKey \k d ->
     if k `elem` hs then mul * d else d
@@ -427,7 +398,7 @@ unevalFuel = 32
 maxDisjunctions :: Int
 maxDisjunctions = 32
 
-step :: Map Hole (Term Hole) -> Synth ()
+step :: Fillings -> Synth ()
 step hf = do
   -- Pick one blocking hole and remove it.
   s <- use mainScope
@@ -451,45 +422,71 @@ step hf = do
   -- the scrutinized hole... TODO: find some good examples
   scrHole <- scrutinizedHole <$> liftEval do
     eval m expr >>= resume new
-  case scrHole of
-    Just _h -> do
-      step hf'
-    Nothing -> do
-      cs <- use constraints
-      let noUneval = False
-      ctxs <- use contexts
-      if noUneval && not (Map.null ctxs)
-        then do
-          step hf'
-        else do
-          liftUneval unevalFuel (resumeUneval hf' cs) >>= \case
-            Nothing -> do
-              weigh hole 1
-              step hf'
-            Just xs -> do
-              let disjunctions = dnf xs
-              if length disjunctions > maxDisjunctions
-                then do
-                  -- NOTE: weights are added a bit too late. we add a weight
-                  -- for e.g. using a recursively defined variable, but that's
-                  -- because unevaluation takes so long, which will happen
-                  -- anyways, because the weight only affects hole fillings
-                  -- after that!
-                  weigh hole 4
-                  step hf'
-                else updateConstraints $ disjunctions >>= toList . mergeConstraints
 
--- TODO: add a testsuite testing the equivalence of different kinds and
--- combinations of (un)evaluation resumptions.
+  cs <- use constraints
+  ctxs <- use contexts
+  propagate <- use $ options . synPropagate
+
+  case scrHole of
+    Just _h -> step hf'
+    Nothing
+      | not propagate && not (Map.null ctxs) -> step hf'
+      | otherwise -> do
+        liftUneval unevalFuel (resumeUneval hf' cs) >>= \case
+          Nothing -> do
+            weigh hole 1
+            step hf'
+          Just xs
+            | length disjunctions > maxDisjunctions -> do
+              -- NOTE: weights are added a bit too late. we add a weight
+              -- for e.g. using a recursively defined variable, but that's
+              -- because unevaluation takes so long, which will happen
+              -- anyways, because the weight only affects hole fillings
+              -- after that!
+              weigh hole 4
+              step hf'
+            | otherwise ->
+              updateConstraints $ disjunctions >>= toList . mergeConstraints
+            where disjunctions = dnf xs
 
 final :: SynState -> Bool
 final = null . view contexts
 
-synth :: Defs Unit -> Synth (Map Hole (Term Hole))
+synth :: Defs Unit -> Synth Fillings
 synth d = init d >> go where
-  go :: Synth (Map Hole (Term Hole))
+  go :: Synth Fillings
   go = do
     st <- get
     if final st
       then use fillings
       else step mempty >> go
+
+-- TODO: figure out how to deal with diverging unevaluation, such as that of
+-- 'foldList {} (\x r -> r) {}' onto some examples, like '\[] -> 0', or for
+-- example 'mult 0 {0} <= 0'.
+-- NOTE: it seems to keep trying to merge more and more elaborate examples
+-- This seems to be a very specific example where unevaluation diverges, which
+-- is usually not encountered during synthesis, but only in these specific
+-- circumstances?
+
+-- TODO: make sure that local type unifications don't leak to other places. For
+-- example, when synthesizing 'map', we might define 'map_succ' (a helper
+-- function for assertions) as 'map Succ', but this instantiates the type
+-- variables of 'map' to 'Nat', which is incorrect. Not only does this lead to
+-- the type incorrect synthesis of 'map' specialized to 'Succ', but if we had
+-- another helper function such as 'map_unit = map (const Unit)', the resulting
+-- unification error would stop synthesis from occuring altogether.
+
+-- TODO: implement a function that reads and type checks the program correctly,
+-- without leaking type information between functions. To what extend do we
+-- consider the toplevel functions part of the global/local environment? It is
+-- not great to mix the current local scope (based on unevaluation constraints
+-- from the assertions) with the semi-local scope of toplevel functions (which
+-- might still contain holes and are not necessarily globally available in
+-- every hole context). The resulting function should be somewhat similar to
+-- the fromDefs function in Language.Live.hs, in that it folds over all the
+-- toplevel definitions.
+-- ALTERNATIVELY: implement full let polymorphism.
+
+-- TODO: add a testsuite testing the equivalence of different kinds and
+-- combinations of (un)evaluation resumptions.
