@@ -2,8 +2,9 @@ module Main where
 
 import Import hiding (timeout)
 import Synthesis
+import Options (defaultOptions)
 import Language.Parser
-import Language.Syntax hiding (env)
+import Language.Syntax
 import Language.Defs
 import Utils.Weighted
 import RIO.FilePath
@@ -26,7 +27,7 @@ removeMaybes = \case
   Leaf l -> Leaf <$> l
 
 trySyn :: Env -> Defs Unit -> Bool
-trySyn m = isJust . best . runSearch . runSynth m . synth
+trySyn m = isJust . best . runSearch . runSynth defaultOptions m . synth
 
 getTree :: MonadIO m => FilePath -> m [FileTree]
 getTree p = do

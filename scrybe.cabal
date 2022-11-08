@@ -4,11 +4,11 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 
-name:           synthesis
+name:           scrybe
 version:        0.1.0.0
-description:    Please see the README on Github at <https://github.com/NiekM/synthesis#readme>
-homepage:       https://github.com/NiekM/synthesis#readme
-bug-reports:    https://github.com/NiekM/synthesis/issues
+description:    Please see the README on Github at <https://github.com/NiekM/scrybe#readme>
+homepage:       https://github.com/NiekM/scrybe#readme
+bug-reports:    https://github.com/NiekM/scrybe/issues
 author:         Niek Mulleners
 maintainer:     n.mulleners@uu.nl
 copyright:      2022 Niek Mulleners
@@ -22,7 +22,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/NiekM/synthesis
+  location: https://github.com/NiekM/scrybe
 
 library
   exposed-modules:
@@ -43,7 +43,7 @@ library
       Utils.PartialSemigroup
       Utils.Weighted
   other-modules:
-      Paths_synthesis
+      Paths_scrybe
   hs-source-dirs:
       src
   default-extensions:
@@ -88,10 +88,10 @@ library
     , template-haskell
   default-language: Haskell2010
 
-executable synthesis-exe
+executable scrybe-exe
   main-is: Main.hs
   other-modules:
-      Paths_synthesis
+      Paths_scrybe
   hs-source-dirs:
       app
   default-extensions:
@@ -134,17 +134,17 @@ executable synthesis-exe
     , optparse-simple
     , prettyprinter
     , rio >=0.1.12.0
-    , synthesis
+    , scrybe
     , template-haskell
   default-language: Haskell2010
 
-test-suite synthesis-test
+test-suite scrybe-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
       SyntaxSpec
       SynthesisSpec
-      Paths_synthesis
+      Paths_scrybe
   hs-source-dirs:
       test
   default-extensions:
@@ -187,15 +187,15 @@ test-suite synthesis-test
     , mtl
     , prettyprinter
     , rio >=0.1.12.0
-    , synthesis
+    , scrybe
     , template-haskell
   default-language: Haskell2010
 
-benchmark synthesis-bench
+benchmark scrybe-bench
   type: exitcode-stdio-1.0
   main-is: Main.hs
   other-modules:
-      Paths_synthesis
+      Paths_scrybe
   hs-source-dirs:
       bench
   default-extensions:
@@ -238,6 +238,6 @@ benchmark synthesis-bench
     , mtl
     , prettyprinter
     , rio >=0.1.12.0
-    , synthesis
+    , scrybe
     , template-haskell
   default-language: Haskell2010

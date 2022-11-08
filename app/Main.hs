@@ -6,7 +6,7 @@ import qualified Run
 import RIO
 import RIO.Process
 import Options.Applicative.Simple
-import qualified Paths_synthesis
+import qualified Paths_scrybe
 
 main :: IO ()
 main = runApp Run.run
@@ -14,14 +14,14 @@ main = runApp Run.run
 runApp :: RIO Application () -> IO ()
 runApp run = do
   (options, cmd) <- simpleOptions
-    $(simpleVersion Paths_synthesis.version)
-    "Header for command line arguments"
+    $(simpleVersion Paths_scrybe.version)
+    "Scrybe\n\nType-and-example directed program synthesis using example propagation"
     "Program Synthesizer"
     ( Options
       <$> switch
         ( long "verbose"
         <> short 'v'
-        <> help "Verbose output?"
+        <> help "Verbose output"
         )
       <*> strOption
         ( long "prelude"
@@ -35,7 +35,7 @@ runApp run = do
         <> short 't'
         <> metavar "TIMEOUT"
         <> value 1000
-        <> help "Maximum time spent in ms"
+        <> help "Maximum time spent (in ms)"
         )
     )
     do

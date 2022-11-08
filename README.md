@@ -1,4 +1,6 @@
-# synthesis
+# Scrybe
+
+Type-and-example directed program synthesis using example propagation.
 
 ## Execute
 

@@ -1,6 +1,6 @@
-name:                synthesis
+name:                scrybe
 version:             0.1.0.0
-github:              NiekM/synthesis
+github:              NiekM/scrybe
 license:             BSD3
 author:              Niek Mulleners
 maintainer:          n.mulleners@uu.nl
@@ -12,7 +12,7 @@ extra-source-files:
 - data/Prelude.hs
 
 description: Please see the README on Github at
-  <https://github.com/NiekM/synthesis#readme>
+  <https://github.com/NiekM/scrybe#readme>
 
 dependencies:
 - base >= 4.11 && < 10
@@ -68,11 +68,11 @@ library:
   source-dirs: src
 
 executables:
-  synthesis-exe:
+  scrybe-exe:
     main:                Main.hs
     source-dirs:         app
     dependencies:
-    - synthesis
+    - scrybe
     - optparse-simple
 
     ghc-options:
@@ -81,11 +81,11 @@ executables:
     - -with-rtsopts=-N
 
 tests:
-  synthesis-test:
+  scrybe-test:
     main:                Spec.hs
     source-dirs:         test
     dependencies:
-    - synthesis
+    - scrybe
     - hspec
 
     ghc-options:
@@ -94,12 +94,12 @@ tests:
     - -with-rtsopts=-N
 
 benchmarks:
-  synthesis-bench:
+  scrybe-bench:
     main:                Main.hs
     source-dirs:         bench
     dependencies:
     - criterion
-    - synthesis
+    - scrybe
 
     ghc-options:
     - -threaded

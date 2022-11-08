@@ -23,6 +23,9 @@ newtype SynOptions = SynOptions
 
 makeLenses ''SynOptions
 
+defaultOptions :: SynOptions
+defaultOptions = SynOptions True
+
 data Command
   = Synth String SynOptions
   | Live String

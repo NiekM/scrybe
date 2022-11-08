@@ -2,6 +2,7 @@ module SynthesisSpec where
 
 import Import
 import Synthesis
+import Options (defaultOptions)
 import Test.Hspec
 import Language.Defs
 import Language.Parser
@@ -34,7 +35,8 @@ specTree :: Env -> FileTree -> Spec
 specTree m = \case
   Node x xs -> describe x . for_ xs $ specTree m
   Leaf (f, x) -> describe f do
-    it "synthesizes" . isJust . best . runSearch . runSynth m $ synth x
+    let syn = runSynth defaultOptions m $ synth x
+    it "synthesizes" . isJust . best . runSearch $ syn
 
 spec :: Spec
 spec = do
