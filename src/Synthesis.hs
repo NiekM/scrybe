@@ -8,7 +8,6 @@ import qualified Utils.Weighted as Weighted
 import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
-import Data.Monus.Dist
 
 -- Synthesis Monad {{{
 

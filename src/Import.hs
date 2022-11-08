@@ -9,6 +9,7 @@ module Import
   , module Utils.Map
   , module Utils.PartialSemigroup
   , Pretty(..)
+  , Dist
   , Logic(..)
   , BoundedLattice(..)
   , unsnoc
@@ -31,6 +32,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Lens.Micro.Platform
 import Data.Functor.Compose
+import Data.Monus.Dist (Dist)
 import Utils.BoundedLattice
 import Utils.Map
 import Utils.PartialSemigroup

@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
 module Language.Syntax
   ( module Language.Syntax
@@ -22,17 +23,17 @@ import qualified RIO.Set as Set
 
 newtype Hole = MkHole Natural
   deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (Num, Pretty)
+  deriving newtype (Num, Pretty, NFData)
   deriving Count via Natural
 
 newtype Free = MkFree Text
   deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (IsString, Pretty)
+  deriving newtype (IsString, Pretty, NFData)
   deriving Count via TextVar "t"
 
 newtype Var = MkVar Text
   deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (IsString, Pretty)
+  deriving newtype (IsString, Pretty, NFData)
   deriving Count via TextVar "a"
 
 -- NOTE: we assume that variables are always lowercase and constructors are
@@ -40,7 +41,7 @@ newtype Var = MkVar Text
 
 newtype Ctr = MkCtr Text
   deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (IsString, Pretty)
+  deriving newtype (IsString, Pretty, NFData)
 
 -- }}}
 
@@ -211,6 +212,24 @@ type Indet = Base (Term Hole) 'Ind
 type Result = Expr 'Det
 
 type Scope = Map Var Result
+
+instance
+  ( May NFData (Hole' l)
+  , May NFData (Ctr'  l)
+  , May NFData (Var'  l)
+  , May NFData (Bind' l)
+  , NFData (Rec r l)
+  ) => NFData (Expr' r l) where
+  rnf = \case
+    Hole h -> rnf h
+    Ctr c -> rnf c
+    Var v -> rnf v
+    App f x -> rnf f `seq` rnf x
+    Lam a x -> rnf a `seq` rnf x
+    Let a x y -> rnf a `seq` rnf x `seq` rnf y
+    Elim xs -> rnf xs
+    Fix -> ()
+    Prj c n -> rnf c `seq` rnf n
 
 -- Morphisms {{{
 
@@ -517,7 +536,9 @@ data Ex
   = ExFun (Map Value Ex)
   | ExCtr Ctr [Ex]
   | ExTop
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
+  deriving stock Generic
+  deriving anyclass NFData
 
 instance PartialSemigroup Ex where
   ExTop <?> ex = Just ex
@@ -552,7 +573,7 @@ fromEx = \case
 -- TODO: maybe move these definitions somewhere else
 
 newtype Unit = Unit ()
-  deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid)
+  deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid, NFData)
 
 data Goal = Goal
   { _goalCtx  :: Map Var Poly

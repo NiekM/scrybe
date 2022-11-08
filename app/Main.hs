@@ -15,8 +15,8 @@ runApp :: RIO Application () -> IO ()
 runApp run = do
   (options, cmd) <- simpleOptions
     $(simpleVersion Paths_scrybe.version)
-    "Scrybe\n\nType-and-example directed program synthesis using example propagation"
-    "Program Synthesizer"
+    "Scrybe - Program Synthesis Using Example Propagation"
+    ""
     ( Options
       <$> switch
         ( long "verbose"

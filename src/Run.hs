@@ -9,26 +9,35 @@ import Prettyprinter hiding (fill)
 import Control.Monad.Heap
 import qualified RIO.Map as Map
 
-parseDefs :: Parse a => String -> RIO Application (Defs a)
+parseDefs :: (MonadIO m, MonadFail m, Parse a) => String -> m (Defs a)
 parseDefs s = do
   f <- readFileUtf8 s
   case lexParse parser f of
     Nothing -> fail "Could not parse file."
     Just y -> return y
 
-synthesize :: String -> Options -> SynOptions -> RIO Application ()
-synthesize file opts synOpts = do
-  prelude <- fromDefs . recDefs <$> parseDefs (view optPrelude opts)
+timed :: (HasOptions r, NFData a) => a -> RIO r (Maybe a)
+timed x = do
+  t <- (1000*) . view (optionsL . optTimeout) <$> ask
+  timeout t $ x `deepseq` return x
+
+getPrelude :: RIO Application Env
+getPrelude = do
+  file <- view (optionsL . optPrelude) <$> ask
+  prelude <- fromDefs . recDefs <$> parseDefs file
   logDebug "Parsed prelude..."
+  return prelude
+
+synthesize :: String -> SynOptions -> RIO Application ()
+synthesize file opts = do
+  prelude <- getPrelude
   problem <- parseDefs file
   logDebug "Parsed problem..."
   logInfo ""
   logInfo . display . indent 2 $ pretty problem
   logInfo ""
-  let syn = best . runSearch . runSynth synOpts prelude $ synth problem
-  let t = view optTimeout opts * 1000
-  res <- timeout t $ syn `seq` return syn
-  case res of
+  let syn = best . runSearch . runSynth opts prelude $ synth problem
+  timed syn >>= \case
     Nothing -> logInfo "Synthesis failed: Timeout"
     Just Nothing -> logInfo "Synthesis failed: Exhaustive"
     Just (Just (n, hf)) -> do
@@ -45,34 +54,36 @@ synthesize file opts synOpts = do
         )
       logInfo ""
 
-live :: String -> Options -> RIO Application ()
-live input opts = do
-  prelude <- fromDefs . recDefs <$> parseDefs (view optPrelude opts)
-  logDebug "Parsed prelude..."
+live :: String -> RIO Application ()
+live input = do
+  prelude <- getPrelude
   case lexParse parser $ fromString input of
-    Nothing -> fail "Parse failed"
+    Nothing -> logInfo "Parse failed"
     Just expr -> case evalInfer (infer mempty expr) 0 prelude of
-      Nothing -> fail "Type check failed"
+      Nothing -> logInfo "Type check failed"
       Just _ -> do
-        let r = runEval prelude (eval mempty expr)
-        logInfo . display . pretty $ r
+        let liv = runEval prelude (eval mempty expr)
+        timed liv >>= \case
+          Nothing -> logInfo "Evaluation failed: Timeout"
+          Just r -> logInfo . display . pretty $ r
 
-assert :: String -> Options -> RIO Application ()
-assert input opts = do
-  prelude <- fromDefs . recDefs <$> parseDefs (view optPrelude opts)
-  logDebug "Parsed prelude..."
+assert :: String -> RIO Application ()
+assert input = do
+  prelude <- getPrelude
   case lexParse parser $ fromString input of
-    Nothing -> fail "Parse failed"
+    Nothing -> logInfo "Parse failed"
     Just (MkAssert e ex) -> case evalInfer (infer mempty e) 0 prelude of
-      Nothing -> fail "Type check failed"
+      Nothing -> logInfo "Type check failed"
       Just _ -> do
         let r = runEval prelude (eval mempty e)
-        case runUneval prelude 1000 $ uneval r $ toEx ex of
-          Nothing -> fail "Out of fuel"
-          Just cs -> case mergeConstraints <$> dnf cs of
-            [] -> logInfo "Uneval failed: structural constraint conflict"
+        let ass = runUneval prelude 1000 $ uneval r $ toEx ex
+        timed ass >>= \case
+          Nothing -> logInfo "Assertion failed: Timeout"
+          Just Nothing -> logInfo "Out of fuel"
+          Just (Just cs) -> case mergeConstraints <$> dnf cs of
+            [] -> logInfo "Assertion failed: structural constraint conflict"
             ds -> case catMaybes ds of
-              []  -> logInfo "Uneval failed: inconsistent constraint"
+              []  -> logInfo "Assertion failed: inconsistent constraint"
               [d] -> logInfo . display $ displayWorld d
               ds' -> do
                 logInfo $ display (length ds) <> " possible worlds"
@@ -93,10 +104,7 @@ displayEx ex = case fromEx ex of
   es  -> align . vsep $ pretty <$> es
 
 run :: RIO Application ()
-run = do
-  opts <- view optionsL
-  cmd <- view commandL
-  case cmd of
-    Synth f synOpts -> synthesize f opts synOpts
-    Live e -> live e opts
-    Assert a -> assert a opts
+run = view commandL >>= \case
+  Synth f opts -> synthesize f opts
+  Live e -> live e
+  Assert a -> assert a
