@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Language.Syntax
   ( module Language.Syntax
@@ -23,21 +23,20 @@ import qualified RIO.Set as Set
 
 newtype Hole = MkHole Natural
   deriving stock (Eq, Ord, Read, Show)
-  deriving newtype (Num, Pretty, NFData)
-  deriving Count via Natural
+  deriving newtype (Num, Pretty, NFData, Count)
 
 newtype Free = MkFree Text
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (IsString, Pretty, NFData)
   deriving Count via TextVar "t"
 
+-- NOTE: we assume that variables are always lowercase and constructors are
+-- always uppercase.
+
 newtype Var = MkVar Text
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (IsString, Pretty, NFData)
   deriving Count via TextVar "a"
-
--- NOTE: we assume that variables are always lowercase and constructors are
--- always uppercase.
 
 newtype Ctr = MkCtr Text
   deriving stock (Eq, Ord, Read, Show)
@@ -187,24 +186,13 @@ type family Rec (f :: Func) (l :: Level) where
 type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
 
-deriving instance (Consts Eq l, Eq (Rec r l)) => Eq (Expr' r l)
-deriving instance (Consts Eq l, Consts Ord l, Ord (Rec r l)) => Ord (Expr' r l)
-deriving instance (Consts Show l, Show (Rec r l)) => Show (Expr' r l)
-
-pattern Arr :: HasCtr l Ctr => HasArr l => Expr l -> Expr l -> Expr l
-pattern Arr t u = App (App (Ctr "->") t) u
-
-pattern Case :: () => (HasApp l, HasElim l c) =>
-  Expr l -> [(c, Expr l)] -> Expr l
-pattern Case x xs = App (Elim xs) x
-
 type Type    = Expr 'Type
 type Term h  = Expr ('Term h)
 type Value   = Expr 'Value
 type Example = Expr 'Example
 
--- | Indetermine expressions are either a (pattern) lambda followed by a term,
--- or a hole.
+-- | Indetermine expressions are either a (pattern matching) lambda followed by
+-- a term, or a hole.
 type Indet = Base (Term Hole) 'Ind
 
 -- | Results are determinate expressions whose holes are indeterminate
@@ -212,6 +200,12 @@ type Indet = Base (Term Hole) 'Ind
 type Result = Expr 'Det
 
 type Scope = Map Var Result
+
+-- Instances {{{
+
+deriving instance (Consts Eq l, Eq (Rec r l)) => Eq (Expr' r l)
+deriving instance (Consts Eq l, Consts Ord l, Ord (Rec r l)) => Ord (Expr' r l)
+deriving instance (Consts Show l, Show (Rec r l)) => Show (Expr' r l)
 
 instance
   ( May NFData (Hole' l)
@@ -230,6 +224,8 @@ instance
     Elim xs -> rnf xs
     Fix -> ()
     Prj c n -> rnf c `seq` rnf n
+
+-- }}}
 
 -- Morphisms {{{
 
@@ -302,6 +298,13 @@ free g = cataExpr \case
 -- }}}
 
 -- Smart constructors {{{
+
+pattern Arr :: HasCtr l Ctr => HasArr l => Expr l -> Expr l -> Expr l
+pattern Arr t u = App (App (Ctr "->") t) u
+
+pattern Case :: () => (HasApp l, HasElim l c) =>
+  Expr l -> [(c, Expr l)] -> Expr l
+pattern Case x xs = App (Elim xs) x
 
 arrs :: (Foldable f, HasArr l) => f (Expr l) -> Expr l
 arrs = foldr1 Arr
@@ -538,7 +541,8 @@ data Ex
   | ExTop
   deriving stock (Eq, Ord, Show)
   deriving stock Generic
-  deriving anyclass NFData
+
+instance NFData Ex
 
 instance PartialSemigroup Ex where
   ExTop <?> ex = Just ex

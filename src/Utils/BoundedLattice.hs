@@ -1,4 +1,5 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module Utils.BoundedLattice where
 
 import RIO hiding (and, or)
@@ -18,9 +19,10 @@ data Logic a
   = Pure a
   | Conjunction [Logic a]
   | Disjunction [Logic a]
-  deriving (Eq, Ord, Show, Read)
-  deriving (Functor, Foldable, Traversable)
-  deriving (Generic, NFData)
+  deriving stock (Eq, Ord, Show, Read, Generic)
+  deriving stock (Functor, Foldable, Traversable)
+
+instance NFData a => NFData (Logic a)
 
 -- TODO: check that these instances make sense
 instance Applicative Logic where
