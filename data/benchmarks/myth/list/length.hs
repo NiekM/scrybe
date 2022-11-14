@@ -1,4 +1,4 @@
-{-# INCLUDE foldList #-}
+{-# INCLUDE foldr #-}
 
 length :: List a -> Nat
 length = _

@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, append #-}
+{-# INCLUDE foldr, append #-}
 
 concat :: List (List a) -> List a
 concat = _

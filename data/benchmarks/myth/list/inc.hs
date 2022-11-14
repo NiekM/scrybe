@@ -1,5 +1,5 @@
 -- {-# INCLUDE map #-}
-{-# INCLUDE foldList #-}
+{-# INCLUDE foldr #-}
 
 inc :: List Nat -> List Nat
 inc = _

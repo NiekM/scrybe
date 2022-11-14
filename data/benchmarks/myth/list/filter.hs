@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, elimBool #-}
+{-# INCLUDE foldr, elimBool #-}
 
 filter :: (a -> Bool) -> List a -> List a
 filter = _

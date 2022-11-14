@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, plus #-}
+{-# INCLUDE foldr, plus #-}
 -- {-# INCLUDE foldl, plus #-}
 -- {-# INCLUDE foldList, foldNat #-}
 

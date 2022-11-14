@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, set_insert #-}
+{-# INCLUDE foldr, set_insert #-}
 
 to_set :: List Nat -> List Nat
 to_set = _

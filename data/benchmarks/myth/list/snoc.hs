@@ -1,4 +1,4 @@
-{-# INCLUDE foldList #-}
+{-# INCLUDE foldr #-}
 
 snoc :: List a -> a -> List a
 snoc = _

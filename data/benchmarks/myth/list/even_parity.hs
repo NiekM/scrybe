@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, elimBool #-}
+{-# INCLUDE foldr, elimBool #-}
 
 -- NOTE: this is very effective, but uses no unevaluation resumption
 -- {-# INCLUDE even, length, filter #-}

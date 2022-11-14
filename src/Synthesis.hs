@@ -594,6 +594,61 @@ gen env = do
         modify (subst th <$>)
       return $ (y,fromIntegral $ length ts,) <$> gen env
 
+match :: Term Unit -> Term Hole -> Maybe (Map Hole (Term Unit))
+match = curry \case
+  (Var x, Var y) | x == y -> Just mempty
+  (Ctr c, Ctr d) | c == d -> Just mempty
+  (App f x, App g y) -> liftM2 (<>) (match f g) (match x y)
+  (Hole _, _) -> Just mempty
+  (e, Hole h) -> Just $ Map.singleton h e
+  _ -> Nothing
+
+-- forbid :: Term Unit -> Space n (Term Hole) -> Space n (Term Hole)
+-- forbid e (Space xs) = Map.keys xs & foldr (`forbid'` e)
+--   (Space $ over (each . each . _3) (forbid e) xs)
+
+-- forbid' :: Hole -> Term Unit -> Space n (Term Hole) -> Space n (Term Hole)
+-- forbid' h e (Space xs) = Space (foo <> bar)
+--   where
+--     foo = Map.delete h xs & over (each . each . _3) (forbid' h e)
+--     bar = case Map.lookup h xs of
+--             Nothing -> mempty
+--             Just ds -> Map.singleton h $ ds & mapMaybe \(x, n, z) ->
+--               case match e x of
+--                 Nothing -> Just (x, n, z)
+--                 Just fs
+--                   | null fs -> Nothing
+--                   | otherwise ->
+--                     Just (x, n, foldr (uncurry forbid') z $ Map.assocs fs)
+
+forbid :: [Term Unit] -> Space n (Term Hole) -> Space n (Term Hole)
+forbid es (Space xs) = forbid' (es <$ xs)
+  . Space $ over (each . each . _3) (forbid es) xs
+
+forbid' :: Map Hole [Term Unit] -> Space n (Term Hole) -> Space n (Term Hole)
+forbid' fs (Space xs)
+  | null fs = Space xs
+  | otherwise = Space (foo <> bar)
+  where
+    foo = xs Map.\\ fs & over (each . each . _3) (forbid' fs)
+    bar = Map.intersectionWith (,) fs xs & Map.mapWithKey \h (es, ys) -> ys
+      & mapMaybe \(x, n, z) ->
+        let baz = mapMaybe (`match` x) es
+            quu = Map.unionsWith (++) $ fmap return <$> baz
+        in if any null baz then Nothing else
+          Just (x, n, forbid' (Map.delete h fs <> quu) z)
+
+-- pruneEquiv :: Map Hole (Term Unit) -> Space n (Term Hole) -> Space n (Term Hole)
+-- pruneEquiv _fs (Space xs) = Space $ xs & Map.mapWithKey \h -> mapMaybe
+  -- \(e, _, ys) -> _
+
+-- updateForbidden :: Hole -> Term Unit -> Synth ()
+-- updateForbidden h e = do
+--   fs <- use forbidden
+--   let fs' = mapMaybe (removeMatching h e) fs
+--   guard $ not . any null $ fs'
+--   assign forbidden fs'
+
 findCounterExample :: Scope -> [Assert] -> Eval (Maybe Assert)
 findCounterExample s as = do
   bs <- for as \a -> do
@@ -621,10 +676,10 @@ pruneExample env a@(MkAssert e ex) (Space xs) = Space $ xs <&> mapMaybe
     r :: Result
     r = runReader (eval s e) $ view envScope env
     l :: Maybe (Logic Constraints)
-    l = runUneval env 0 $ uneval r $ toEx ex
+    l = runUneval env 100 $ uneval r $ toEx ex
   in case l of
     Nothing ->
-      --trace "Out of fuel" $
+      -- traceShow ("Out of fuel: " <> pretty e) $
       Just (s, n, pruneExample env a ys)
     Just cs -> case mergeConstraints <$> dnf cs of
       [] ->

@@ -1,4 +1,4 @@
-{-# INCLUDE foldList #-}
+{-# INCLUDE foldr #-}
 -- {-# INCLUDE concatMap #-}
 
 stutter :: List a -> List a

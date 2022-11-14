@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, elimMaybe #-}
+{-# INCLUDE foldr, elimMaybe #-}
 
 last :: List a -> Maybe a
 last = _

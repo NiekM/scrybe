@@ -74,19 +74,18 @@ cegis f = let file = unsafePerformIO $ readFileUtf8 f in
           , pretty as
           , "Scope:"
           , pretty s
-          -- , "Solution 0:"
-          -- , pretty s0
-          -- , "Counterexample:"
-          -- , pretty c0
           ] ++ cegisLoop as s ss
             where
             gs = runReader (gen prelude) st
             as = asserts defs
-            ss = withScope s gs
-            -- Just s0 = pickOne ss
-            -- Just c0@(MkAssert x0 _) = runEval prelude $ findCounterExample s0 as
-            -- ss0 = pruneHoles prelude s x0 ss
-            -- ss1 = pruneExample prelude c0 ss0
+            ss = withScope s $ gs
+              & forbid2
+                [ "foldr _ _ Nil"
+                , "foldr _ _ (Cons _ _)"
+                ]
+                -- [ "plus _ 0", "plus 0 _", "plus (Succ _) _", "plus _ (Succ _)"
+                -- , "plus (plus _ _) _"
+                -- ]
         _ -> pretty e
 
           -- traceShow (pretty e) $
