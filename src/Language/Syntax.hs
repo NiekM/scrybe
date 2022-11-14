@@ -464,6 +464,13 @@ downcast = cataExprM \case
   App f x -> return $ App f x
   _ -> Nothing
 
+consistent :: Value -> Example -> Bool
+consistent = curry \case
+  (_, Hole _) -> True
+  (Ctr c, Ctr d) -> c == d
+  (App f x, App g y) -> consistent f g && consistent x y
+  _ -> False
+
 arity :: Poly -> Int
 arity (Poly _ (Args as _)) = length as
 

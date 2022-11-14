@@ -3,6 +3,7 @@
 module Synthesis where
 
 import Import
+import qualified Prettyprinter as Pretty
 import Options (SynOptions(..), synPropagate)
 import qualified Utils.Weighted as Weighted
 import Language
@@ -493,3 +494,222 @@ synth d = init d >> go where
 
 -- TODO: add a testsuite testing the equivalence of different kinds and
 -- combinations of (un)evaluation resumptions.
+
+-- EXPERIMENTAL {{{
+
+newtype Space a = Space (Map Hole [(a, Space a)])
+  deriving (Eq, Ord, Show)
+  deriving (Functor, Foldable, Traversable)
+
+instance Pretty a => Pretty (Space a) where
+  pretty (Space xs) = Pretty.vsep $ Map.assocs xs <&> \(h, es) ->
+    Pretty.nest 2 $ Pretty.vsep (pretty h <> ":" :
+      (es <&> \(e, sp) -> Pretty.nest 2 (Pretty.vsep [pretty e, pretty sp])))
+
+data GenSt = GenSt
+  { _genCtxs :: Map Hole Goal
+  , _genFuns :: Map Var Poly
+  , _genHole :: Fresh Hole
+  , _genVar  :: Fresh Var
+  , _genFree :: Fresh Free
+  } deriving (Eq, Ord, Show)
+
+makeLenses ''GenSt
+
+mkGenSt :: GenSt
+mkGenSt = GenSt mempty mempty mempty mempty mempty
+
+type Gen = Reader GenSt
+
+generate :: Env -> Map Var Poly -> Map Hole Goal -> Space (Term Hole)
+generate env fs gs = runReader (gen env) $ GenSt gs fs 1 0 0
+
+init_ :: Defs Unit -> RWST Env () GenSt Maybe (Term Hole)
+init_ defs = do
+  checked   <- zoom genFree $ checkBindings (signatures defs) (bindings defs)
+  expanded  <- zoom genVar  $ expand checked
+  (e, ctxs) <- zoom genHole $ extract expanded
+  assign genCtxs ctxs
+  let ws = [x | Include xs <- pragmas defs, x <- toList xs]
+  ws' <- zoom genFree $ forOf (each . _2 . each) ws refresh
+  gs <- asks $ view envFuns
+  assign genFuns . Map.fromList $ ws' <&> \(v, a) ->
+    ( v
+    , case Map.lookup v gs of
+        Nothing -> error $ "Unknown function " <> show v
+        Just b -> case a of
+          Nothing -> b
+          Just (Poly _ t) | Poly _ u <- b -> case unify t u of
+            Nothing ->
+              error $ "Included function " <> show v <> " has wrong type"
+            Just th -> poly (subst th t)
+    )
+  case e of
+    Lets _ (Hole h) -> do
+      modifying genCtxs $ Map.delete h
+      return e
+    _ -> error "Something went wrong"
+
+-- explore :: Map Hole a -> Space a -> Nondet (Map Hole a)
+-- explore m (Space xs) = do
+--   Weighted.weigh @Dist 1
+--   (h, ys) <- mfold $ Map.assocs xs
+--   (x, zs) <- mfold ys
+--   let m' = Map.insert h x m
+--   return m' <|> explore m' zs
+
+-- explore' :: Term Hole -> Space (Term Hole) -> Nondet (Term Void)
+-- explore' e (Space xs) = do
+--   Weighted.weigh @Dist 1
+--   (h, ys) <- mfold $ Map.assocs xs
+--   (x, zs) <- mfold ys
+--   let e1 = fill (Map.singleton h x) e
+--   case holeFree e1 of
+--     Just e2 -> return e2
+--     Nothing -> explore' e1 zs
+
+-- withScope :: Scope -> Space (Term Hole) -> Eval (Space Scope)
+-- withScope s (Space xs) = Space <$> forMap xs \h -> mapM \(e, ys) -> do
+--   s' <- for s $ resume $ Map.singleton h e
+--   ys' <- withScope s' ys
+--   return (s', ys')
+
+withScope :: Scope -> Space (Term Hole) -> Space Scope
+withScope s (Space xs) = Space $ xs & Map.mapWithKey \h -> map \(e, ys) ->
+  let s' = runReader (for s $ resume (Map.singleton h e)) mempty
+  in (s', withScope s' ys)
+
+-- withScope2 :: Scope -> Space (Term Hole) -> Space (Maybe Scope)
+-- withScope2 s (Space xs) = Space $ xs & Map.mapWithKey \h -> map \(e, ys) ->
+--   let s' = runReader (for s $ resume (Map.singleton h e)) mempty
+--   in case ys of
+--     Space zs
+--       | null zs -> (Just s', Space mempty)
+--       | otherwise -> (Nothing, withScope2 s' ys)
+
+-- withScope' :: MonadReader Scope m => Scope -> Space (Term Hole) -> m (Space Scope)
+-- withScope' s () = Space <$> forMap xs \h -> mapM \(e, ys) -> do
+--   s' <- for s $ resume $ Map.singleton h e
+--   ys' <- withScope' s' ys
+--   return (s', ys')
+
+expl :: Space a -> Nondet a
+expl (Space xs) = do
+  Weighted.weigh @Dist 1
+  (_, ys) <- mfold $ Map.assocs xs
+  (x, zs) <- mfold ys
+  case zs of
+    Space z
+      | null z    -> return x
+      | otherwise -> expl zs
+
+  -- return x <|> expl zs
+
+-- explore'' :: Scope -> Space (Term Hole) -> Nondet Scope
+-- explore'' m (Space xs) = do
+--   Weighted.weigh @Dist 1
+--   (h, ys) <- mfold $ Map.assocs xs
+--   (x, zs) <- mfold ys
+--   let m' = runReader (for m $ resume (Map.singleton h x)) mempty
+--   case zs of
+--     Space z
+--       | null z    -> return m'
+--       | otherwise -> explore'' m' zs
+
+refs :: Env -> Map Var Poly -> Goal -> [(Term Void, Poly)]
+refs env funs (Goal ctx t) = join
+  [ case t of
+      Apps (Ctr d) _
+        | Just (as, cs) <- Map.lookup d (view envData env) -> do
+        (c, ts) <- cs
+        return (Ctr c, Poly as . arrs $ ts ++ [apps (Ctr d) (Var <$> as)])
+      _ -> []
+  , Map.assocs ctx  <&> first Var
+  , Map.assocs funs <&> first Var
+  ]
+
+-- TODO: test first type-correct example
+-- TODO: prune search space based on examples found
+-- TODO: pruning should both prune away hole fillings with conflicting
+-- constraints and throw away holes that are not blocking according to the
+-- current example
+
+gen :: Env -> Gen (Space (Term Hole))
+gen env = do
+  cs <- view genCtxs
+  fs <- view genFuns
+  Space <$> forMap cs \h g@(Goal ctx t) -> catMaybes <$>
+    for (refs env fs g) \(f, p) -> readerStateMaybe do
+      Args ts u <- zoom genFree $ instantiateFresh p
+      Just th   <- return $ unify u t
+      let e = apps (magic f) (Hole . Goal ctx <$> ts)
+      x         <- zoom genVar  $ expand e
+      (y, cs')  <- zoom genHole $ extract x
+      zoom genCtxs do
+        modify $ Map.delete h
+        modify $ Map.union cs'
+        modify (subst th <$>)
+      return $ (y,) <$> gen env
+
+findCounterExample :: Scope -> [Assert] -> Eval (Maybe Assert)
+findCounterExample s as = do
+  bs <- for as \a -> do
+    (r, x) <- evalAssert s a
+    return case downcast r of
+      Nothing -> error "Something went wrong in evaluation"
+      Just v
+        | consistent v x -> Nothing
+        | otherwise -> Just a
+  return . mfold $ catMaybes bs
+
+pruneHoles :: Env -> Scope -> Term Hole -> Space Scope -> Space Scope
+pruneHoles env s e (Space xs) = Space case blocking r of
+  Nothing -> xs
+  Just (_, h) -> Map.restrictKeys xs (Set.singleton h) <&>
+    map \(s', xs') -> (s', pruneHoles env s' e xs')
+  where
+    r :: Result
+    r = runReader (eval s e) $ view envScope env
+
+pruneExample :: Env -> Assert -> Space Scope -> Space Scope
+pruneExample env a@(MkAssert e ex) (Space xs) = Space $ xs <&> mapMaybe
+  \(s, ys) ->
+  let
+    r :: Result
+    r = runReader (eval s e) $ view envScope env
+    l :: Maybe (Logic Constraints)
+    l = runUneval env 1000 $ uneval r $ toEx ex
+  in case l of
+    Nothing -> Just (s, pruneExample env a ys)
+    Just cs -> case mergeConstraints <$> dnf cs of
+      [] -> Nothing
+      ds
+        | null (catMaybes ds) -> Nothing
+        | otherwise -> Just (s, pruneExample env a ys)
+
+-- pruneClean :: Space a -> Maybe (Space a)
+-- pruneClean (Space xs)
+--   | null _
+
+pruneClean :: Space a -> Maybe (Space a)
+pruneClean (Space xs) =
+  let ys = xs <&> mapMaybe (traverseOf _2 pruneClean)
+      zs = Map.filter (not . null) ys
+  in if null zs then Nothing else Just $ Space zs
+
+-- prune :: Env -> Assert -> Space Scope -> Space Scope
+-- prune env (MkAssert e ex) (Space xs) = Space case blocking r of
+--   Nothing -> mempty
+--   Just h -> _
+--   where
+--     r :: Result
+--     r = runReader (eval mempty e) $ view envScope env
+
+--     f :: Maybe (Logic Constraints)
+--     f = runUneval env 1000 $ uneval r $ toEx ex
+
+trim :: Int -> Space a -> Space a
+trim 0 (Space _) = Space mempty
+trim n (Space xs) = Space $ xs <&> over (each . _2) (trim $ n - 1)
+
+-- }}}

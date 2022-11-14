@@ -19,6 +19,8 @@ module Import
   , liftRWST
   , evalState
   , readerState
+  , readerStateMaybe
+  , readerStateT
   , distr
   ) where
 
@@ -83,6 +85,19 @@ readerState :: State s (Reader s a) -> Reader s a
 readerState st = do
   (x, s) <- asks $ runState st
   local (const s) x
+
+readerStateT :: Monad m => StateT s m (ReaderT s m a) -> ReaderT s m a
+readerStateT st = do
+  x <- asks $ runStateT st
+  (y, s) <- ReaderT $ const x
+  local (const s) y
+
+readerStateMaybe :: StateT s Maybe (Reader s a) -> Reader s (Maybe a)
+readerStateMaybe st = do
+  x <- asks $ runStateT st
+  case x of
+    Nothing -> return Nothing
+    Just (y, s) -> local (const s) (return <$> y)
 
 distr :: MonadPlus m => Int -> Int -> m [Int]
 distr _ k | k <= 0 = mzero
