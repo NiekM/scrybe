@@ -66,7 +66,11 @@ checkBindings ss fs = do
     x@(Lets _ (Hole (Goal cs _))) -> do
       let funs = cs <&> \(Poly _ t) -> t
       th <- failMaybe . unifies $ Map.intersectionWith (,) funs sigs
-      return $ over holes (subst th) x
+      return $ over holes
+        ( over goalType freezeAll
+        . over goalCtx (freezeUnbound . instantiate th <$>)
+        . subst th
+        ) x
     _ -> error "Impossible"
 
 init :: Defs Unit -> Synth (Term Hole)
