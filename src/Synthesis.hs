@@ -497,14 +497,14 @@ synth d = init d >> go where
 
 -- EXPERIMENTAL {{{
 
-newtype Space a = Space (Map Hole [(a, Space a)])
+newtype Space n a = Space (Map Hole [(a, n, Space n a)])
   deriving (Eq, Ord, Show)
   deriving (Functor, Foldable, Traversable)
 
-instance Pretty a => Pretty (Space a) where
+instance Pretty a => Pretty (Space n a) where
   pretty (Space xs) = Pretty.vsep $ Map.assocs xs <&> \(h, es) ->
     Pretty.nest 2 $ Pretty.vsep (pretty h <> ":" :
-      (es <&> \(e, sp) -> Pretty.nest 2 (Pretty.vsep [pretty e, pretty sp])))
+      (es <&> \(e, _, sp) -> Pretty.nest 2 (Pretty.vsep [pretty e, pretty sp])))
 
 data GenSt = GenSt
   { _genCtxs :: Map Hole Goal
@@ -521,7 +521,7 @@ mkGenSt = GenSt mempty mempty mempty mempty mempty
 
 type Gen = Reader GenSt
 
-generate :: Env -> Map Var Poly -> Map Hole Goal -> Space (Term Hole)
+generate :: Env -> Map Var Poly -> Map Hole Goal -> Space Dist (Term Hole)
 generate env fs gs = runReader (gen env) $ GenSt gs fs 1 0 0
 
 init_ :: Defs Unit -> RWST Env () GenSt Maybe (Term Hole)
@@ -550,16 +550,16 @@ init_ defs = do
       return e
     _ -> error "Something went wrong"
 
-withScope :: Scope -> Space (Term Hole) -> Space Scope
-withScope s (Space xs) = Space $ xs & Map.mapWithKey \h -> map \(e, ys) ->
+withScope :: Scope -> Space n (Term Hole) -> Space n Scope
+withScope s (Space xs) = Space $ xs & Map.mapWithKey \h -> map \(e, n, ys) ->
   let s' = runReader (for s $ resume (Map.singleton h e)) mempty
-  in (s', withScope s' ys)
+  in (s', n, withScope s' ys)
 
-expl :: Space a -> Nondet a
+expl :: Space Dist a -> Nondet a
 expl (Space xs) = do
-  Weighted.weigh @Dist 1
   (_, ys) <- mfold $ Map.assocs xs
-  (x, zs) <- mfold ys
+  (x, d, zs) <- mfold ys
+  Weighted.weigh (d + 1)
   case zs of
     Space z
       | null z    -> return x
@@ -577,7 +577,7 @@ refs env funs (Goal ctx t) = join
   , Map.assocs funs <&> first Var
   ]
 
-gen :: Env -> Gen (Space (Term Hole))
+gen :: Env -> Gen (Space Dist (Term Hole))
 gen env = do
   cs <- view genCtxs
   fs <- view genFuns
@@ -592,7 +592,7 @@ gen env = do
         modify $ Map.delete h
         modify $ Map.union cs'
         modify (subst th <$>)
-      return $ (y,) <$> gen env
+      return $ (y,fromIntegral $ length ts,) <$> gen env
 
 findCounterExample :: Scope -> [Assert] -> Eval (Maybe Assert)
 findCounterExample s as = do
@@ -605,18 +605,18 @@ findCounterExample s as = do
         | otherwise -> Just a
   return . mfold $ catMaybes bs
 
-pruneHoles :: Env -> Scope -> Term Hole -> Space Scope -> Space Scope
+pruneHoles :: Env -> Scope -> Term Hole -> Space n Scope -> Space n Scope
 pruneHoles env s e (Space xs) = Space case blocking r of
   Nothing -> xs
   Just (_, h) -> Map.restrictKeys xs (Set.singleton h) <&>
-    map \(s', xs') -> (s', pruneHoles env s' e xs')
+    map \(s', n, xs') -> (s', n, pruneHoles env s' e xs')
   where
     r :: Result
     r = runReader (eval s e) $ view envScope env
 
-pruneExample :: Env -> Assert -> Space Scope -> Space Scope
+pruneExample :: Env -> Assert -> Space n Scope -> Space n Scope
 pruneExample env a@(MkAssert e ex) (Space xs) = Space $ xs <&> mapMaybe
-  \(s, ys) ->
+  \(s, n, ys) ->
   let
     r :: Result
     r = runReader (eval s e) $ view envScope env
@@ -625,7 +625,7 @@ pruneExample env a@(MkAssert e ex) (Space xs) = Space $ xs <&> mapMaybe
   in case l of
     Nothing ->
       --trace "Out of fuel" $
-      Just (s, pruneExample env a ys)
+      Just (s, n, pruneExample env a ys)
     Just cs -> case mergeConstraints <$> dnf cs of
       [] ->
         -- traceShow ("Structural conflict:" Pretty.<+> pretty (a, s, r))
@@ -634,10 +634,10 @@ pruneExample env a@(MkAssert e ex) (Space xs) = Space $ xs <&> mapMaybe
         | null (catMaybes ds) ->
           -- trace "Inconsistency"
           Nothing
-        | otherwise -> Just (s, pruneExample env a ys)
+        | otherwise -> Just (s, n, pruneExample env a ys)
 
-trim :: Int -> Space a -> Space a
+trim :: Int -> Space n a -> Space n a
 trim 0 (Space _) = Space mempty
-trim n (Space xs) = Space $ xs <&> over (each . _2) (trim $ n - 1)
+trim n (Space xs) = Space $ xs <&> over (each . _3) (trim $ n - 1)
 
 -- }}}

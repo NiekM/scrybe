@@ -42,7 +42,7 @@ uneval' r e = tryUneval (uneval r $ toEx e)
 assert' :: Assert -> Maybe (Logic Constraints)
 assert' = tryUneval . unevalAssert mempty
 
-gen' :: String -> (Scope, Space (Term Hole))
+gen' :: String -> (Scope, Space Dist (Term Hole))
 gen' f = let file = unsafePerformIO $ readFileUtf8 f in
   case lexParse parser file of
     Just x -> case runRWST (init_ x) prelude mkGenSt of
@@ -52,7 +52,7 @@ gen' f = let file = unsafePerformIO $ readFileUtf8 f in
       Nothing -> error "Initialization failed"
     Nothing -> error "Could not parse problem"
 
-cegisLoop :: [Assert] -> Scope -> Space Scope -> [Pretty.Doc ann]
+cegisLoop :: [Assert] -> Scope -> Space Dist Scope -> [Pretty.Doc ann]
 cegisLoop [] _ _ = ["No assertions..."]
 cegisLoop as@(MkAssert e _ : _) m ss = --pretty (trim 3 ss) :
   case pickOne m e ss of
@@ -94,7 +94,7 @@ cegis f = let file = unsafePerformIO $ readFileUtf8 f in
       Nothing -> "Initialization failed"
     Nothing -> error "Could not parse problem"
 
-pickOne :: Scope -> Term Hole -> Space Scope -> Maybe Scope
+pickOne :: Scope -> Term Hole -> Space Dist Scope -> Maybe Scope
 pickOne m e = mfold . fmap fst . search . runSearch . expl . pruneHoles prelude m e
 
 -- pickOne :: Space a -> Maybe a
