@@ -592,34 +592,19 @@ gen env = do
         modify $ Map.delete h
         modify $ Map.union cs'
         modify (subst th <$>)
-      return $ (y,fromIntegral $ length ts,) <$> gen env
+      let n = length ts
+            + case f of Var "foldr" -> 4; _ -> 0
+      return $ (y,fromIntegral n,) <$> gen env
 
 match :: Term Unit -> Term Hole -> Maybe (Map Hole (Term Unit))
 match = curry \case
+  (Hole _, _) -> Just mempty
+  (e, Hole h) -> Just $ Map.singleton h e
   (Var x, Var y) | x == y -> Just mempty
   (Ctr c, Ctr d) | c == d -> Just mempty
   (App f x, App g y) -> liftM2 (<>) (match f g) (match x y)
-  (Hole _, _) -> Just mempty
-  (e, Hole h) -> Just $ Map.singleton h e
+  (Lam a x, Lam b y) -> match (replace (Map.singleton a $ Var b) x) y
   _ -> Nothing
-
--- forbid :: Term Unit -> Space n (Term Hole) -> Space n (Term Hole)
--- forbid e (Space xs) = Map.keys xs & foldr (`forbid'` e)
---   (Space $ over (each . each . _3) (forbid e) xs)
-
--- forbid' :: Hole -> Term Unit -> Space n (Term Hole) -> Space n (Term Hole)
--- forbid' h e (Space xs) = Space (foo <> bar)
---   where
---     foo = Map.delete h xs & over (each . each . _3) (forbid' h e)
---     bar = case Map.lookup h xs of
---             Nothing -> mempty
---             Just ds -> Map.singleton h $ ds & mapMaybe \(x, n, z) ->
---               case match e x of
---                 Nothing -> Just (x, n, z)
---                 Just fs
---                   | null fs -> Nothing
---                   | otherwise ->
---                     Just (x, n, foldr (uncurry forbid') z $ Map.assocs fs)
 
 forbid :: [Term Unit] -> Space n (Term Hole) -> Space n (Term Hole)
 forbid es (Space xs) = forbid' (es <$ xs)
@@ -637,17 +622,6 @@ forbid' fs (Space xs)
             quu = Map.unionsWith (++) $ fmap return <$> baz
         in if any null baz then Nothing else
           Just (x, n, forbid' (Map.delete h fs <> quu) z)
-
--- pruneEquiv :: Map Hole (Term Unit) -> Space n (Term Hole) -> Space n (Term Hole)
--- pruneEquiv _fs (Space xs) = Space $ xs & Map.mapWithKey \h -> mapMaybe
-  -- \(e, _, ys) -> _
-
--- updateForbidden :: Hole -> Term Unit -> Synth ()
--- updateForbidden h e = do
---   fs <- use forbidden
---   let fs' = mapMaybe (removeMatching h e) fs
---   guard $ not . any null $ fs'
---   assign forbidden fs'
 
 findCounterExample :: Scope -> [Assert] -> Eval (Maybe Assert)
 findCounterExample s as = do

@@ -1,5 +1,6 @@
 -- {-# INCLUDE foldList #-}
-{-# INCLUDE foldr, foldl #-}
+-- {-# INCLUDE foldr, foldl #-}
+{-# INCLUDE foldr #-}
 
 append :: List a -> List a -> List a
 append = _

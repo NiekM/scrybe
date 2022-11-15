@@ -408,6 +408,11 @@ fill th = cataExpr \case
   Hole h | Just x <- Map.lookup h th -> x
   e -> fixExpr e
 
+replace :: (Ord v, HasVar l v) => Map v (Expr l) -> Expr l -> Expr l
+replace th = cataExpr \case
+  Var v | Just x <- Map.lookup v th -> x
+  e -> fixExpr e
+
 freeVars :: Term h -> Set Var
 freeVars = cataExpr \case
   Lam a x -> Set.delete a x
@@ -628,7 +633,9 @@ instance Pretty Poly where
     Poly xs t -> "forall" <+> sep (pretty <$> xs) <> dot <+> pretty t
 
 instance Pretty Goal where
-  pretty (Goal t ts) = pretty ts <+> "|-" <+> pretty t
+  pretty (Goal ts t)
+    | null ts = pretty t
+    | otherwise = pretty ts <+> "|-" <+> pretty t
 
 prettyParen :: Bool -> Doc ann -> Doc ann
 prettyParen b t
@@ -682,7 +689,9 @@ sLit p _ = \case
 
 sRes :: HasHole l (Scope, Indet) => Sugar l ann
 sRes _ _ = \case
-  Hole (m, e) -> Just . parens $ pretty m <+> "|-" <+> pretty e
+  Hole (m, e)
+    | null m -> Just $ pretty e
+    | otherwise -> Just $ pretty m <+> "|-" <+> pretty e
   _ -> Nothing
 
 sExample :: Sugar 'Example ann

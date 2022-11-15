@@ -54,10 +54,12 @@ gen' f = let file = unsafePerformIO $ readFileUtf8 f in
 
 cegisLoop :: [Assert] -> Scope -> Space Dist Scope -> [Pretty.Doc ann]
 cegisLoop [] _ _ = ["No assertions..."]
-cegisLoop as@(MkAssert e _ : _) m ss = --pretty (trim 3 ss) :
+cegisLoop as@(MkAssert e _ : _) m ss =
+  -- pretty (trim 3 ss) :
+  -- ["Size:", pretty $ measure 3 ss] ++
   case pickOne m e ss of
   Nothing -> ["No solution"]
-  Just s -> ["Try:", pretty s] ++
+  Just s -> ["Try:", pretty s, ""] ++
     case runEval prelude $ findCounterExample s as of
     Nothing -> ["Correct!"]
     Just a -> ["Incorrect!", "Counterexample:", pretty a, ""]
@@ -70,22 +72,19 @@ cegis f = let file = unsafePerformIO $ readFileUtf8 f in
     Just defs -> case runRWST (init_ defs) prelude mkGenSt of
       Just (e, st, _) -> case runEval prelude (eval mempty e) of
         Scoped s _ -> Pretty.vsep $
-          [ "Assertions:"
-          , pretty as
+          [ ""
+          , Pretty.indent 2 $ pretty defs
+          , ""
           , "Scope:"
+          , ""
           , pretty s
+          , ""
           ] ++ cegisLoop as s ss
-            where
+          where
             gs = runReader (gen prelude) st
             as = asserts defs
-            ss = withScope s $ gs
-              & forbid2
-                [ "foldr _ _ Nil"
-                , "foldr _ _ (Cons _ _)"
-                ]
-                -- [ "plus _ 0", "plus 0 _", "plus (Succ _) _", "plus _ (Succ _)"
-                -- , "plus (plus _ _) _"
-                -- ]
+            fs = forbid forbidden' gs
+            ss = withScope s fs
         _ -> pretty e
 
           -- traceShow (pretty e) $
@@ -96,5 +95,60 @@ cegis f = let file = unsafePerformIO $ readFileUtf8 f in
 pickOne :: Scope -> Term Hole -> Space Dist Scope -> Maybe Scope
 pickOne m e = mfold . fmap fst . search . runSearch . expl . pruneHoles prelude m e
 
--- pickOne :: Space a -> Maybe a
--- pickOne = mfold . fmap fst . search . runSearch . expl
+forbidden' :: [Term Unit]
+forbidden' =
+  [ "foldr _ _ Nil"
+  , "foldr _ _ (Cons _ _)"
+  , "foldr (\\x r -> r) _ _"
+  -- , "foldr (\\x r -> Cons x r) [] _"
+  ]
+  ++
+  [ "foldrNat _ _ 0"
+  , "foldrNat _ _ (Succ _)"
+  ]
+  ++
+  [ "map _ Nil"
+  , "map _ (Cons _ _)"
+  , "map (\\x -> x) _"
+  , "map _ (map _ _)"
+  ]
+  ++
+  [ "sum []"
+  , "sum (Cons _ _)"
+  ]
+  ++
+  [ "elimBool _ _ False"
+  , "elimBool _ _ True"
+  -- , "elimBool False True _"
+  ]
+  ++
+  [ "leq 0 _"
+  -- , "leq (Succ _) (Succ _)"
+  ]
+  ++
+  [ "elimMaybe _ _ Nothing"
+  , "elimMaybe _ _ (Just _)"
+  -- , "elimMaybe Nothing (\\x -> Just _) _"
+  ]
+  ++
+  [ "plus (Succ _) _"
+  , "plus _ (Succ _)"
+  ]
+  ++
+  monoid "plus" "0"
+  ++
+  [ "append (Cons _ _) _"
+  ]
+  ++
+  monoid "append" "[]"
+
+  where
+
+    assoc :: Term Unit -> [Term Unit]
+    assoc f = [apps f [apps f ["_","_"], "_"]]
+
+    unit :: Term Unit -> Term Unit -> [Term Unit]
+    unit f e = [apps f [e, "_"], apps f ["_", e]]
+
+    monoid :: Term Unit -> Term Unit -> [Term Unit]
+    monoid f e = assoc f ++ unit f e
