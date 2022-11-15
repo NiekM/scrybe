@@ -519,9 +519,15 @@ makeLenses ''GenSt
 mkGenSt :: GenSt
 mkGenSt = GenSt mempty mempty mempty mempty mempty
 
+data Info = Info
+  { _weight :: Dist
+  }
+
+makeLenses ''Info
+
 type Gen = Reader GenSt
 
-generate :: Env -> Map Var Poly -> Map Hole Goal -> Space Dist (Term Hole)
+generate :: Env -> Map Var Poly -> Map Hole Goal -> Space Info (Term Hole)
 generate env fs gs = runReader (gen env) $ GenSt gs fs 1 0 0
 
 init_ :: Defs Unit -> RWST Env () GenSt Maybe (Term Hole)
@@ -555,11 +561,11 @@ withScope s (Space xs) = Space $ xs & Map.mapWithKey \h -> map \(e, n, ys) ->
   let s' = runReader (for s $ resume (Map.singleton h e)) mempty
   in (s', n, withScope s' ys)
 
-expl :: Space Dist a -> Nondet a
+expl :: Space Info a -> Nondet a
 expl (Space xs) = do
   (_, ys) <- mfold $ Map.assocs xs
-  (x, d, zs) <- mfold ys
-  Weighted.weigh (d + 1)
+  (x, i, zs) <- mfold ys
+  Weighted.weigh $ view weight i
   case zs of
     Space z
       | null z    -> return x
@@ -577,7 +583,7 @@ refs env funs (Goal ctx t) = join
   , Map.assocs funs <&> first Var
   ]
 
-gen :: Env -> Gen (Space Dist (Term Hole))
+gen :: Env -> Gen (Space Info (Term Hole))
 gen env = do
   cs <- view genCtxs
   fs <- view genFuns
@@ -592,9 +598,9 @@ gen env = do
         modify $ Map.delete h
         modify $ Map.union cs'
         modify (subst th <$>)
-      let n = length ts
-            + case f of Var "foldr" -> 4; _ -> 0
-      return $ (y,fromIntegral n,) <$> gen env
+      -- let n = 1 + sum (ts <&> \(Args as _) -> 1 + length as)
+      let n = 1 + sum (typeSize <$> ts)
+      return $ (y,Info $ fromIntegral n,) <$> gen env
 
 match :: Term Unit -> Term Hole -> Maybe (Map Hole (Term Unit))
 match = curry \case
@@ -606,22 +612,30 @@ match = curry \case
   (Lam a x, Lam b y) -> match (replace (Map.singleton a $ Var b) x) y
   _ -> Nothing
 
+updForbidden :: Hole -> Term Hole -> [Map Hole (Term Unit)] -> Maybe [Map Hole (Term Unit)]
+updForbidden h e = sequence . mapMaybe \old -> case Map.lookup h old of
+  Nothing -> Just (Just old)
+  Just x ->
+    let upd = Map.delete h old
+    in case match x e of
+      Nothing -> Nothing
+      Just new
+        | null (upd <> new) -> Just Nothing
+        | otherwise -> Just $ Just (upd <> new)
+
+-- TODO: forbid could be implemented nicely using uniplate, something like:
+-- everywhere forbid'
 forbid :: [Term Unit] -> Space n (Term Hole) -> Space n (Term Hole)
-forbid es (Space xs) = forbid' (es <$ xs)
+forbid es (Space xs) = forbid' (Map.keys xs >>= \h -> Map.singleton h <$> es)
   . Space $ over (each . each . _3) (forbid es) xs
 
-forbid' :: Map Hole [Term Unit] -> Space n (Term Hole) -> Space n (Term Hole)
+forbid' :: [Map Hole (Term Unit)] -> Space n (Term Hole) -> Space n (Term Hole)
 forbid' fs (Space xs)
   | null fs = Space xs
-  | otherwise = Space (foo <> bar)
-  where
-    foo = xs Map.\\ fs & over (each . each . _3) (forbid' fs)
-    bar = Map.intersectionWith (,) fs xs & Map.mapWithKey \h (es, ys) -> ys
-      & mapMaybe \(x, n, z) ->
-        let baz = mapMaybe (`match` x) es
-            quu = Map.unionsWith (++) $ fmap return <$> baz
-        in if any null baz then Nothing else
-          Just (x, n, forbid' (Map.delete h fs <> quu) z)
+  | otherwise = Space $ xs & Map.mapWithKey \h -> mapMaybe \(e, n, z) ->
+    case updForbidden h e fs of
+      Nothing -> Nothing
+      Just fs' -> Just (e, n, forbid' fs' z)
 
 findCounterExample :: Scope -> [Assert] -> Eval (Maybe Assert)
 findCounterExample s as = do
@@ -653,11 +667,11 @@ pruneExample env a@(MkAssert e ex) (Space xs) = Space $ xs <&> mapMaybe
     l = runUneval env 100 $ uneval r $ toEx ex
   in case l of
     Nothing ->
-      -- traceShow ("Out of fuel: " <> pretty e) $
+      -- traceShow ("Out of fuel: " <> pretty s) $
       Just (s, n, pruneExample env a ys)
     Just cs -> case mergeConstraints <$> dnf cs of
       [] ->
-        -- traceShow ("Structural conflict:" Pretty.<+> pretty (a, s, r))
+        -- traceShow ("Structural conflict:" Pretty.<+> pretty s)
         Nothing
       ds
         | null (catMaybes ds) ->
@@ -668,5 +682,8 @@ pruneExample env a@(MkAssert e ex) (Space xs) = Space $ xs <&> mapMaybe
 trim :: Int -> Space n a -> Space n a
 trim 0 (Space _) = Space mempty
 trim n (Space xs) = Space $ xs <&> over (each . _3) (trim $ n - 1)
+
+measure :: Int -> Space n a -> Int
+measure n = length . trim n
 
 -- }}}

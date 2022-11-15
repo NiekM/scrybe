@@ -42,7 +42,7 @@ uneval' r e = tryUneval (uneval r $ toEx e)
 assert' :: Assert -> Maybe (Logic Constraints)
 assert' = tryUneval . unevalAssert mempty
 
-gen' :: String -> (Scope, Space Dist (Term Hole))
+gen' :: String -> (Scope, Space Info (Term Hole))
 gen' f = let file = unsafePerformIO $ readFileUtf8 f in
   case lexParse parser file of
     Just x -> case runRWST (init_ x) prelude mkGenSt of
@@ -52,16 +52,16 @@ gen' f = let file = unsafePerformIO $ readFileUtf8 f in
       Nothing -> error "Initialization failed"
     Nothing -> error "Could not parse problem"
 
-cegisLoop :: [Assert] -> Scope -> Space Dist Scope -> [Pretty.Doc ann]
+cegisLoop :: [Assert] -> Scope -> Space Info Scope -> [Pretty.Doc ann]
 cegisLoop [] _ _ = ["No assertions..."]
 cegisLoop as@(MkAssert e _ : _) m ss =
   -- pretty (trim 3 ss) :
   -- ["Size:", pretty $ measure 3 ss] ++
   case pickOne m e ss of
   Nothing -> ["No solution"]
-  Just s -> ["Try:", pretty s, ""] ++
+  Just (s, d) -> ["Try:", pretty s, ""] ++
     case runEval prelude $ findCounterExample s as of
-    Nothing -> ["Correct!"]
+    Nothing -> ["Correct!", pretty (fromIntegral d :: Int)]
     Just a -> ["Incorrect!", "Counterexample:", pretty a, ""]
       -- ++ cegisLoop as m (pruneExample prelude a . pruneHoles prelude m e $ ss)
       ++ cegisLoop as m (pruneExample prelude a ss)
@@ -92,19 +92,28 @@ cegis f = let file = unsafePerformIO $ readFileUtf8 f in
       Nothing -> "Initialization failed"
     Nothing -> error "Could not parse problem"
 
-pickOne :: Scope -> Term Hole -> Space Dist Scope -> Maybe Scope
-pickOne m e = mfold . fmap fst . search . runSearch . expl . pruneHoles prelude m e
+pickOne :: Scope -> Term Hole -> Space Info Scope -> Maybe (Scope, Dist)
+pickOne m e = mfold . search . runSearch . expl . pruneHoles prelude m e
 
 forbidden' :: [Term Unit]
 forbidden' =
   [ "foldr _ _ Nil"
   , "foldr _ _ (Cons _ _)"
   , "foldr (\\x r -> r) _ _"
-  -- , "foldr (\\x r -> Cons x r) [] _"
+  , "foldr (\\x r -> []) _ _"
+  , "foldr (\\x r -> Cons x r) [] _"
+  ]
+  ++
+  [ "foldl _ _ Nil"
+  , "foldl _ _ (Cons _ _)"
   ]
   ++
   [ "foldrNat _ _ 0"
   , "foldrNat _ _ (Succ _)"
+  ]
+  ++
+  [ "elimNat _ _ 0"
+  , "elimNat _ _ (Succ _)"
   ]
   ++
   [ "map _ Nil"
@@ -119,16 +128,16 @@ forbidden' =
   ++
   [ "elimBool _ _ False"
   , "elimBool _ _ True"
-  -- , "elimBool False True _"
+  , "elimBool False True _"
   ]
   ++
   [ "leq 0 _"
-  -- , "leq (Succ _) (Succ _)"
+  , "leq (Succ _) (Succ _)"
   ]
   ++
   [ "elimMaybe _ _ Nothing"
   , "elimMaybe _ _ (Just _)"
-  -- , "elimMaybe Nothing (\\x -> Just _) _"
+  , "elimMaybe Nothing (\\x -> Just _) _"
   ]
   ++
   [ "plus (Succ _) _"
