@@ -9,7 +9,6 @@ import Import
 import Language hiding (free)
 import qualified RIO.Text as T
 import System.IO.Unsafe
-import qualified RIO.Map as Map
 import Synthesis
 import Utils.Weighted
 import Control.Monad.Heap

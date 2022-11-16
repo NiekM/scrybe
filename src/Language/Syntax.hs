@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE PolyKinds #-}
 
 module Language.Syntax
   ( module Language.Syntax
@@ -46,20 +47,8 @@ newtype Ctr = MkCtr Text
 
 -- Levels {{{
 
-type family May (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint where
-  May c 'Nothing = ()
-  May c ('Just a) = c a
-
-type family AllMay (c :: Kind.Type -> Kind.Constraint) a :: Kind.Constraint where
-  AllMay c '[]       = ()
-  AllMay c (x ': xs) = (May c x, AllMay c xs)
-
 type Consts (c :: Kind.Type -> Kind.Constraint) (l :: Level) =
-  AllMay c '[Hole' l, Ctr' l, Var' l, Bind' l]
-
-type family IsJust x where
-  IsJust 'Nothing  = 'False
-  IsJust ('Just _) = 'True
+  (May c (Hole' l), May c (Var' l))
 
 data Level' a
   = Type    -- ^ Type level expressions
@@ -72,83 +61,54 @@ data Level' a
 
 type Level = Level' Kind.Type
 
-class Leveled (l :: Level) where
+data EXPR = HOLE | CTR | VAR | APP | LAM | LET | ELIM | FIX | PRJ
+
+class IsExpr (l :: Level) where
   type Hole' l :: Maybe Kind.Type
   type Hole' l = 'Nothing
+  type Var'  l :: Maybe Kind.Type
+  type Var'  l = 'Nothing
+  type Ctrs' l :: [EXPR]
 
-  type Ctr' l :: Maybe Kind.Type
-  type Ctr' l = 'Just Ctr
-
-  type Var' l :: Maybe Kind.Type
-  type Var' l = 'Just Var
-
-  type Bind' l :: Maybe Kind.Type
-  type Bind' l = 'Nothing
-
-  type HasCtr' l :: Bool
-  type HasCtr' l = IsJust (Ctr' l)
-
-  type HasApp' l :: Bool
-  type HasApp' l = 'True
-
-  type HasLam' l :: Bool
-  type HasLam' l = IsJust (Bind' l)
-
-  type HasLet' l :: Bool
-  type HasLet' l = 'False
-
-  type HasElim' l :: Bool
-  type HasElim' l = 'False
-
-  type HasFix' l :: Bool
-  type HasFix' l = 'False
-
-  type HasPrj' l :: Bool
-  type HasPrj' l = 'False
+type HAS (c :: EXPR) (l :: Level) = Elem c (Ctrs' l)
 
 type HasHole l h = Hole' l ~ 'Just h
-type HasCtr l c = (HasCtr' l ~ 'True, Ctr' l ~ 'Just c)
-type HasVar l v = Var' l ~ 'Just v
-type HasApp l = HasApp' l ~ 'True
-type HasLam l v = (HasLam' l ~ 'True, Bind' l ~ 'Just v)
-type HasLet l v = (HasLet' l ~ 'True, Bind' l ~ 'Just v)
-type HasElim l c = (HasElim' l ~ 'True, Ctr' l ~ 'Just c)
-type HasFix l = HasFix' l ~ 'True
-type HasPrj l c = (HasPrj' l ~ 'True, Ctr' l ~ 'Just c)
+type HasCtr  l   = HAS 'CTR l
+type HasApp  l   = HAS 'APP l
+type HasElim l   = HAS 'ELIM l
+type HasFix  l   = HAS 'FIX l
+type HasPrj  l   = HAS 'PRJ l
+type HasVar  l v = (HAS 'VAR l, Var' l ~ 'Just v)
+type HasLam  l v = (HAS 'LAM l, Var' l ~ 'Just v)
+type HasLet  l v = (HAS 'LET l, Var' l ~ 'Just v)
 
-type HasArr l = (HasCtr l Ctr, HasApp l)
-type NoBind l = Bind' l ~ 'Nothing
+type HasArr l = (HasCtr l, HasApp l)
 
-instance Leveled 'Type where
-  type Var' 'Type = 'Just Free
+instance IsExpr 'Type where
+  type Var'  'Type = 'Just Free
+  type Ctrs' 'Type = ['VAR, 'CTR, 'APP]
 
-instance Leveled ('Term h) where
-  type Hole'    ('Term h) = 'Just h
-  type Bind'    ('Term _) = 'Just Var
-  type HasLet'  ('Term _) = 'True
-  type HasElim' ('Term _) = 'True
-  type HasFix'  ('Term _) = 'True
+instance IsExpr ('Term h) where
+  type Hole' ('Term h) = 'Just h
+  type Var'  ('Term h) = 'Just Var
+  type Ctrs' ('Term h) = ['VAR, 'CTR, 'APP, 'LAM, 'LET, 'ELIM, 'FIX]
 
-instance Leveled 'Det where
-  type Hole'   'Det = 'Just (Scope, Indet)
-  type Var'    'Det = 'Nothing
-  type HasFix' 'Det = 'True
-  type HasPrj' 'Det = 'True
+instance IsExpr 'Det where
+  type Hole' 'Det = 'Just (Scope, Indet)
+  type Ctrs' 'Det = ['CTR, 'APP, 'FIX, 'PRJ]
 
-instance Leveled 'Ind where
-  type Hole'    'Ind = 'Just Hole
-  type HasCtr'  'Ind = 'False
-  type Bind'    'Ind = 'Just Var
-  type Var'     'Ind = 'Nothing
-  type HasApp'  'Ind = 'False
-  type HasElim' 'Ind = 'True
+instance IsExpr 'Ind where
+  type Hole' 'Ind = 'Just Hole
+  type Var'  'Ind = 'Just Var
+  type Ctrs' 'Ind = ['LAM, 'ELIM]
 
-instance Leveled 'Value where
-  type Var' 'Value = 'Nothing
+instance IsExpr 'Value where
+  type Ctrs' 'Value = ['CTR, 'APP]
 
-instance Leveled 'Example where
+instance IsExpr 'Example where
   type Hole' 'Example = 'Just Unit
-  type Bind' 'Example = 'Just Value
+  type Var'  'Example = 'Just Value
+  type Ctrs' 'Example = ['CTR, 'APP, 'LAM]
 
 -- }}}
 
@@ -165,14 +125,14 @@ instance Leveled 'Example where
 --
 data Expr' (r :: Func) (l :: Level) where
   Hole :: HasHole l h => h -> Expr' r l
-  Ctr  :: HasCtr  l c => c -> Expr' r l
+  Ctr  :: HasCtr  l   => Ctr -> Expr' r l
   Var  :: HasVar  l v => v -> Expr' r l
   App  :: HasApp  l   => Rec r l -> Rec r l -> Expr' r l
   Lam  :: HasLam  l v => v -> Rec r l -> Expr' r l
   Let  :: HasLet  l v => v -> Rec r l -> Rec r l -> Expr' r l
-  Elim :: HasElim l c => [(c, Rec r l)] -> Expr' r l
+  Elim :: HasElim l   => [(Ctr, Rec r l)] -> Expr' r l
   Fix  :: HasFix  l   => Expr' r l
-  Prj  :: HasPrj  l c => c -> Int -> Expr' r l
+  Prj  :: HasPrj  l   => Ctr -> Int -> Expr' r l
 
 data Func' a = Fixed | Base a
   deriving (Eq, Ord, Show, Read)
@@ -209,9 +169,7 @@ deriving instance (Consts Show l, Show (Rec r l)) => Show (Expr' r l)
 
 instance
   ( May NFData (Hole' l)
-  , May NFData (Ctr'  l)
   , May NFData (Var'  l)
-  , May NFData (Bind' l)
   , NFData (Rec r l)
   ) => NFData (Expr' r l) where
   rnf = \case
@@ -299,27 +257,27 @@ free g = cataExpr \case
 
 -- Smart constructors {{{
 
-pattern Arr :: HasCtr l Ctr => HasArr l => Expr l -> Expr l -> Expr l
+pattern Arr :: HasCtr l => HasArr l => Expr l -> Expr l -> Expr l
 pattern Arr t u = App (App (Ctr "->") t) u
 
-pattern Case :: () => (HasApp l, HasElim l c) =>
-  Expr l -> [(c, Expr l)] -> Expr l
+pattern Case :: () => (HasApp l, HasElim l) =>
+  Expr l -> [(Ctr, Expr l)] -> Expr l
 pattern Case x xs = App (Elim xs) x
 
 arrs :: (Foldable f, HasArr l) => f (Expr l) -> Expr l
 arrs = foldr1 Arr
 
-unArrs :: HasCtr l Ctr => Expr l -> NonEmpty (Expr l)
+unArrs :: HasCtr l => Expr l -> NonEmpty (Expr l)
 unArrs = \case
   Arr t u -> t `NonEmpty.cons` unArrs u
   t -> pure t
 
 {-# COMPLETE Arrs #-}
-pattern Arrs :: HasCtr l Ctr => Expr l -> [Expr l] -> Expr l
+pattern Arrs :: HasCtr l => Expr l -> [Expr l] -> Expr l
 pattern Arrs a bs <- (unArrs -> (a :| bs))
 
 {-# COMPLETE Args #-}
-pattern Args :: HasCtr l Ctr => [Expr l] -> Expr l -> Expr l
+pattern Args :: HasCtr l => [Expr l] -> Expr l -> Expr l
 pattern Args as b <- (unsnoc . unArrs -> (as, b))
 
 lets :: (Foldable f, HasLet l v) => f (v, Expr l) -> Expr l -> Expr l
@@ -361,29 +319,29 @@ unLams = \case
 pattern Lams :: HasLam l v => [v] -> Expr l -> Expr l
 pattern Lams as x <- (unLams -> (as, x))
 
-nat :: (HasCtr l Ctr, HasApp l) => Int -> Expr l
+nat :: (HasCtr l, HasApp l) => Int -> Expr l
 nat 0 = Ctr "Zero"
 nat n = App (Ctr "Succ") (nat $ n - 1)
 
-unNat :: HasCtr l Ctr => Expr l -> Maybe Int
+unNat :: HasCtr l => Expr l -> Maybe Int
 unNat = \case
   Ctr "Zero" -> Just 0
   App (Ctr "Succ") n -> (1+) <$> unNat n
   _ -> Nothing
 
-pattern Nat :: HasCtr l Ctr => Int -> Expr l
+pattern Nat :: HasCtr l => Int -> Expr l
 pattern Nat n <- (unNat -> Just n)
 
-list :: (HasCtr l Ctr, HasApp l) => [Expr l] -> Expr l
+list :: (HasCtr l, HasApp l) => [Expr l] -> Expr l
 list = foldr (\x y -> apps (Ctr "Cons") [x, y]) (Ctr "Nil")
 
-unList :: HasCtr l Ctr => Expr l -> Maybe [Expr l]
+unList :: HasCtr l => Expr l -> Maybe [Expr l]
 unList = \case
   Ctr "Nil" -> Just []
   Apps (Ctr "Cons") [x, xs] -> (x:) <$> unList xs
   _ -> Nothing
 
-pattern List :: HasCtr l Ctr => [Expr l] -> Expr l
+pattern List :: HasCtr l => [Expr l] -> Expr l
 pattern List xs <- (unList -> Just xs)
 
 -- }}}
@@ -665,7 +623,7 @@ type Sugar l ann =
 orTry :: Sugar l ann -> Sugar l ann -> Sugar l ann
 orTry x y p i e = maybe (y p i e) return $ x p i e
 
-sTerm :: (HasLam l v, Pretty v, May Pretty (Ctr' l)) => Sugar l ann
+sTerm :: (HasLam l v, Pretty v) => Sugar l ann
 sTerm p i = \case
   Lam a (Lams as x) -> Just . prettyParen (i > 0) $
     "\\" <> sep (pretty <$> a:as) <+> "->" <+> p 0 x
@@ -677,12 +635,12 @@ sTerm p i = \case
       sep (pretty c : fmap pretty as) <+> "->" <+> p 0 b)
   _ -> Nothing
 
-sArr :: HasCtr l Ctr => Sugar l ann
+sArr :: HasCtr l => Sugar l ann
 sArr p i = \case
   Arr t u -> Just . prettyParen (i > 1) $ sep [p 2 t, "->", p 1 u]
   _ -> Nothing
 
-sLit :: HasCtr l Ctr => Sugar l ann
+sLit :: HasCtr l => Sugar l ann
 sLit p _ = \case
   Nat n -> Just $ pretty n
   List xs -> Just $ P.list (p 0 <$> xs)

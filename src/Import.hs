@@ -8,6 +8,7 @@ module Import
   , module Utils.BoundedLattice
   , module Utils.Map
   , module Utils.PartialSemigroup
+  , module Utils.Type
   , Pretty(..)
   , Dist
   , Logic(..)
@@ -29,7 +30,7 @@ import RIO.List
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
 import Prettyprinter
-import Control.Monad.RWS hiding (local)
+import Control.Monad.RWS hiding (local, All)
 import Control.Monad.Reader
 import Control.Monad.State
 import Lens.Micro.Platform
@@ -38,6 +39,7 @@ import Data.Monus.Dist (Dist)
 import Utils.BoundedLattice
 import Utils.Map
 import Utils.PartialSemigroup
+import Utils.Type
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case
