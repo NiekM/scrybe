@@ -139,18 +139,19 @@ relBinds (Defs ds) = bs' <&> uncurry MkBinding
 
 -- TODO: type checking and imports
 fromDefs :: Defs Void -> Env
-fromDefs defs = foldl' fromSigs bindEnv $ signatures defs
+fromDefs defs = forbEnv
   where
-    dataEnv :: Env
-    dataEnv = foldl' fromData mempty $ datatypes defs
 
-    bindEnv :: Env
+    dataEnv, bindEnv, sigEnv, forbEnv :: Env
+    dataEnv = foldl' fromData mempty  $ datatypes defs
     bindEnv = foldl' fromBind dataEnv $ bindings defs
+    sigEnv  = foldl' fromSigs bindEnv $ signatures defs
+    forbEnv = set envForbidden [x | Forbid x <- pragmas defs] sigEnv
 
     fromData :: Env -> Datatype -> Env
     fromData m (MkDatatype t as cs) = m
-      & over envData (Map.insert t (as, cs))
-      & over envCstr (Map.union cs')
+      & over envDatatypes (Map.insert t (as, cs))
+      & over envConstructors (Map.union cs')
       where
         t' = apps (Ctr t) (Var <$> as)
         cs' = Map.fromList cs <&> \ts -> Poly as $ arrs $ ts ++ [t']
@@ -161,7 +162,7 @@ fromDefs defs = foldl' fromSigs bindEnv $ signatures defs
       in m & over envScope (Map.insert x r)
 
     fromSigs :: Env -> Signature -> Env
-    fromSigs m (MkSignature x t) = m & over envFuns (Map.insert x t)
+    fromSigs m (MkSignature x t) = m & over envFunctions (Map.insert x t)
 
 evalAssert :: MonadReader Scope m => Scope -> Assert -> m (Result, Example)
 evalAssert rs (MkAssert e (Lams vs ex)) = do

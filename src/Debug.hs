@@ -55,20 +55,17 @@ gen' f = let file = unsafePerformIO $ readFileUtf8 f in
 cegisLoop :: [Assert] -> Scope -> Space Info Scope -> [Pretty.Doc ann]
 cegisLoop [] _ _ = ["No assertions..."]
 cegisLoop as@(MkAssert e _ : _) m ss =
-  -- pretty (trim 3 ss) :
-  -- ["Size:", pretty $ measure 3 ss] ++
   case pickOne m e ss of
   Nothing -> ["No solution"]
   Just (s, d) -> ["Try:", pretty s, ""] ++
     case runEval prelude $ findCounterExample s as of
     Nothing -> ["Correct!", pretty (fromIntegral d :: Int)]
     Just a -> ["Incorrect!", "Counterexample:", pretty a, ""]
-      -- ++ cegisLoop as m (pruneExample prelude a . pruneHoles prelude m e $ ss)
       ++ cegisLoop as m (pruneExample prelude a ss)
 
 cegis :: String -> Pretty.Doc ann
-cegis f = case runRWST (init_ problem) prel mkGenSt of
-  Just (e, st, _) -> case runEval prel (eval mempty e) of
+cegis f = case runRWST (init_ problem) prelude mkGenSt of
+  Just (e, st, _) -> case runEval prelude (eval mempty e) of
     Scoped s _ -> Pretty.vsep $
       [ ""
       , Pretty.indent 2 $ pretty problem
@@ -79,9 +76,9 @@ cegis f = case runRWST (init_ problem) prel mkGenSt of
       , ""
       ] ++ cegisLoop as s ss
       where
-        gs = runReader (gen prel) st
+        gs = runReader (gen prelude) st
         as = asserts problem
-        fs = forbid forbidden' gs
+        fs = forbid (view envForbidden prelude) gs
         ss = withScope s fs
     _ -> pretty e
   Nothing -> "Initialization failed"
@@ -90,13 +87,6 @@ cegis f = case runRWST (init_ problem) prel mkGenSt of
     problem = case lexParse parser file of
       Nothing -> error "Could not parse problem"
       Just p -> p
-    preludeFile = unsafePerformIO $ readFileUtf8 "data/prelude.hs"
-    (prel, forbidden') = case lexParse parser preludeFile of
-      Just defs ->
-        ( fromDefs $ recDefs defs
-        , [x | Forbid x <- pragmas defs]
-        )
-      Nothing -> error "Could not parse prelude"
 
 pickOne :: Scope -> Term Hole -> Space Info Scope -> Maybe (Scope, Dist)
 pickOne m e = mfold . search . runSearch . expl . pruneHoles prelude m e

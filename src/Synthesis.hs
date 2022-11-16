@@ -78,7 +78,7 @@ init :: Defs Unit -> Synth (Term Hole)
 init defs = do
   let ws = [x | Include xs <- pragmas defs, x <- toList xs]
 
-  gs <- asks $ view envFuns
+  gs <- asks $ view envFunctions
   ws' <- zoom freshFree $ forOf (each . _2 . each) ws refresh
 
   assign included $ ws' <&> \(v, a) ->
@@ -154,7 +154,7 @@ refinements (m, h) (Goal ctx t) = do
     -- Constructors
     , case t of
       Apps (Ctr d) _ | not onlyVar -> do
-        (_, cs) <- mfold . Map.lookup d =<< view envData
+        (_, cs) <- mfold . Map.lookup d =<< view envDatatypes
         (c, ts) <- mfold cs
         return (Ctr c, ts)
       _ -> mzero
@@ -538,7 +538,7 @@ init_ defs = do
   assign genCtxs ctxs
   let ws = [x | Include xs <- pragmas defs, x <- toList xs]
   ws' <- zoom genFree $ forOf (each . _2 . each) ws refresh
-  gs <- asks $ view envFuns
+  gs <- asks $ view envFunctions
   assign genFuns . Map.fromList $ ws' <&> \(v, a) ->
     ( v
     , case Map.lookup v gs of
@@ -575,7 +575,7 @@ refs :: Env -> Map Var Poly -> Goal -> [(Term Void, Poly)]
 refs env funs (Goal ctx t) = join
   [ case t of
       Apps (Ctr d) _
-        | Just (as, cs) <- Map.lookup d (view envData env) -> do
+        | Just (as, cs) <- Map.lookup d (view envDatatypes env) -> do
         (c, ts) <- cs
         return (Ctr c, Poly as . arrs $ ts ++ [apps (Ctr d) (Var <$> as)])
       _ -> []

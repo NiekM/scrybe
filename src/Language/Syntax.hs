@@ -603,22 +603,23 @@ instance Subst Goal where
 
 data Env = Env
   { _envScope :: Scope
-  , _envFuns  :: Map Var Poly
-  , _envData  :: Map Ctr ([Free], [(Ctr, [Type])])
-  , _envCstr  :: Map Ctr Poly
+  , _envFunctions :: Map Var Poly
+  , _envDatatypes :: Map Ctr ([Free], [(Ctr, [Type])])
+  , _envConstructors :: Map Ctr Poly
+  , _envForbidden :: [Term Unit]
   } deriving (Eq, Ord)
 
 makeLenses 'Env
 
 instance Semigroup Env where
-  Env a c e g <> Env b d f h =
-    Env (a <> b) (c <> d) (e <> f) (g <> h)
+  Env a c e g i <> Env b d f h j =
+    Env (a <> b) (c <> d) (e <> f) (g <> h) (i <> j)
 
 instance Monoid Env where
-  mempty = Env mempty mempty mempty mempty
+  mempty = Env mempty mempty mempty mempty mempty
 
 ctrArity :: Env -> Ctr -> Int
-ctrArity en c = case Map.lookup c (view envCstr en) of
+ctrArity en c = case Map.lookup c (view envConstructors en) of
   Nothing -> error $ "Unknown constructor " <> show c
   Just d -> arity d
 

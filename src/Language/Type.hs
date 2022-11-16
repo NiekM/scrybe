@@ -59,8 +59,8 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
 -- | Type inference.
 infer :: Map Var Poly -> Term h -> Infer (Type, Term Goal)
 infer ts expr = do
-  cs <- view envCstr
-  fs <- view envFuns
+  cs <- view envConstructors
+  fs <- view envFunctions
   (t, e, th) <- (ts &) $ expr & cataExpr \e loc -> case e of
     Hole _ -> do
       g <- Var <$> fresh
