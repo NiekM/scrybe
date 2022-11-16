@@ -6,10 +6,11 @@ module Import
   , module Lens.Micro.Platform
   , module Data.Functor.Compose
   , module Utils.BoundedLattice
+  , module Utils.Fresh
   , module Utils.Map
   , module Utils.PartialSemigroup
   , module Utils.Type
-  , Pretty(..)
+  , Pretty(..), Doc, (<+>)
   , Dist
   , Logic(..)
   , BoundedLattice(..)
@@ -37,6 +38,7 @@ import Lens.Micro.Platform
 import Data.Functor.Compose
 import Data.Monus.Dist (Dist)
 import Utils.BoundedLattice
+import Utils.Fresh
 import Utils.Map
 import Utils.PartialSemigroup
 import Utils.Type

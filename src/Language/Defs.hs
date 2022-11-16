@@ -29,7 +29,7 @@ data Signature = MkSignature Var Poly
 data Binding h = MkBinding Var (Term h)
   deriving (Eq, Ord, Show)
 
-data Datatype = MkDatatype Ctr [Free] [(Ctr, [Type])]
+data Datatype = MkDatatype Ctr [Free] [(Ctr, [Mono])]
   deriving (Eq, Ord, Show)
 
 data Import = MkImport

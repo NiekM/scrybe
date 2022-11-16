@@ -23,11 +23,11 @@ evalInfer tc fr m = fst <$> runInfer tc fr m
 
 -- || Type unification
 
-type Unify = Map Free Type
+type Unify = Map Free Mono
 
 -- | Unify two monotypes, by checking if their holes can be filled such that
 -- they are equivalent.
-unify :: Type -> Type -> Maybe Unify
+unify :: Mono -> Mono -> Maybe Unify
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
@@ -37,7 +37,7 @@ unify t u = case (t, u) of
   _ -> fail "Unification failed"
 
 -- | Occurs check.
-occurs :: Free -> Type -> Bool
+occurs :: Free -> Mono -> Bool
 occurs a tau = a `notElem` toListOf free tau
 
 -- | Compose two non-conflicting unifications.
@@ -48,7 +48,7 @@ compose sigma gamma = Map.unions
   ]
 
 -- | Unify multiple expressions.
-unifies :: Foldable t => t (Type, Type) -> Maybe Unify
+unifies :: Foldable t => t (Mono, Mono) -> Maybe Unify
 unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
   th0 <- th
   th1 <- unify (subst th0 t1) (subst th0 t2)
@@ -57,7 +57,7 @@ unifies = flip foldr (return Map.empty) \(t1, t2) th -> do
 -- || Type inference and checking.
 
 -- | Type inference.
-infer :: Map Var Poly -> Term h -> Infer (Type, Term Goal)
+infer :: Map Var Poly -> Term h -> Infer (Mono, Term Goal)
 infer ts expr = do
   cs <- view envConstructors
   fs <- view envFunctions
@@ -117,7 +117,7 @@ infer ts expr = do
   return (subst th t, over holes (subst th) e)
 
 -- | Type checking.
-check :: Map Var Poly -> Term h -> Poly -> Infer (Type, Term Goal, Unify)
+check :: Map Var Poly -> Term h -> Poly -> Infer (Mono, Term Goal, Unify)
 check ts e p = do
   (u, e') <- infer ts e
   th <- failMaybe $ unify (freeze p) u

@@ -61,7 +61,7 @@ liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
 checkBindings :: [Signature] -> [Binding Unit] -> Infer (Term Goal)
 checkBindings ss fs = do
   let sigs = Map.fromList $ ss <&> \(MkSignature a (Poly _ t)) -> (a, t)
-  let e = Lets (fs <&> \(MkBinding a x) -> (a, x)) (Hole (Unit ()))
+  let e = Lets (fs <&> \(MkBinding a x) -> (a, x)) (Hole Unit)
   (_, a) <- infer mempty e
   case a of
     x@(Lets _ (Hole (Goal cs _))) -> do
@@ -131,7 +131,7 @@ elimWeight = 4
 schemeWeight = 4
 recVarWeight = 2
 
-computeWeight :: Type -> Term Goal -> Dist
+computeWeight :: Mono -> Term Goal -> Dist
 computeWeight t e = fromIntegral $ sum
   [ length us
   , sum (us <&> \u -> max 0 (typeSize u - typeSize t))
@@ -176,11 +176,11 @@ refinements (m, h) (Goal ctx t) = do
   modifying multiplier $ Map.mapWithKey \k d ->
     if k `elem` hs then mul * d else d
   -- Forbidden
-  updateForbidden h $ over holes (const $ Unit ()) e1
+  updateForbidden h $ over holes (const Unit) e1
   case e2 of
     Apps (Var v) _ -> do
       -- Equivalences {{{
-      let u = Hole $ Unit ()
+      let u = Hole Unit
       let z = Ctr "Zero"
       let s = App (Ctr "Succ") u
       let n = Ctr "Nil"

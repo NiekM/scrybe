@@ -30,15 +30,18 @@ library
       Import
       Language
       Language.Defs
-      Language.Identifiers
       Language.Live
       Language.Parser
       Language.Syntax
+      Language.Syntax.Expr
+      Language.Syntax.Ident
+      Language.Syntax.Type
       Language.Type
       Options
       Run
       Synthesis
       Utils.BoundedLattice
+      Utils.Fresh
       Utils.Map
       Utils.PartialSemigroup
       Utils.Type

@@ -1,13 +1,14 @@
--- TODO: move this to Utils.Fresh
-module Language.Identifiers
+module Utils.Fresh
   ( Fresh, fresh
   , Count(..)
   , TextVar(..)
   )
   where
 
-import GHC.TypeLits
-import Import
+import Control.Monad.RWS (MonadState(..))
+import Prettyprinter (Pretty)
+import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
+import RIO
 
 newtype Fresh a = Fresh Natural
   deriving stock (Eq, Ord)

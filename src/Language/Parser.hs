@@ -234,7 +234,7 @@ parseApps = apps <$> atom <*> many atom
 instance Parse h => Parse (Term h) where
   parser = parseApps
 
-instance Parse Type where
+instance Parse Mono where
   parser = arrs <$> alt1 (brackets Round parser <|> parseApps) (op "->")
 
 instance Parse Value where

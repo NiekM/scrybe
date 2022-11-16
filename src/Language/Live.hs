@@ -19,10 +19,6 @@ import Import
 import Language.Syntax
 import qualified RIO.Map as Map
 
-{-# COMPLETE Scoped, App, Ctr, Fix, Prj #-}
-pattern Scoped :: Scope -> Indet -> Expr' r 'Det
-pattern Scoped m e = Hole (m, e)
-
 indet :: Term Hole -> Maybe Indet
 indet = \case
   Hole h  -> Just $ Hole h
