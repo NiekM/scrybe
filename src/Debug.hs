@@ -67,97 +67,36 @@ cegisLoop as@(MkAssert e _ : _) m ss =
       ++ cegisLoop as m (pruneExample prelude a ss)
 
 cegis :: String -> Pretty.Doc ann
-cegis f = let file = unsafePerformIO $ readFileUtf8 f in
-  case lexParse parser file of
-    Just defs -> case runRWST (init_ defs) prelude mkGenSt of
-      Just (e, st, _) -> case runEval prelude (eval mempty e) of
-        Scoped s _ -> Pretty.vsep $
-          [ ""
-          , Pretty.indent 2 $ pretty defs
-          , ""
-          , "Scope:"
-          , ""
-          , pretty s
-          , ""
-          ] ++ cegisLoop as s ss
-          where
-            gs = runReader (gen prelude) st
-            as = asserts defs
-            fs = forbid forbidden' gs
-            ss = withScope s fs
-        _ -> pretty e
-
-          -- traceShow (pretty e) $
-          -- error "Something went wrong in evaluation"
-      Nothing -> "Initialization failed"
-    Nothing -> error "Could not parse problem"
+cegis f = case runRWST (init_ problem) prel mkGenSt of
+  Just (e, st, _) -> case runEval prel (eval mempty e) of
+    Scoped s _ -> Pretty.vsep $
+      [ ""
+      , Pretty.indent 2 $ pretty problem
+      , ""
+      , "Scope:"
+      , ""
+      , pretty s
+      , ""
+      ] ++ cegisLoop as s ss
+      where
+        gs = runReader (gen prel) st
+        as = asserts problem
+        fs = forbid forbidden' gs
+        ss = withScope s fs
+    _ -> pretty e
+  Nothing -> "Initialization failed"
+  where
+    file = unsafePerformIO $ readFileUtf8 f
+    problem = case lexParse parser file of
+      Nothing -> error "Could not parse problem"
+      Just p -> p
+    preludeFile = unsafePerformIO $ readFileUtf8 "data/prelude.hs"
+    (prel, forbidden') = case lexParse parser preludeFile of
+      Just defs ->
+        ( fromDefs $ recDefs defs
+        , [x | Forbid x <- pragmas defs]
+        )
+      Nothing -> error "Could not parse prelude"
 
 pickOne :: Scope -> Term Hole -> Space Info Scope -> Maybe (Scope, Dist)
 pickOne m e = mfold . search . runSearch . expl . pruneHoles prelude m e
-
-forbidden' :: [Term Unit]
-forbidden' =
-  [ "foldr _ _ Nil"
-  , "foldr _ _ (Cons _ _)"
-  , "foldr (\\x r -> r) _ _"
-  , "foldr (\\x r -> []) _ _"
-  , "foldr (\\x r -> Cons x r) [] _"
-  ]
-  ++
-  [ "foldl _ _ Nil"
-  , "foldl _ _ (Cons _ _)"
-  ]
-  ++
-  [ "foldrNat _ _ 0"
-  , "foldrNat _ _ (Succ _)"
-  ]
-  ++
-  [ "elimNat _ _ 0"
-  , "elimNat _ _ (Succ _)"
-  ]
-  ++
-  [ "map _ Nil"
-  , "map _ (Cons _ _)"
-  , "map (\\x -> x) _"
-  , "map _ (map _ _)"
-  ]
-  ++
-  [ "sum []"
-  , "sum (Cons _ _)"
-  ]
-  ++
-  [ "elimBool _ _ False"
-  , "elimBool _ _ True"
-  , "elimBool False True _"
-  ]
-  ++
-  [ "leq 0 _"
-  , "leq (Succ _) (Succ _)"
-  ]
-  ++
-  [ "elimMaybe _ _ Nothing"
-  , "elimMaybe _ _ (Just _)"
-  , "elimMaybe Nothing (\\x -> Just _) _"
-  ]
-  ++
-  [ "plus (Succ _) _"
-  , "plus _ (Succ _)"
-  ]
-  ++
-  monoid "plus" "0"
-  ++
-  [ "append (Cons _ _) _"
-  ]
-  ++
-  monoid "append" "[]"
-
-  where
-
-    assoc :: Term Unit -> [Term Unit]
-    assoc f = [apps f [apps f ["_","_"], "_"]]
-
-    unit :: Term Unit -> Term Unit -> [Term Unit]
-    unit f e = [apps f [e, "_"], apps f ["_", e]]
-
-    monoid :: Term Unit -> Term Unit -> [Term Unit]
-    monoid f e = assoc f ++ unit f e

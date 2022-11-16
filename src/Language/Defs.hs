@@ -39,6 +39,7 @@ data Import = MkImport
 
 data Pragma
   = Desc String
+  | Forbid (Term Unit)
   | Include (NonEmpty (Var, Maybe Poly))
   deriving (Eq, Ord, Show)
 
@@ -76,6 +77,7 @@ instance Pretty h => Pretty (Binding h) where
 instance Pretty Pragma where
   pretty = fancy . \case
     Desc s -> "DESC" <+> pretty (show s)
+    Forbid e -> "FORBID" <+> pretty e
     Include xs ->
      let ys = xs <&> \case
            (x, Nothing) -> pretty x

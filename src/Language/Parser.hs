@@ -267,6 +267,7 @@ instance Parse Import where
 instance Parse Pragma where
   parser = brackets Fancy $ choice
     [ Desc <$ ctr "DESC" <*> str
+    , Forbid <$ ctr "FORBID" <*> parser
     , Include <$ ctr "INCLUDE" <*>
       alt1 ((,) <$> parser <*> optional (op "::" *> parser)) (sep ",")
     ]

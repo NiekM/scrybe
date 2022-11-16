@@ -25,6 +25,10 @@ data Unit = Unit
 
 data Bool = False | True
 
+{-# FORBID elimBool _ _ False #-}
+{-# FORBID elimBool _ _ True #-}
+{-# FORBID elimBool False True _ #-}
+
 elimBool :: a -> a -> Bool -> a
 elimBool f t b = case b of
   False -> f
@@ -53,6 +57,10 @@ elimOrd l e g o = case o of
 
 data Maybe a = Nothing | Just a
 
+{-# FORBID elimMaybe _ _ Nothing #-}
+{-# FORBID elimMaybe _ _ (Just _) #-}
+{-# FORBID elimMaybe Nothing (\x -> Just _) _ #-}
+
 elimMaybe :: b -> (a -> b) -> Maybe a -> b
 elimMaybe n j m = case m of
   Nothing -> n
@@ -62,10 +70,16 @@ elimMaybe n j m = case m of
 
 data Nat = Zero | Succ Nat
 
+{-# FORBID elimNat _ _ 0 #-}
+{-# FORBID elimNat _ _ (Succ _) #-}
+
 elimNat :: a -> (Nat -> a) -> Nat -> a
 elimNat z s n = case n of
   Zero -> z
   Succ m -> s m
+
+{-# FORBID foldrNat _ _ 0 #-}
+{-# FORBID foldrNat _ _ (Succ _) #-}
 
 foldrNat :: a -> (a -> a) -> Nat -> a
 foldrNat z s n = case n of
@@ -93,6 +107,12 @@ even = foldlNat not True
 odd :: Nat -> Bool
 odd = foldlNat not False
 
+{-# FORBID plus _ 0 #-}
+{-# FORBID plus 0 _ #-}
+{-# FORBID plus (plus _ _) _ #-}
+{-# FORBID plus (Succ _) _ #-}
+{-# FORBID plus _ (Succ _) #-}
+
 plus :: Nat -> Nat -> Nat
 plus n = foldrNat n Succ
 
@@ -107,6 +127,9 @@ eq n m = elimOrd False True False (compareNat n m)
 
 neq :: Nat -> Nat -> Bool
 neq n m = not (eq n m)
+
+{-# FORBID leq 0 _ #-}
+{-# FORBID leq (Succ _) (Succ _) #-}
 
 leq :: Nat -> Nat -> Bool
 leq n m = elimOrd True True False (compareNat n m)
@@ -147,19 +170,38 @@ paraList n c l = case l of
 mapList :: (a -> b) -> List a -> List b
 mapList f = foldList [] (\x -> Cons (f x))
 
+{-# FORBID foldr _ _ 0 #-}
+{-# FORBID foldr _ _ (Cons _ _) #-}
+{-# FORBID foldr (\x r -> r) _ _ #-}
+{-# FORBID foldr (\x r -> []) _ _ #-}
+{-# FORBID foldr (\x r -> Cons x r) [] _ #-}
+
 foldr :: (a -> b -> b) -> b -> List a -> b
 foldr f e = foldList e f
+
+{-# FORBID foldl _ _ Nil #-}
+{-# FORBID foldl _ _ (Cons _ _) #-}
 
 foldl :: (b -> a -> b) -> b -> List a -> b
 foldl f acc l = case l of
   Nil -> acc
   Cons h t -> foldl f (f acc h) t
 
+{-# FORBID map _ Nil #-}
+{-# FORBID map _ (Cons _ _) #-}
+{-# FORBID map (\x -> x) _ #-}
+{-# FORBID map _ (map _ _) #-}
+
 map :: (a -> b) -> List a -> List b
 map = mapList
 
 filter :: (a -> Bool) -> List a -> List a
 filter p = foldList [] (\x r -> elimBool r (Cons x r) (p x))
+
+{-# FORBID append [] _ #-}
+{-# FORBID append _ [] #-}
+{-# FORBID append (append _ _) _ #-}
+{-# FORBID append (Cons _ _) _ #-}
 
 append :: List a -> List a -> List a
 append xs ys = foldList ys Cons xs
@@ -186,6 +228,9 @@ mapMaybe f xs = catMaybes (map f xs)
 
 length :: List a -> Nat
 length = foldl (\r x -> Succ r) Zero
+
+{-# FORBID sum [] #-}
+{-# FORBID sum (Cons _ _) #-}
 
 sum :: List Nat -> Nat
 sum = foldl plus 0
