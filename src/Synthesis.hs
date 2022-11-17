@@ -137,6 +137,16 @@ computeWeight t e = fromIntegral $ sum
   , sum (us <&> \u -> max 0 (typeSize u - typeSize t))
   ] where us = toListOf (holes . goalType) e
 
+match :: Term Hole -> Term Unit -> Maybe (Map Hole (Term Unit))
+match = curry \case
+  (_, Hole _) -> Just mempty
+  (Hole h, e) -> Just $ Map.singleton h e
+  (Var x, Var y) | x == y -> Just mempty
+  (Ctr c, Ctr d) | c == d -> Just mempty
+  (App f x, App g y) -> liftM2 (<>) (match f g) (match x y)
+  (Lam a x, Lam b y) -> match (replace (Map.singleton b $ Var a) x) y
+  _ -> Nothing
+
 refinements :: (Scope, Hole) -> Goal -> Synth (Term Hole)
 refinements (m, h) (Goal ctx t) = do
   onlyVar <- Set.member h <$> use varOnly
@@ -176,204 +186,51 @@ refinements (m, h) (Goal ctx t) = do
   modifying multiplier $ Map.mapWithKey \k d ->
     if k `elem` hs then mul * d else d
   -- Forbidden
+  -- let foo = match e3 (apps (Var "plus") [apps (Var "plus") [Hole Unit, Hole Unit], Hole Unit])
+  foos <- view envForbidden <$> ask
+  let bars = mapMaybe (match e3) foos
+
   updateForbidden h $ over holes (const Unit) e1
+
+  modifying forbidden (<> bars)
+
   case e2 of
     Apps (Var v) _ -> do
-      -- Equivalences {{{
-      let u = Hole Unit
-      let z = Ctr "Zero"
-      let s = App (Ctr "Succ") u
-      let n = Ctr "Nil"
-      let c = apps (Ctr "Cons") (replicate 2 u)
       case v of
-        "plus" | [l, _] <- hs -> do
-          let zeros = (`Map.singleton` z) <$> hs
-          let succs = (`Map.singleton` s) <$> hs
-          let left = Map.singleton l $ apps (Var "plus") (replicate 2 u)
-          modifying forbidden (<> (left : zeros ++ succs))
-        "mult" | [l, _] <- hs -> do
-          let zeros = (`Map.singleton` z) <$> hs
-          -- TODO: how to disallow multiplying by 1? We probably need some
-          -- more sophisticated representation of forbidden fillings.
-          -- let succs = (`Map.singleton` App (Ctr "Succ") u) <$> hs
-          let left = Map.singleton l $ apps (Var "mult") (replicate 2 u)
-          modifying forbidden (<> (left : zeros))
-        "append" | [l, _] <- hs -> do
-          let nils = (`Map.singleton` n) <$> hs
-          let cons = Map.singleton l c
-          let left = Map.singleton l $ apps (Var "append") (replicate 2 u)
-          modifying forbidden (<> (left : cons : nils))
-        "snoc" | [l, _] <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
-        "even" | [l] <- hs -> do
-          let zero = Map.singleton l z
-          let succ = Map.singleton l s
-          modifying forbidden (<> [zero, succ])
-        "length" | [l] <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
-        "sum" | [l] <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
-        "sumrec" | [l] <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
         "elimTree" | [_, _, l] <- hs -> do
-          let leaf = Map.singleton l $ Ctr "Leaf"
-          let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
-          modifying forbidden (<> [leaf, node])
           modifying varOnly $ Set.insert l
           weigh h elimWeight
         "foldTree" | [_, _, l] <- hs -> do
-          let leaf = Map.singleton l $ Ctr "Leaf"
-          let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
-          modifying forbidden (<> [leaf, node])
           modifying varOnly $ Set.insert l
           weigh h schemeWeight
         "mapTree" | [_, l] <- hs -> do
-          let leaf = Map.singleton l $ Ctr "Leaf"
-          let node = Map.singleton l $ apps (Ctr "Node") (replicate 3 u)
-          let fuse = Map.singleton l $ apps (Var "mapTree") (replicate 2 u)
-          modifying forbidden (<> [leaf, node, fuse])
           modifying varOnly $ Set.insert l
         "elimList" | [_, _, l] <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
-          modifying multiplier $ Map.insert l 2
           weigh h elimWeight
         "foldList" | _:_:l:_ <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
-          modifying varOnly $ Set.insert l
           weigh h schemeWeight
         "foldr" | _:_:l:_ <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
           modifying varOnly $ Set.insert l
           weigh h schemeWeight
         "foldl" | _:_:l:_ <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
           modifying varOnly $ Set.insert l
           weigh h schemeWeight
         "paraList" | [_, _, l] <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
           modifying varOnly $ Set.insert l
           weigh h schemeWeight
-        "map" | [_, l] <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          let fuse = Map.singleton l $ apps (Var "map") (replicate 2 u)
-          modifying forbidden (<> [nil, cons, fuse])
-        "concat" | [l] <- hs -> do
-          let nil = Map.singleton l n
-          modifying forbidden (<> [nil])
-        "concatMap" | [f, l] <- hs -> do
-          let empty = Map.singleton f n
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [empty, nil, cons])
-        "zipWith" | [_, l, r] <- hs -> do
-          let left = Map.singleton l c
-          let right = Map.singleton r c
-          let fuse = Map.singleton l $ apps (Var "zipWith") (replicate 3 u)
-          modifying forbidden (<> [left, right, fuse])
         "elimNat" | [_, _, l] <- hs -> do
-          let zero = Map.singleton l z
-          let succ = Map.singleton l s
-          modifying forbidden (<> [zero, succ])
           modifying multiplier $ Map.insert l 2
           weigh h elimWeight
         "foldrNat" | _:_:l:_ <- hs -> do
-          let zero = Map.singleton l z
-          let succ = Map.singleton l s
-          modifying forbidden (<> [zero, succ])
           modifying varOnly $ Set.insert l
           weigh h schemeWeight
         "elimBool" | [_, _, l] <- hs -> do
-          let false = Map.singleton l $ Ctr "False"
-          let true = Map.singleton l $ Ctr "True"
-          modifying forbidden (<> [false, true])
           modifying multiplier $ Map.insert l 2
           weigh h elimWeight
         "elimOrd" | [_, _, _, l] <- hs -> do
-          let lt = Map.singleton l $ Ctr "LT"
-          let eq = Map.singleton l $ Ctr "EQ"
-          let gt = Map.singleton l $ Ctr "GT"
-          modifying forbidden (<> [lt, eq, gt])
           modifying multiplier $ Map.insert l 2
           weigh h elimWeight
-        "compareNat" | [x, y] <- hs -> do
-          let zz = Map.fromList [(x, z), (y, z)]
-          let zs = Map.fromList [(x, z), (y, s)]
-          let sz = Map.fromList [(x, s), (y, z)]
-          let ss = Map.fromList [(x, s), (y, s)]
-          -- NOTE: since eq is commutative, we can disallow one Succ/Zero,
-          -- since two is already forbidden
-          let zero = Map.singleton x z
-          let succ = Map.singleton x s
-          modifying forbidden (<> [zero, succ, zz, zs, sz, ss])
-        "eq" | [x, y] <- hs -> do
-          let zz = Map.fromList [(x, z), (y, z)]
-          let zs = Map.fromList [(x, z), (y, s)]
-          let sz = Map.fromList [(x, s), (y, z)]
-          let ss = Map.fromList [(x, s), (y, s)]
-          -- NOTE: since eq is commutative, we can disallow one Succ/Zero,
-          -- since two is already forbidden
-          let zero = Map.singleton x z
-          let succ = Map.singleton x s
-          modifying forbidden (<> [zero, succ, zz, zs, sz, ss])
-        "neq" | [x, y] <- hs -> do
-          let zz = Map.fromList [(x, z), (y, z)]
-          let zs = Map.fromList [(x, z), (y, s)]
-          let sz = Map.fromList [(x, s), (y, z)]
-          let ss = Map.fromList [(x, s), (y, s)]
-          -- NOTE: since neq is commutative, we can disallow one Succ/Zero,
-          -- since two is already forbidden
-          let zero = Map.singleton x z
-          let succ = Map.singleton x s
-          modifying forbidden (<> [zero, succ, zz, zs, sz, ss])
-        "max" | [x, y] <- hs -> do
-          let zeroes = (`Map.singleton` z) <$> hs
-          -- NOTE: since max is commutative, we can disallow one Succ, since
-          -- two is already forbidden
-          let succ = Map.singleton x s
-          let ss = Map.fromList [(x, s), (y, s)]
-          let left = Map.singleton x $ apps (Var "max") (replicate 2 u)
-          modifying forbidden (<> (left:succ:ss:zeroes))
-        "leq" | [x, y] <- hs -> do
-          let zero = Map.singleton x z
-          let succs = Map.fromList [(x, s), (y, s)]
-          modifying forbidden (<> [zero, succs])
-        "any" | [f, l] <- hs -> do
-          let false = Map.singleton f $ Ctr "False"
-          let true = Map.singleton f $ Ctr "True"
-          let nil = Map.singleton l n
-          modifying forbidden (<> [false, true, nil])
-        "or" | [_, _] <- hs -> do
-          let falses = (`Map.singleton` Ctr "False") <$> hs
-          let trues = (`Map.singleton` Ctr "True") <$> hs
-          modifying forbidden (<> falses <> trues)
-        "elem" | [_, l] <- hs -> do
-          let nil = Map.singleton l n
-          let cons = Map.singleton l c
-          modifying forbidden (<> [nil, cons])
         "elimMoney" | [_, _, _, l] <- hs -> do
-          let one = Map.singleton l $ Ctr "One"
-          let two = Map.singleton l $ Ctr "Two"
-          let chk = Map.singleton l $ App (Ctr "Check") u
-          modifying forbidden (<> [one, two, chk])
           weigh h elimWeight
         _ -> return ()
       -- }}}
@@ -602,22 +459,12 @@ gen env = do
       let n = 1 + sum (typeSize <$> ts)
       return $ (y,Info $ fromIntegral n,) <$> gen env
 
-match :: Term Unit -> Term Hole -> Maybe (Map Hole (Term Unit))
-match = curry \case
-  (Hole _, _) -> Just mempty
-  (e, Hole h) -> Just $ Map.singleton h e
-  (Var x, Var y) | x == y -> Just mempty
-  (Ctr c, Ctr d) | c == d -> Just mempty
-  (App f x, App g y) -> liftM2 (<>) (match f g) (match x y)
-  (Lam a x, Lam b y) -> match (replace (Map.singleton a $ Var b) x) y
-  _ -> Nothing
-
 updForbidden :: Hole -> Term Hole -> [Map Hole (Term Unit)] -> Maybe [Map Hole (Term Unit)]
 updForbidden h e = sequence . mapMaybe \old -> case Map.lookup h old of
   Nothing -> Just (Just old)
   Just x ->
     let upd = Map.delete h old
-    in case match x e of
+    in case match e x of
       Nothing -> Nothing
       Just new
         | null (upd <> new) -> Just Nothing
