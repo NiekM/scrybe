@@ -9,6 +9,7 @@ import qualified Utils.Weighted as Weighted
 import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
+import qualified RIO.Text as Text
 
 -- Synthesis Monad {{{
 
@@ -186,54 +187,22 @@ refinements (m, h) (Goal ctx t) = do
   modifying multiplier $ Map.mapWithKey \k d ->
     if k `elem` hs then mul * d else d
   -- Forbidden
-  -- let foo = match e3 (apps (Var "plus") [apps (Var "plus") [Hole Unit, Hole Unit], Hole Unit])
-  foos <- view envForbidden <$> ask
-  let bars = mapMaybe (match e3) foos
+  bars <- mapMaybe (match e3) . view envForbidden <$> ask
 
   updateForbidden h $ over holes (const Unit) e1
 
   modifying forbidden (<> bars)
 
   case e2 of
-    Apps (Var v) _ -> do
-      case v of
-        "elimTree" | [_, _, l] <- hs -> do
-          modifying varOnly $ Set.insert l
-          weigh h elimWeight
-        "foldTree" | [_, _, l] <- hs -> do
-          modifying varOnly $ Set.insert l
-          weigh h schemeWeight
-        "mapTree" | [_, l] <- hs -> do
-          modifying varOnly $ Set.insert l
-        "elimList" | [_, _, l] <- hs -> do
-          weigh h elimWeight
-        "foldList" | _:_:l:_ <- hs -> do
-          weigh h schemeWeight
-        "foldr" | _:_:l:_ <- hs -> do
-          modifying varOnly $ Set.insert l
-          weigh h schemeWeight
-        "foldl" | _:_:l:_ <- hs -> do
-          modifying varOnly $ Set.insert l
-          weigh h schemeWeight
-        "paraList" | [_, _, l] <- hs -> do
-          modifying varOnly $ Set.insert l
-          weigh h schemeWeight
-        "elimNat" | [_, _, l] <- hs -> do
-          modifying multiplier $ Map.insert l 2
-          weigh h elimWeight
-        "foldrNat" | _:_:l:_ <- hs -> do
-          modifying varOnly $ Set.insert l
-          weigh h schemeWeight
-        "elimBool" | [_, _, l] <- hs -> do
-          modifying multiplier $ Map.insert l 2
-          weigh h elimWeight
-        "elimOrd" | [_, _, _, l] <- hs -> do
-          modifying multiplier $ Map.insert l 2
-          weigh h elimWeight
-        "elimMoney" | [_, _, _, l] <- hs -> do
-          weigh h elimWeight
+    Apps (Var (MkVar text)) _ -> do
+      case Text.take 4 text of
+        "elim" -> weigh h elimWeight
+        "fold" -> weigh h schemeWeight
         _ -> return ()
-      -- }}}
+      case Text.take 4 text of
+        "elim" | _:_:l:_ <- hs -> modifying multiplier $ Map.insert l 2
+        "fold" | _:_:l:_ <- hs -> modifying varOnly $ Set.insert l
+        _ -> return ()
     _ -> return ()
   --
   return e3

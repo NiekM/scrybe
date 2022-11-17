@@ -61,13 +61,6 @@ instance Subst Goal where
 
 -- Helper functions
 
-alphaEq :: Poly -> Poly -> Maybe (Map Free Free)
-alphaEq (Poly as t) (Poly bs u) = do
-  let cs = filter (`elem` as) . nubOrd $ toListOf free t
-  let th = Map.fromList $ zip bs cs
-  guard $ t == subst (Var <$> th) u
-  return th
-
 -- TODO: replace freezing with something more reasonable
 -- | Turn a polytype into a monotype by turning all quantified variables in
 -- constructors of the same name.
