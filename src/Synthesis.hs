@@ -5,11 +5,10 @@ module Synthesis where
 import Import
 import qualified Prettyprinter as Pretty
 import Options (SynOptions(..), synPropagate)
-import qualified Utils.Weighted as Weighted
+import Utils.Weighted
 import Language
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
-import qualified RIO.Text as Text
 
 -- Synthesis Monad {{{
 
@@ -29,24 +28,17 @@ data SynState = SynState
   , _freshFree   :: Fresh Free
   , _freshVar    :: Fresh Var
   -- Heuristics
-  , _varOnly     :: Set Hole
-  , _scrutinized :: Set Var
-  , _multiplier  :: Map Hole Dist
+  , _varCount    :: Sum Int
   }
 
 makeLenses ''SynState
 
 mkSynState :: SynOptions -> SynState
 mkSynState opts = SynState opts mempty (Disjunction []) mempty mempty mempty
-  mempty mempty mempty mempty mempty mempty mempty mempty
+  mempty mempty mempty mempty mempty mempty
 
-type Nondet = Weighted.Search Dist
+type Nondet = Search Dist
 type Synth = RWST Env () SynState Nondet
-
-weigh :: Hole -> Dist -> Synth ()
-weigh h d = do
-  m <- Map.lookup h <$> use multiplier
-  Weighted.weigh $ d * fromMaybe 1 m
 
 runSynth :: SynOptions -> Env -> Synth a -> Nondet a
 runSynth opts m x = view _1 <$> runRWST x m (mkSynState opts)
@@ -127,16 +119,14 @@ updateConstraints xs = do
   guard . not . null $ ys
   assign constraints $ Disjunction . fmap Pure $ ys
 
-elimWeight, schemeWeight, recVarWeight :: Dist
-elimWeight = 4
-schemeWeight = 4
+recVarWeight :: Dist
 recVarWeight = 2
 
-computeWeight :: Mono -> Term Goal -> Dist
-computeWeight t e = fromIntegral $ sum
-  [ length us
-  , sum (us <&> \u -> max 0 (typeSize u - typeSize t))
-  ] where us = toListOf (holes . goalType) e
+addVar :: Synth ()
+addVar = do
+  Sum n <- use varCount
+  weigh @Dist $ fromIntegral n
+  modifying varCount (+1)
 
 match :: Term Hole -> Term Unit -> Maybe (Map Hole (Term Unit))
 match = curry \case
@@ -150,28 +140,22 @@ match = curry \case
 
 refinements :: (Scope, Hole) -> Goal -> Synth (Term Hole)
 refinements (m, h) (Goal ctx t) = do
-  onlyVar <- Set.member h <$> use varOnly
   (e, ts) <- join $ mfold
     -- Local variables
     [ do
       (v, Poly _ (Args ts _)) <- mfold $ Map.assocs ctx
-      when onlyVar do
-        guard . Set.notMember v =<< use scrutinized
-        modifying scrutinized $ Set.insert v
-        modifying varOnly $ Set.delete h
       when (recVar v m) do
-        weigh h recVarWeight
+        weigh recVarWeight
       return (Var v, ts)
     -- Constructors
     , case t of
-      Apps (Ctr d) _ | not onlyVar -> do
+      Apps (Ctr d) _ -> do
         (_, cs) <- mfold . Map.lookup d =<< view envDatatypes
         (c, ts) <- mfold cs
         return (Ctr c, ts)
       _ -> mzero
     -- Imported functions
     , do
-      guard $ not onlyVar
       (v, Poly _ (Args ts _)) <- mfold =<< use included
       return (Var v, ts)
     ]
@@ -180,31 +164,17 @@ refinements (m, h) (Goal ctx t) = do
   e2         <- zoom freshVar  $ expand e1
   (e3, ctx') <- zoom freshHole $ extract e2
   modifying contexts (<> ctx')
-  let hs = Map.keys ctx'
-  -- Weights
-  weigh h $ computeWeight t e1
-  mul <- fromMaybe 1 . Map.lookup h <$> use multiplier
-  modifying multiplier $ Map.mapWithKey \k d ->
-    if k `elem` hs then mul * d else d
+
+  -- Weigh 1 for each new hole
+  weigh @Dist $ fromIntegral $ length ts
+  -- Each new variable weighs more
+  for_ ts \(Args as _) -> for_ as $ const addVar
+
   -- Forbidden
-  bars <- mapMaybe (match e3) . view envForbidden <$> ask
-
   updateForbidden h $ over holes (const Unit) e1
+  fb <- mapMaybe (match e3) . view envForbidden <$> ask
+  modifying forbidden (<> fb)
 
-  modifying forbidden (<> bars)
-
-  case e2 of
-    Apps (Var (MkVar text)) _ -> do
-      case Text.take 4 text of
-        "elim" -> weigh h elimWeight
-        "fold" -> weigh h schemeWeight
-        _ -> return ()
-      case Text.take 4 text of
-        "elim" | _:_:l:_ <- hs -> modifying multiplier $ Map.insert l 2
-        "fold" | _:_:l:_ <- hs -> modifying varOnly $ Set.insert l
-        _ -> return ()
-    _ -> return ()
-  --
   return e3
 
 removeMatching :: (Ord k, Eq v) => k -> v -> Map k v -> Maybe (Map k v)
@@ -264,7 +234,7 @@ step hf = do
       | otherwise -> do
         liftUneval unevalFuel (resumeUneval hf' cs) >>= \case
           Nothing -> do
-            weigh hole 1
+            weigh @Dist 1
             step hf'
           Just xs
             | length disjunctions > maxDisjunctions -> do
@@ -273,7 +243,7 @@ step hf = do
               -- because unevaluation takes so long, which will happen
               -- anyways, because the weight only affects hole fillings
               -- after that!
-              weigh hole 4
+              weigh @Dist 4
               step hf'
             | otherwise ->
               updateConstraints $ disjunctions >>= toList . mergeConstraints
@@ -391,7 +361,7 @@ expl :: Space Info a -> Nondet a
 expl (Space xs) = do
   (_, ys) <- mfold $ Map.assocs xs
   (x, i, zs) <- mfold ys
-  Weighted.weigh $ view weight i
+  weigh $ view weight i
   case zs of
     Space z
       | null z    -> return x

@@ -1,7 +1,7 @@
 -- {-# INCLUDE foldTree, foldList #-}
 -- {-# INCLUDE foldTree, snoc #-}
--- {-# INCLUDE mapTree, foldList #-}
-{-# INCLUDE mapTree, snoc #-}
+{-# INCLUDE mapTree, foldList #-}
+-- {-# INCLUDE mapTree, snoc #-}
 
 snoc :: a -> Tree (List a) -> Tree (List a)
 snoc = _
