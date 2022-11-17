@@ -135,7 +135,7 @@ match = curry \case
   (Var x, Var y) | x == y -> Just mempty
   (Ctr c, Ctr d) | c == d -> Just mempty
   (App f x, App g y) -> liftM2 (<>) (match f g) (match x y)
-  (Lam a x, Lam b y) -> match (replace (Map.singleton b $ Var a) x) y
+  (Lam a x, Lam b y) -> match x (replace (Map.singleton b $ Var a) y)
   _ -> Nothing
 
 refinements :: (Scope, Hole) -> Goal -> Synth (Term Hole)
