@@ -87,8 +87,11 @@ normalizeFilling hf
 -- recursive. An alternative would be to only allow resumption of one hole at a
 -- time.
 resume :: MonadReader Scope m => Map Hole (Term Hole) -> Result -> m Result
-resume hf = cataExprM \case
-  App f x -> evalApp f x
+resume hf = cataExpr \case
+  App f x -> do
+    g <- f
+    y <- x
+    evalApp g y
   Ctr c   -> return $ Ctr c
   Fix     -> return Fix
   Prj c n -> return $ Prj c n

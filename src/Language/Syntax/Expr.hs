@@ -6,10 +6,10 @@ module Language.Syntax.Expr
   , Expr, Mono, Term, Result, Value, Example, Indet
   , Hole', HasHole, HasVar, HasCtr, HasApp
   , apps, lams, arrs
-  , rec, fixExpr, cataExpr, paraExpr, cataExprM
+  , rec, fixExpr, cataExpr
   , holes, holes', free, freeVars, extract
   , fill, replace, holeFree, magic
-  , Scope, Unit(Unit)
+  , Scope
   , nat, list
   ) where
 
@@ -22,7 +22,6 @@ import qualified RIO.NonEmpty as NonEmpty
 import qualified RIO.List as List
 import qualified RIO.Map as Map
 import qualified RIO.Set as Set
--- import Prettyprinter hiding (list)
 import qualified Prettyprinter as Pretty
 
 -- Levels {{{
@@ -61,32 +60,6 @@ type HasLet  l v = (HAS 'LET l, Var' l ~ 'Just v)
 
 type HasArr l = (HasCtr l, HasApp l)
 
-instance IsExpr 'Type where
-  type Var'  'Type = 'Just Free
-  type Ctrs' 'Type = ['VAR, 'CTR, 'APP]
-
-instance IsExpr ('Term h) where
-  type Hole' ('Term h) = 'Just h
-  type Var'  ('Term h) = 'Just Var
-  type Ctrs' ('Term h) = ['VAR, 'CTR, 'APP, 'LAM, 'LET, 'ELIM, 'FIX]
-
-instance IsExpr 'Det where
-  type Hole' 'Det = 'Just (Scope, Indet)
-  type Ctrs' 'Det = ['CTR, 'APP, 'FIX, 'PRJ]
-
-instance IsExpr 'Ind where
-  type Hole' 'Ind = 'Just Hole
-  type Var'  'Ind = 'Just Var
-  type Ctrs' 'Ind = ['LAM, 'ELIM]
-
-instance IsExpr 'Value where
-  type Ctrs' 'Value = ['CTR, 'APP]
-
-instance IsExpr 'Example where
-  type Hole' 'Example = 'Just Unit
-  type Var'  'Example = 'Just Value
-  type Ctrs' 'Example = ['CTR, 'APP, 'LAM]
-
 -- }}}
 
 -- | The type of expressions, generic in
@@ -122,26 +95,49 @@ type family Rec (f :: Func) (l :: Level) where
 type Expr = Expr' 'Fixed
 type Base a = Expr' ('Base a)
 
-type Mono    = Expr 'Type
-type Term h  = Expr ('Term h)
-type Value   = Expr 'Value
-type Example = Expr 'Example
+-- | Monotypes are type level expressions without quantifiers.
+type Mono = Expr 'Type
+instance IsExpr 'Type where
+  type Var'  'Type = 'Just Free
+  type Ctrs' 'Type = ['VAR, 'CTR, 'APP]
+
+-- | Term level expressions generic in the hole type.
+type Term h = Expr ('Term h)
+instance IsExpr ('Term h) where
+  type Hole' ('Term h) = 'Just h
+  type Var'  ('Term h) = 'Just Var
+  type Ctrs' ('Term h) = ['VAR, 'CTR, 'APP, 'LAM, 'LET, 'ELIM, 'FIX]
 
 -- | Indetermine expressions are either a (pattern matching) lambda followed by
 -- a term, or a hole.
 type Indet = Base (Term Hole) 'Ind
+instance IsExpr 'Ind where
+  type Hole' 'Ind = 'Just Hole
+  type Var'  'Ind = 'Just Var
+  type Ctrs' 'Ind = ['LAM, 'ELIM]
 
 -- | Results are determinate expressions whose holes are indeterminate
 -- expressions capturing the local scope.
 type Result = Expr 'Det
+instance IsExpr 'Det where
+  type Hole' 'Det = 'Just (Scope, Indet)
+  type Ctrs' 'Det = ['CTR, 'APP, 'FIX, 'PRJ]
 
 type Scope = Map Var Result
 
-newtype Unit = MkUnit ()
-  deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid, NFData)
+-- | Values are concrete results, consisting of just constructors.
+type Value = Expr 'Value
+instance IsExpr 'Value where
+  type Ctrs' 'Value = ['CTR, 'APP]
 
-pattern Unit :: Unit
-pattern Unit = MkUnit ()
+-- | Examples represent the expected input-output behaviour of a single
+-- execution. Holes represent wildcards (unconstraint output) and variables
+-- are used to represent concrete input values.
+type Example = Expr 'Example
+instance IsExpr 'Example where
+  type Hole' 'Example = 'Just Unit
+  type Var'  'Example = 'Just Value
+  type Ctrs' 'Example = ['CTR, 'APP, 'LAM]
 
 -- Instances {{{
 
@@ -152,11 +148,7 @@ deriving instance (Consts Eq l, Eq (Rec r l)) => Eq (Expr' r l)
 deriving instance (Consts Eq l, Consts Ord l, Ord (Rec r l)) => Ord (Expr' r l)
 deriving instance (Consts Show l, Show (Rec r l)) => Show (Expr' r l)
 
-instance
-  ( May NFData (Hole' l)
-  , May NFData (Var'  l)
-  , NFData (Rec r l)
-  ) => NFData (Expr' r l) where
+instance (Consts NFData l, NFData (Rec r l)) => NFData (Expr' r l) where
   rnf = \case
     Hole h -> rnf h
     Ctr c -> rnf c
@@ -170,7 +162,7 @@ instance
 
 -- }}}
 
--- Morphisms {{{
+-- Helper functions {{{
 
 rec :: Traversal (Expr' r l) (Expr' r' l) (Rec r l) (Rec r' l)
 rec go = \case
@@ -184,39 +176,11 @@ rec go = \case
   Fix -> pure Fix
   Prj c i -> pure $ Prj c i
 
-paraExprM :: Monad m => (Expr l -> Base c l -> m c) -> Expr l -> m c
-paraExprM g e = g e =<< forOf rec e (paraExprM g)
-
-cataExprM :: Monad m => (Base c l -> m c) -> Expr l -> m c
-cataExprM = paraExprM . const
-
-paraExpr :: (Expr l -> Base c l -> c) -> Expr l -> c
-paraExpr g e = g e (over rec (paraExpr g) e)
-
 cataExpr :: (Base c l -> c) -> Expr l -> c
-cataExpr = paraExpr . const
-
-apoExprM :: Monad m => (c -> m (Either (Expr l) (Base c l))) -> c -> m (Expr l)
-apoExprM g e = g e >>= either return \x -> forOf rec x (apoExprM g)
-
-anaExprM :: Monad m => (c -> m (Base c l)) -> c -> m (Expr l)
-anaExprM = apoExprM . (fmap return .)
-
-apoExpr :: (c -> Either (Expr l) (Base c l)) -> c -> Expr l
-apoExpr g e = either id (over rec (apoExpr g)) (g e)
-
-anaExpr :: (c -> Base c l) -> c -> Expr l
-anaExpr = apoExpr . (return .)
-
-fixExprM :: Monad m => Base (Expr l) l -> m (Expr l)
-fixExprM = flip (forOf rec) return
+cataExpr g = g . over rec (cataExpr g)
 
 fixExpr :: Base (Expr l) l -> Expr l
 fixExpr = over rec id
-
--- }}}
-
--- Lenses {{{
 
 holes' :: Traversal (Expr ('Term h)) (Expr ('Term h')) h (Expr ('Term h'))
 holes' g = cataExpr \case
@@ -265,9 +229,6 @@ pattern Arrs a bs <- (unArrs -> (a :| bs))
 pattern Args :: HasCtr l => [Expr l] -> Expr l -> Expr l
 pattern Args as b <- (unsnoc . unArrs -> (as, b))
 
-lets :: (Foldable f, HasLet l v) => f (v, Expr l) -> Expr l -> Expr l
-lets as x = foldr (uncurry Let) x as
-
 unLets :: HasLet l v => Expr l -> ([(v, Expr l)], Expr l)
 unLets = \case
   Let a x y -> first ((a, x):) $ unLets y
@@ -276,7 +237,7 @@ unLets = \case
 {-# COMPLETE Lets #-}
 pattern Lets :: HasLet l v => [(v, Expr l)] -> Expr l -> Expr l
 pattern Lets as x <- (unLets -> (as, x))
-  where Lets as x = lets as x
+  where Lets as x = foldr (uncurry Let) x as
 
 apps :: (Foldable f, HasApp l) => Expr l -> f (Expr l) -> Expr l
 apps = foldl App
@@ -413,9 +374,6 @@ withSugar s = withSugarPrec s 0
 
 -- }}}
 
-instance Pretty Unit where
-  pretty _ = Pretty.space
-
 instance Pretty h => Pretty (Term h) where
   pretty = withSugar (sLit `orTry` sTerm)
 
@@ -452,10 +410,6 @@ freeVars = cataExpr \case
   Lam a x -> Set.delete a x
   Var a -> Set.singleton a
   x -> view rec x
-
--- | All subexpressions, including the expression itself.
-dissect :: Expr l -> [Expr l]
-dissect = paraExpr \e -> (e:) . view rec
 
 -- | Check if an expression has no holes.
 magic :: Term Void -> Term a

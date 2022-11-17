@@ -32,9 +32,9 @@ upcast = cataExpr \case
   App f x -> App f x
 
 downcast :: Result -> Maybe Value
-downcast = cataExprM \case
+downcast = cataExpr \case
   Ctr c -> return $ Ctr c
-  App f x -> return $ App f x
+  App f x -> liftM2 App f x
   _ -> Nothing
 
 consistent :: Value -> Example -> Bool

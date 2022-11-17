@@ -14,6 +14,7 @@ module Import
   , Dist
   , Logic(..)
   , BoundedLattice(..)
+  , Unit(Unit)
   , unsnoc
   , maximumDef
   , mfold
@@ -42,6 +43,15 @@ import Utils.Fresh
 import Utils.Map
 import Utils.PartialSemigroup
 import Utils.Type
+
+newtype Unit = MkUnit ()
+  deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid, NFData)
+
+pattern Unit :: Unit
+pattern Unit = MkUnit ()
+
+instance Pretty Unit where
+  pretty _ = space
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case
