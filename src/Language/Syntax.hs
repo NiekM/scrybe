@@ -37,6 +37,16 @@ downcast = cataExpr \case
   App f x -> liftM2 App f x
   _ -> Nothing
 
+match :: Term Hole -> Term Unit -> Maybe (Map Hole (Term Unit))
+match = curry \case
+  (_, Hole _) -> Just mempty
+  (Hole h, e) -> Just $ Map.singleton h e
+  (Var x, Var y) | x == y -> Just mempty
+  (Ctr c, Ctr d) | c == d -> Just mempty
+  (App f x, App g y) -> liftM2 (<>) (match f g) (match x y)
+  (Lam a x, Lam b y) -> match x (replace (Map.singleton b $ Var a) y)
+  _ -> Nothing
+
 consistent :: Value -> Example -> Bool
 consistent = curry \case
   (_, Hole _) -> True

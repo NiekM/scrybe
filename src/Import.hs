@@ -15,6 +15,7 @@ module Import
   , Logic(..)
   , BoundedLattice(..)
   , Unit(Unit)
+  , Possibly(..), possibly
   , unsnoc
   , maximumDef
   , mfold
@@ -52,6 +53,15 @@ pattern Unit = MkUnit ()
 
 instance Pretty Unit where
   pretty _ = space
+
+data Possibly a = Yes | No | Perhaps a
+  deriving (Eq, Ord, Show)
+
+possibly :: [Possibly a] -> Maybe [a]
+possibly = sequence . mapMaybe \case
+  No -> Nothing
+  Yes -> Just Nothing
+  Perhaps x -> Just $ Just x
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
   pretty = \case
