@@ -35,13 +35,13 @@ specTree :: Env -> FileTree -> Spec
 specTree m = \case
   Node x xs -> describe x . for_ xs $ specTree m
   Leaf (f, x) -> describe f do
-    let syn = runSynth defaultOptions m $ synth x
-    it "synthesizes" . isJust . best . runSearch $ syn
+    let syn = best . runSearch . runSynth defaultOptions m $ synth x
+    it "synthesizes" . isJust $ syn
 
 spec :: Spec
 spec = do
   pre <- runIO $ readFileUtf8 "data/prelude.hs"
   let m = maybe undefined (fromDefs . recDefs) $ lexParse parser pre
-  let benchmarks = "data/benchmarks"
+  let benchmarks = "data/tests"
   t <- runIO $ getTree benchmarks
   specTree m $ Node "benchmarks" t

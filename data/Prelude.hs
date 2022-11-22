@@ -36,6 +36,7 @@ elimBool f t b = case b of
 
 {-# FORBID not True #-}
 {-# FORBID not False #-}
+{-# FORBID not (not _) #-}
 
 not :: Bool -> Bool
 not b = elimBool True False b
@@ -57,6 +58,14 @@ and = elimBool False
 
 or :: Bool -> Bool -> Bool
 or x y = elimBool y True x
+
+{-# FORBID imp True _ #-}
+{-# FORBID imp _ True #-}
+{-# FORBID imp False _ #-}
+{-# FORBID imp _ False #-}
+
+imp :: Bool -> Bool -> Bool
+imp x y = elimBool True y x
 
 -- || Orderings
 
@@ -85,7 +94,7 @@ elimMaybe n j m = case m of
   Nothing -> n
   Just x -> j x
 
--- || Naturals
+-- || Natural numbers
 
 data Nat = Zero | Succ Nat
 
@@ -109,16 +118,6 @@ foldlNat :: (a -> a) -> a -> Nat -> a
 foldlNat s acc n = case n of
   Zero -> acc
   Succ m -> foldlNat s (s acc) m
-
--- paraNat :: a -> (Nat -> a -> a) -> Nat -> a
--- paraNat z s n = case n of
---   Zero -> z
---   Succ m -> s m (paraNat z s m)
-
--- unfoldNat :: (a -> Maybe a) -> a -> Nat
--- unfoldNat f x = case f x of
---   Nothing -> Zero
---   Just y -> Succ (unfoldNat f y)
 
 {-# FORBID even 0 #-}
 {-# FORBID even (Succ _) #-}
@@ -232,12 +231,21 @@ tail = elimList Nothing \x xs -> Just xs
 {-# FORBID foldr (\x r -> Cons x r) Nil _ #-}
 
 foldr :: (a -> b -> b) -> b -> List a -> b
-foldr f e = foldList e f
+foldr f e l = case l of
+  Nil -> e
+  Cons h t -> f h (foldr f e t)
 
-foldList :: b -> (a -> b -> b) -> List a -> b
-foldList n c l = case l of
-  Nil -> n
-  Cons h t -> c h (foldList n c t)
+{-# FORBID foldrN _ _ _ Nil _ #-}
+{-# FORBID foldrN _ _ _ (Cons _ _) _ #-}
+{-# FORBID foldrN _ _ _ _ Zero #-}
+{-# FORBID foldrN _ _ _ _ (Succ _) #-}
+
+foldrN :: (Nat -> b) -> (a -> List a -> b) -> (a -> b -> Nat -> b) -> List a -> Nat -> b
+foldrN el en f l n = case l of
+  Nil -> el n
+  Cons h t -> case n of
+    Zero -> en h t
+    Succ m -> f h (foldrN el en f t m) n
 
 {-# FORBID paraList _ _ Nil #-}
 {-# FORBID paraList _ _ (Cons _ _) #-}
@@ -246,9 +254,6 @@ paraList :: b -> (a -> List a -> b -> b) -> List a -> b
 paraList n c l = case l of
   Nil -> n
   Cons h t -> c h t (paraList n c t)
-
-mapList :: (a -> b) -> List a -> List b
-mapList f = foldList [] (\x -> Cons (f x))
 
 {-# FORBID foldl _ _ Nil #-}
 {-# FORBID foldl _ _ (Cons _ _) #-}
@@ -266,8 +271,13 @@ foldl f acc l = case l of
 map :: (a -> b) -> List a -> List b
 map f = foldr (\x -> Cons (f x)) []
 
+{-# FORBID filter _ Nil #-}
+{-# FORBID filter _ (Cons _ _) #-}
+{-# FORBID filter (\x -> True) _ #-}
+{-# FORBID filter (\x -> False) _ #-}
+
 filter :: (a -> Bool) -> List a -> List a
-filter p = foldList [] (\x r -> elimBool r (Cons x r) (p x))
+filter p = foldr (\x r -> elimBool r (Cons x r) (p x)) []
 
 {-# FORBID append Nil _ #-}
 {-# FORBID append _ Nil #-}
@@ -275,24 +285,24 @@ filter p = foldList [] (\x r -> elimBool r (Cons x r) (p x))
 {-# FORBID append (Cons _ _) _ #-}
 
 append :: List a -> List a -> List a
-append xs ys = foldList ys Cons xs
+append xs ys = foldr Cons ys xs
 
 {-# FORBID snoc Nil _ #-}
 {-# FORBID snoc (Cons _ _) _ #-}
 
 snoc :: List a -> a -> List a
-snoc xs x = foldList [x] Cons xs
+snoc xs x = foldr Cons [x] xs
 
 {-# FORBID reverse (reverse _) #-}
 
 reverse :: List a -> List a
-reverse = foldList [] (flip snoc)
+reverse = foldr (flip snoc) []
 
 {-# FORBID concat Nil #-}
 {-# FORBID concat (Cons _ _) #-}
 
 concat :: List (List a) -> List a
-concat = foldList [] append
+concat = foldr append []
 
 {-# FORBID concatMap _ Nil #-}
 {-# FORBID concatMap _ (Cons _ _) #-}
@@ -303,9 +313,9 @@ concatMap :: (a -> List b) -> List a -> List b
 concatMap f xs = concat (map f xs)
 
 catMaybes :: List (Maybe a) -> List a
-catMaybes = foldList [] \x r -> case x of
+catMaybes = foldr (\x r -> case x of
   Nothing -> r
-  Just y  -> Cons y r
+  Just y  -> Cons y r) []
 
 mapMaybe :: (a -> Maybe b) -> List a -> List b
 mapMaybe f xs = catMaybes (map f xs)
@@ -322,16 +332,14 @@ length = foldl (\r x -> Succ r) Zero
 sum :: List Nat -> Nat
 sum = foldl plus 0
 
-{-# FORBID sumrec Nil #-}
-{-# FORBID sumrec (Cons _ _) #-}
-
-sumrec :: List Nat -> Nat
-sumrec xs = case xs of
-  Nil -> Zero
-  Cons y ys -> plus y (sumrec ys)
+{-# FORBID product Nil #-}
+{-# FORBID product (Cons _ _) #-}
 
 product :: List Nat -> Nat
 product = foldl mult 1
+
+{-# FORBID maximum Nil #-}
+{-# FORBID maximum (Cons _ _) #-}
 
 maximum :: List Nat -> Nat
 maximum = foldl max 0
@@ -341,7 +349,7 @@ maximum = foldl max 0
 {-# FORBID any (\x -> True) _ #-}
 
 any :: (a -> Bool) -> List a -> Bool
-any p = foldList False \x -> or (p x)
+any p = foldr (\x -> or (p x)) False
 
 {-# FORBID elem _ Nil #-}
 {-# FORBID elem _ (Cons _ _) #-}
@@ -359,9 +367,9 @@ drop :: Nat -> List a -> List a
 drop = foldrNat id \r -> elimList [] \x xs -> r xs
 
 takeWhile :: (a -> Bool) -> List a -> List a
-takeWhile p = foldList [] \x r -> case p x of
+takeWhile p = foldr (\x r -> case p x of
   False -> []
-  True -> Cons x r
+  True -> Cons x r) []
 
 dropWhile :: (a -> Bool) -> List a -> List a
 dropWhile p = paraList [] \x xs r -> case p x of
@@ -374,7 +382,7 @@ insert n = paraList [n] \x xs r -> case leq n x of
   False -> Cons x r
 
 sort :: List Nat -> List Nat
-sort = foldList [] insert
+sort = foldr insert []
 
 set_insert :: Nat -> List Nat -> List Nat
 set_insert n = paraList [n] \x xs r -> case compareNat n x of
@@ -383,10 +391,10 @@ set_insert n = paraList [n] \x xs r -> case compareNat n x of
   GT -> Cons x r
 
 nub :: List Nat -> List Nat
-nub = foldList [] set_insert
+nub = foldr set_insert []
 
 eqList :: List Nat -> List Nat -> Bool
-eqList = foldList (elimList True (\y ys -> False)) (\x r -> elimList False (\y ys -> and (eq x y) (r ys)))
+eqList = foldr (\x r -> elimList False (\y ys -> and (eq x y) (r ys))) (elimList True (\y ys -> False))
 
 -- || Products
 
@@ -407,9 +415,6 @@ curry f x y = f (Pair x y)
 uncurry :: (a -> b -> c) -> Pair a b -> c
 uncurry f p = case p of Pair x y -> f x y
 
--- zip :: List a -> List b -> List (Pair a b)
--- zip = foldList (const []) \x r -> elimList [] \y ys -> Cons (Pair x y) (r ys)
-
 zip :: List a -> List b -> List (Pair a b)
 zip xs ys = case xs of
   Nil -> Nil
@@ -423,7 +428,7 @@ interleave xs ys = case xs of
   Cons z zs -> Cons z (interleave ys zs)
 
 zipWith :: (a -> b -> c) -> List a -> List b -> List c
-zipWith f xs ys = mapList (uncurry f) (zip xs ys)
+zipWith f xs ys = map (uncurry f) (zip xs ys)
 
 unfoldList :: (b -> Maybe (Pair a b)) -> b -> List a
 unfoldList f x = case f x of
@@ -460,6 +465,18 @@ foldTree e f t = case t of
   Leaf -> e
   Node l x r -> f (foldTree e f l) x (foldTree e f r)
 
+{-# FORBID foldTreeN _ _ _ Leaf _ #-}
+{-# FORBID foldTreeN _ _ _ (Node _ _ _) _ #-}
+{-# FORBID foldTreeN _ _ _ _ Zero #-}
+{-# FORBID foldTreeN _ _ _ _ (Succ _) #-}
+
+foldTreeN :: (Nat -> b) -> (Tree a -> a -> Tree a -> b) -> (b -> a -> b -> Nat -> b) -> Tree a -> Nat -> b
+foldTreeN et en f t n = case t of
+  Leaf -> et n
+  Node l x r -> case n of
+    Zero -> en l x r
+    Succ m -> f (foldTreeN et en f l m) x (foldTreeN et en f r m) n
+
 {-# FORBID mapTree _ Leaf #-}
 {-# FORBID mapTree _ (Node _ _ _) #-}
 {-# FORBID mapTree (\x -> x) _ #-}
@@ -467,6 +484,20 @@ foldTree e f t = case t of
 
 mapTree :: (a -> b) -> Tree a -> Tree b
 mapTree f = foldTree Leaf \l x r -> Node l (f x) r
+
+{-# FORBID paraTree _ _ Leaf #-}
+{-# FORBID paraTree _ _ (Node _ _ _) #-}
+
+paraTree :: b -> (Tree a -> b -> a -> Tree a -> b -> b) -> Tree a -> b
+paraTree e f t = case t of
+  Leaf -> e
+  Node l x r -> f l (paraTree e f l) x r (paraTree e f r)
+
+binaryInsert :: Nat -> Tree Nat -> Tree Nat
+binaryInsert n = paraTree (Node Leaf n Leaf) \l ll x r rr -> case compareNat n x of
+  LT -> Node ll x r
+  EQ -> Node l x r
+  GT -> Node l x rr
 
 -- || Other
 

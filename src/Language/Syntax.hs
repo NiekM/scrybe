@@ -112,8 +112,3 @@ instance Semigroup Env where
 
 instance Monoid Env where
   mempty = Env mempty mempty mempty mempty mempty
-
-ctrArity :: Env -> Ctr -> Int
-ctrArity en c = case Map.lookup c (view envConstructors en) of
-  Nothing -> error $ "Unknown constructor " <> show c
-  Just (Poly _ (Args as _)) -> length as

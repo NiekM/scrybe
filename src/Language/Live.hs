@@ -148,6 +148,13 @@ instance Applicative f => UnevalConstraint (f Constraints) where
 
 type UnCstr a = (BoundedLattice a, UnevalConstraint a)
 
+ctrArity :: MonadReader Env m => Ctr -> m Int
+ctrArity c = do
+  cs <- view envConstructors
+  case Map.lookup c cs of
+    Nothing -> error $ "Unknown constructor " <> show c
+    Just (Poly _ (Args as _)) -> return $ length as
+
 -- Non-normalizing variant of uneval
 uneval :: UnCstr a => Result -> Ex -> Uneval a
 uneval = curry \case
@@ -169,11 +176,11 @@ uneval = curry \case
     return $ constr m h ex'
   (App (Prj c n) r, ex) -> do
     burnFuel
-    ar <- ask <&> flip ctrArity c
+    ar <- ctrArity c
     uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
   (Apps (Scoped m (Elim xs)) (r:rs), ex) -> burnFuel >>
     disj <$> for xs \(c, e) -> do
-      ar <- ask <&> flip ctrArity c
+      ar <- ctrArity c
       scrut <- uneval r . ExCtr c $ replicate ar ExTop
       let prjs = [App (Prj c n) r | n <- [1..ar]]
       e' <- liftEval (eval m e)

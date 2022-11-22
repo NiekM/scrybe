@@ -9,10 +9,6 @@ import Import
 import Language hiding (free)
 import qualified RIO.Text as T
 import System.IO.Unsafe
-import Synthesis
-import Utils.Weighted
-import Control.Monad.Heap
-import qualified Prettyprinter as Pretty
 
 fromStr :: Parse a => String -> a
 fromStr = fromMaybe (error "Parse failed") . lexParse parser . T.pack
