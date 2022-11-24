@@ -1,4 +1,4 @@
-{-# INCLUDE foldr #-}
+{-# INCLUDE foldr, elimList #-}
 
 {-# DESC "A catamorphism over a list" #-}
 fold :: (a -> b -> b) -> b -> List a -> b

@@ -1,4 +1,4 @@
-{-# INCLUDE foldTree #-}
+{-# INCLUDE mapTree, foldTree #-}
 
 {-# DESC "Increment each element in a tree by one" #-}
 inc :: Tree Nat -> Tree Nat

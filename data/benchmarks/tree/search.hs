@@ -1,4 +1,6 @@
-{-# INCLUDE foldTree, or, elem #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE mapTree, foldTree #-}
+{-# INCLUDE elimBool, elem #-}
 
 {-# DESC "Whether a number occurs in a tree of lists" #-}
 search :: Nat -> Tree (List Nat) -> Bool

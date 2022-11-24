@@ -1,5 +1,5 @@
-{-# INCLUDE foldr, plus #-}
--- {-# INCLUDE foldr, foldrNat #-}
+{-# INCLUDE foldr, elimList #-}
+{-# INCLUDE plus #-}
 
 {-# DESC "The sum of all numbers in a list" #-}
 sum :: List Nat -> Nat

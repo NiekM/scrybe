@@ -1,7 +1,4 @@
-{-# INCLUDE foldr #-}
--- {-# INCLUDE map, filter, foldl, foldr, elimList #-}
--- {-# INCLUDE map, filter, foldl, foldr #-}
--- {-# INCLUDE filter, foldl, foldr #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
 
 {-# DESC "The cartesian product" #-}
 cartesian :: List (List a) -> List (List a)

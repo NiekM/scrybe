@@ -1,4 +1,4 @@
-{-# INCLUDE foldr, snoc #-}
+{-# INCLUDE foldr, elimList #-}
 
 {-# DESC "Reverse a list" #-}
 reverse :: List a -> List a

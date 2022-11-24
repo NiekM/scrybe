@@ -1,4 +1,5 @@
-{-# INCLUDE foldr, set_insert #-}
+{-# INCLUDE foldr, elimList #-}
+{-# INCLUDE set_insert #-}
 
 {-# DESC "Sort a list, removing duplicates" #-}
 to_set :: List Nat -> List Nat

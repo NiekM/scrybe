@@ -1,5 +1,4 @@
-{-# INCLUDE map #-}
--- {-# INCLUDE foldr #-}
+{-# INCLUDE foldr, elimList #-}
 
 {-# DESC "Increment each value in a list by one" #-}
 inc :: List Nat -> List Nat

@@ -99,7 +99,9 @@ benchmarks:
     source-dirs:         bench
     dependencies:
     - criterion
+    - statistics
     - scrybe
+    - optparse-applicative
 
     ghc-options:
     - -threaded

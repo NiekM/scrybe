@@ -1,4 +1,5 @@
-{-# INCLUDE foldTree, plus #-}
+{-# INCLUDE foldTree, elimTree #-}
+{-# INCLUDE foldrNat #-}
 
 {-# DESC "The number of nodes in a tree" #-}
 size :: Tree a -> Nat

@@ -1,5 +1,6 @@
-{-# INCLUDE foldTree, append, elimBool #-}
--- {-# INCLUDE foldTree, append, filter #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE mapTree, foldTree #-}
+{-# INCLUDE append, elimBool #-}
 
 {-# DESC "All nodes in a tree that satisfy `p`" #-}
 select :: (a -> Bool) -> Tree a -> List a

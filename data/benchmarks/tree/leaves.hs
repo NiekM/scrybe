@@ -1,4 +1,5 @@
-{-# INCLUDE foldTree, plus #-}
+{-# INCLUDE foldTree, elimTree #-}
+{-# INCLUDE plus #-}
 
 {-# DESC "The number of leaves in a tree" #-}
 leaves :: Tree a -> Nat

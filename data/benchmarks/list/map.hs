@@ -1,4 +1,4 @@
-{-# INCLUDE foldr #-}
+{-# INCLUDE foldr, elimList #-}
 
 {-# DESC "Map a function over a list" #-}
 map :: (a -> b) -> List a -> List b

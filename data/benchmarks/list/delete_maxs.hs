@@ -1,4 +1,5 @@
-{-# INCLUDE filter, map, maximum, neq #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE maximum, neq #-}
 
 {-# DESC "Remove the largest numbers from a list of lists" #-}
 delete_maxs :: List (List Nat) -> List (List Nat)

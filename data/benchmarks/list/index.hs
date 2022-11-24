@@ -1,5 +1,4 @@
--- {-# INCLUDE elimNat, foldr :: (a -> (c -> b) -> c -> b) -> (c -> b) -> List a -> c -> b #-}
-{-# INCLUDE foldrN #-}
+{-# INCLUDE elimNat, foldr :: (a -> (c -> b) -> c -> b) -> (c -> b) -> List a -> c -> b #-}
 
 {-# DESC "Index a list starting at zero" #-}
 index :: Nat -> List a -> Maybe a

@@ -1,17 +1,34 @@
+{-# LANGUAGE NumericUnderscores #-}
+
 module Main where
 
 import Import hiding (timeout)
 import Synthesis
-import Options (defaultOptions)
+import Options
+import Options.Applicative
 import Language.Parser
 import Language.Syntax
 import Language.Defs
+import Language.Live
 import Utils.Weighted
 import RIO.FilePath
 import RIO.Directory
+import Criterion
+import Criterion.Internal
 import Criterion.Main
+import Criterion.Main.Options
+import Criterion.Monad
+import Criterion.Report
+import Criterion.Types
+import Statistics.Types
+import System.IO
 import Control.Monad.Heap hiding (Leaf)
 import System.Timeout
+import Text.Printf
+import RIO.List (cycle)
+import qualified RIO.Text as Text
+import qualified RIO.Text.Partial as Text
+import qualified RIO.Map as Map
 
 data Tree a b = Node a [Tree a b] | Leaf b
   deriving (Eq, Ord, Show, Read)
@@ -26,26 +43,32 @@ removeMaybes = \case
     ys -> Just $ Node x ys
   Leaf l -> Leaf <$> l
 
-trySyn :: Env -> Defs Unit -> Bool
-trySyn m = isJust . best . runSearch . runSynth defaultOptions m . synth
+trySyn :: Bool -> Env -> Defs Unit -> _
+trySyn b m = best . runSearch . runSynth (SynOptions b) m . synth
 
-getTree :: MonadIO m => FilePath -> m [FileTree]
-getTree p = do
+allFiles :: MonadIO m => FilePath -> m [(String, Text)]
+allFiles p = do
   fs <- listDirectory p
-  catMaybes <$> forM fs \f -> case splitExtensions f of
-    (d, "") -> do
-      t <- getTree (p </> d)
-      return . Just $ Node d t
+  concat <$> forM fs \f -> case splitExtensions f of
+    (d, "") -> allFiles (p </> d) <&> over (each . _1) ((d++). ('_':))
     (a, ".hs") -> do
       t <- readFileUtf8 $ p </> f
-      let x = fromMaybe undefined . lexParse parser $ t
-      return . Just $ Leaf (a, x)
-    (_, _) -> return Nothing
+      return [(a, t)]
+    (_, _) -> return []
 
-benchTree :: Env -> FileTree -> Benchmark
-benchTree m = \case
-  Node x xs -> bgroup x $ benchTree m <$> xs
-  Leaf (f, x) -> bench f $ nf (trySyn m) x
+single :: String -> Config -> Int -> Env -> Defs Unit -> Bool ->
+  IO (Maybe (Maybe Report))
+single a cfg t p d b = timeout t (syn `deepseq` return syn) >>= \case
+  Nothing -> return Nothing
+  Just Nothing -> return $ Just Nothing
+  Just (Just (_, hf)) -> do
+    for_ (relBinds d) \(MkBinding x e) -> do
+      print . pretty $ MkBinding x (fill (normalizeFilling hf) e)
+    let name = (if b then "(yes) " else "(no) ") <> a
+    withConfig cfg $ do
+      Analysed r <- runAndAnalyseOne 0 name $ nf (trySyn b p) d
+      return . Just $ Just r
+  where syn = trySyn b p d
 
 -- TODO: use `env' function to read input
 -- TODO: give better control over which benchmarks are tried and checked for
@@ -53,13 +76,55 @@ benchTree m = \case
 -- want to run.
 main :: IO ()
 main = do
+  let def = defaultConfig { verbosity = Quiet }
+  cfg <- execParser $ info (config def) briefDesc
   pre <- readFileUtf8 "data/prelude.hs"
-  let m = maybe undefined (fromDefs . recDefs) $ lexParse parser pre
-  let benchmarks = "data/benchmarks"
-  t <- getTree benchmarks
-  t' <- for t $ mapM \(s, x) -> timeout 5000000 (return $! force (trySyn m x))
-    <&> \case
-      Nothing -> Nothing
-      Just _ -> Just (s, x)
-  let t'' = mapMaybe removeMaybes t'
-  defaultMain $ benchTree m <$> t''
+  let p = maybe undefined (fromDefs . recDefs) $ lexParse parser pre
+  benchInfo <- readFileUtf8 "data/benchmark"
+  let
+    m = Map.fromList $ (Text.words <$> Text.lines benchInfo) <&> \case
+      x:xs -> (x, xs)
+      _ -> undefined
+    benchmarks = "data/benchmarks"
+  ts <- allFiles benchmarks
+  xs <- for (reverse ts) \(a, x) -> do
+    let d = fromMaybe undefined $ lexParse parser x
+    -- TO RUN OVERNIGHT (half an hour timeout)
+    let t = 1800_000_000
+    -- let t = 10_000_000
+    -- let t = 5_000_000
+    putStrLn ""
+    putStrLn $ "Synthesizing " <> a <> "..."
+    putStrLn "...with example propagation:"
+    r0 <- single a cfg t p d True
+    putStrLn "...without example propagation:"
+    r1 <- single a cfg t p d False
+    return (format (fromString a) d r0 r1 m, r0, r1)
+  let highlight = zipWith (<>) $ cycle ["", "\\rowcolor{highlight}\n"]
+  let ls = view _1 <$> xs
+  let rs = concatMap (\(_,a,b) -> mapMaybe join [a,b]) xs
+  putStrLn ""
+  putStrLn . Text.unpack . Text.concat . highlight $ ls
+  withConfig cfg $ report rs
+
+format
+  :: Text
+  -> Defs Unit
+  -> Maybe (Maybe Report)
+  -> Maybe (Maybe Report)
+  -> Map Text [Text]
+  -> Text
+format s d r0 r1 m = Text.intercalate " & "
+  [ Text.replace "_" "\\_" s <> tag
+  , Text.replace "`" "$" desc
+  , time r0
+  , time r1
+  , myth
+  , smyth
+  , lam
+  ] <> "\\\\\n"
+    where
+    desc = mconcat [x | Desc x <- pragmas d ]
+    time = maybe "$\\bot$" (maybe "-" $ Text.pack . printf "%.2f" . mean)
+    mean = (1000*) . estPoint . anMean . reportAnalysis
+    [tag, myth, smyth, lam] = fromMaybe undefined $ Map.lookup s m

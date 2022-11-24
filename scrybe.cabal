@@ -240,8 +240,10 @@ benchmark scrybe-bench
     , microlens-platform
     , monus-weighted-search
     , mtl
+    , optparse-applicative
     , prettyprinter
     , rio >=0.1.12.0
     , scrybe
+    , statistics
     , template-haskell
   default-language: Haskell2010

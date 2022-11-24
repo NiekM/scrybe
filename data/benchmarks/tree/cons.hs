@@ -1,4 +1,5 @@
-{-# INCLUDE foldTree #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE mapTree, foldTree #-}
 
 {-# DESC "Add an element to the front of each node in a tree of lists" #-}
 cons :: a -> Tree (List a) -> Tree (List a)

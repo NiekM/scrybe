@@ -1,4 +1,4 @@
-{-# INCLUDE foldr #-}
+{-# INCLUDE foldr, elimList #-}
 
 {-# DESC "Duplicate each element in a list" #-}
 dupli :: List a -> List a

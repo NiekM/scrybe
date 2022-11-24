@@ -1,4 +1,5 @@
-{-# INCLUDE foldr, elimBool #-}
+{-# INCLUDE foldr, elimList #-}
+{-# INCLUDE elimBool #-}
 
 {-# DESC "Whether a list has an odd number of `Trues`" #-}
 even_parity :: List Bool -> Bool

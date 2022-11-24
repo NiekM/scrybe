@@ -38,7 +38,7 @@ data Import = MkImport
   } deriving (Eq, Ord, Show)
 
 data Pragma
-  = Desc String
+  = Desc Text
   | Forbid (Term Unit)
   | Include (NonEmpty (Var, Maybe Poly))
   deriving (Eq, Ord, Show)

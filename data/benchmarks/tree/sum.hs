@@ -1,4 +1,5 @@
-{-# INCLUDE foldTree, plus #-}
+{-# INCLUDE mapTree, foldTree #-}
+{-# INCLUDE plus #-}
 
 {-# DESC "The sum of all nodes in a tree" #-}
 sum :: Tree Nat -> Nat

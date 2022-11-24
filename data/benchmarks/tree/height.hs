@@ -1,4 +1,5 @@
-{-# INCLUDE foldTree, max #-}
+{-# INCLUDE mapTree, foldTree #-}
+{-# INCLUDE max #-}
 
 {-# DESC "The height of a tree" #-}
 height :: Tree a -> Nat

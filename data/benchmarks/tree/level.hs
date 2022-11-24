@@ -1,4 +1,4 @@
-{-# INCLUDE foldTreeN, plus #-}
+{-# INCLUDE plus, elimNat, foldTree :: (c -> b) -> ((c -> b) -> a -> (c -> b) -> c -> b) -> Tree a -> c -> b #-}
 
 {-# DESC "The number of nodes at depth `n`" #-}
 level :: Nat -> Tree a -> Nat

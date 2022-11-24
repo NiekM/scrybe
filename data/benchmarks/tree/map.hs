@@ -1,4 +1,4 @@
-{-# INCLUDE foldTree #-}
+{-# INCLUDE foldTree, elimTree #-}
 
 {-# DESC "Map a function over a tree" #-}
 map :: (a -> b) -> Tree a -> Tree b

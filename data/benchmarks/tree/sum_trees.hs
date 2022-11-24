@@ -1,4 +1,6 @@
-{-# INCLUDE foldTree, map, plus #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE mapTree, foldTree #-}
+{-# INCLUDE plus #-}
 
 {-# DESC "The sum of each tree in a list of trees" #-}
 sum_trees :: List (Tree Nat) -> List Nat

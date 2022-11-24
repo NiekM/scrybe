@@ -1,4 +1,5 @@
-{-# INCLUDE foldr, elimBool #-}
+{-# INCLUDE foldr, elimList #-}
+{-# INCLUDE elimBool #-}
 
 {-# DESC "The elements in a list that satisfy `p`" #-}
 filter :: (a -> Bool) -> List a -> List a

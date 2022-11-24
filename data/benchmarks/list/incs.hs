@@ -1,5 +1,4 @@
--- {-# INCLUDE map, filter, foldl, foldr, elimList #-}
-{-# INCLUDE map #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
 
 {-# DESC "Increment each value in a list of lists by one" #-}
 incs :: List (List Nat) -> List (List Nat)

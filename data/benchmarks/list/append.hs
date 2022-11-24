@@ -1,4 +1,4 @@
-{-# INCLUDE foldr #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
 
 {-# DESC "Append two lists" #-}
 append :: List a -> List a -> List a

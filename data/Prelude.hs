@@ -230,6 +230,9 @@ tail = elimList Nothing \x xs -> Just xs
 {-# FORBID foldr (\x r -> Nil) _ _ #-}
 {-# FORBID foldr (\x r -> Cons x r) Nil _ #-}
 
+{-# FORBID foldr _ _ Nil _ #-}
+{-# FORBID foldr _ _ (Cons _ _) _ #-}
+
 foldr :: (a -> b -> b) -> b -> List a -> b
 foldr f e l = case l of
   Nil -> e
@@ -460,6 +463,9 @@ elimTree e f t = case t of
 {-# FORBID foldTree _ _ Leaf #-}
 {-# FORBID foldTree _ _ (Node _ _ _) #-}
 
+{-# FORBID foldTree _ _ Leaf _ #-}
+{-# FORBID foldTree _ _ (Node _ _ _) _ #-}
+
 foldTree :: b -> (b -> a -> b -> b) -> Tree a -> b
 foldTree e f t = case t of
   Leaf -> e
@@ -499,12 +505,4 @@ binaryInsert n = paraTree (Node Leaf n Leaf) \l ll x r rr -> case compareNat n x
   EQ -> Node l x r
   GT -> Node l x rr
 
--- || Other
-
-data Money = One | Two | Check Nat
-
-elimMoney :: a -> a -> (Nat -> a) -> Money -> a
-elimMoney one two check m = case m of
-  One -> one
-  Two -> two
-  Check n -> check n
+{-# FORBID foldr _ _ (map _ _) #-}

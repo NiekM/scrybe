@@ -1,4 +1,4 @@
-{-# INCLUDE foldr #-}
+{-# INCLUDE foldr, elimList #-}
 
 {-# DESC "Add an element to the end of a list" #-}
 snoc :: List a -> a -> List a

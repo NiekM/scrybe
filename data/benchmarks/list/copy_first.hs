@@ -1,4 +1,4 @@
-{-# INCLUDE foldr, elimList #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
 
 {-# DESC "Replace each element in a list with the first" #-}
 copy_first :: List a -> List a

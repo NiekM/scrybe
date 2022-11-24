@@ -1,5 +1,4 @@
--- {-# INCLUDE map, filter, foldl, foldr, elimList #-}
-{-# INCLUDE map #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
 {-# INCLUDE plus #-}
 
 {-# DESC "Increment each value in a list by `n`" #-}

@@ -1,4 +1,4 @@
-{-# INCLUDE elimList #-}
+{-# INCLUDE foldr, elimList #-}
 
 {-# DESC "The first element of a list" #-}
 head :: List a -> Maybe a

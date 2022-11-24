@@ -1,4 +1,5 @@
-{-# INCLUDE foldr, filter, neq #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE neq #-}
 
 {-# DESC "Remove duplicates from a list" #-}
 nub :: List Nat -> List Nat

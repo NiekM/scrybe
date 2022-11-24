@@ -1,4 +1,5 @@
-{-# INCLUDE foldTree, append #-}
+{-# INCLUDE foldTree, elimTree #-}
+{-# INCLUDE append #-}
 
 {-# DESC "Inorder traversal of a tree" #-}
 inorder :: Tree a -> List a

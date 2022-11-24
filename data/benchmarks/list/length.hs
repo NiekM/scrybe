@@ -1,4 +1,4 @@
-{-# INCLUDE foldr #-}
+{-# INCLUDE foldr, elimList #-}
 
 {-# DESC "The number of elements in a list" #-}
 length :: List a -> Nat

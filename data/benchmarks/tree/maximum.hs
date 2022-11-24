@@ -1,4 +1,5 @@
-{-# INCLUDE foldTree, max #-}
+{-# INCLUDE mapTree, foldTree #-}
+{-# INCLUDE max #-}
 
 {-# DESC "The largest number in a tree" #-}
 maximum :: Tree Nat -> Nat

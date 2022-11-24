@@ -1,5 +1,5 @@
-{-# INCLUDE foldr, leq, elimBool #-}
--- {-# INCLUDE foldr, max #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE leq, elimBool #-}
 
 {-# DESC "The largest number in a list" #-}
 maximum :: List Nat -> Nat

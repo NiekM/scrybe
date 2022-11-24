@@ -1,5 +1,5 @@
--- {-# INCLUDE foldTree, eq, elimBool #-}
-{-# INCLUDE foldTree, eq, or #-}
+{-# INCLUDE mapTree, foldTree #-}
+{-# INCLUDE eq, elimBool #-}
 
 {-# DESC "Whether a number occurs in a tree" #-}
 member :: Nat -> Tree Nat -> Bool

@@ -1,5 +1,5 @@
-{-# INCLUDE elimList, elimBool, eq #-}
-{-# INCLUDE foldr #-}
+{-# INCLUDE foldr, elimList #-}
+{-# INCLUDE elimBool, eq #-}
 
 {-# DESC "Remove consecutive duplicates from a list" #-}
 compress :: List Nat -> List Nat

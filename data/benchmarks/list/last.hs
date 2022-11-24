@@ -1,4 +1,5 @@
-{-# INCLUDE foldr, elimMaybe #-}
+{-# INCLUDE foldr, elimList #-}
+{-# INCLUDE elimMaybe #-}
 
 {-# DESC "The last element of a list" #-}
 last :: List a -> Maybe a

@@ -1,4 +1,4 @@
-{-# INCLUDE elimList #-}
+{-# INCLUDE foldr, elimList #-}
 
 {-# DESC "All but the first element of a list" #-}
 tail :: List a -> Maybe (List a)

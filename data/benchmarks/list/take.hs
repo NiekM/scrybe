@@ -1,5 +1,4 @@
--- {-# INCLUDE elimNat, foldr :: (a -> (c -> b) -> c -> b) -> (c -> b) -> List a -> c -> b #-}
-{-# INCLUDE foldrN #-}
+{-# INCLUDE elimNat, foldr :: (a -> (c -> b) -> c -> b) -> (c -> b) -> List a -> c -> b #-}
 
 {-# DESC "The first `n` elements of a list" #-}
 take :: Nat -> List a -> List a

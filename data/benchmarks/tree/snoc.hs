@@ -1,5 +1,5 @@
--- {-# INCLUDE foldTree, foldr #-}
-{-# INCLUDE mapTree, foldr #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE mapTree, foldTree #-}
 
 {-# DESC "Add an element to the end of each node in a tree of lists" #-}
 snoc :: a -> Tree (List a) -> Tree (List a)

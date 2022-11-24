@@ -1,5 +1,5 @@
-{-# INCLUDE foldr, eq, elimBool #-}
--- {-# INCLUDE any, eq #-}
+{-# INCLUDE map, filter, foldl, foldr, elimList #-}
+{-# INCLUDE eq, elimBool #-}
 
 {-# DESC "Whether a number occurs in a list" #-}
 member :: Nat -> List Nat -> Bool
