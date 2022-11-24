@@ -89,9 +89,7 @@ main = do
   ts <- allFiles benchmarks
   xs <- for (reverse ts) \(a, x) -> do
     let d = fromMaybe undefined $ lexParse parser x
-    -- TO RUN OVERNIGHT (half an hour timeout)
-    let t = 1800_000_000
-    -- let t = 10_000_000
+    let t = 10_000_000
     -- let t = 5_000_000
     putStrLn ""
     putStrLn $ "Synthesizing " <> a <> "..."

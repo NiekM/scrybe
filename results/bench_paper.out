@@ -1,0 +1,437 @@
+Synthesizing list_add...
+...with example propagation:
+add a0 a1 = map (\a2 -> plus a0 a2) a1
+...without example propagation:
+add a0 a1 = map (\a2 -> plus a0 a2) a1
+
+Synthesizing list_append...
+...with example propagation:
+append a0 a1 = foldr (\a2 a3 -> Cons a2 a3) a1 a0
+...without example propagation:
+append a0 a1 = foldr (\a2 a3 -> Cons a2 a3) a1 a0
+
+Synthesizing list_cartesian...
+...with example propagation:
+...without example propagation:
+
+Synthesizing list_compress...
+...with example propagation:
+...without example propagation:
+
+Synthesizing list_copy_first...
+...with example propagation:
+copy_first a0 = foldr (\a1 a2 -> map (\a3 -> a1) a0) a0 a0
+...without example propagation:
+copy_first a0 = foldr (\a1 a2 -> map (\a3 -> a1) a0) a0 a0
+
+Synthesizing list_copy_last...
+...with example propagation:
+copy_last a0 = foldl (\a1 a2 -> map (\a3 -> a2) a0) [] a0
+...without example propagation:
+copy_last a0 = foldl (\a1 a2 -> map (\a3 -> a2) a0) [] a0
+
+Synthesizing list_delete_max...
+...with example propagation:
+delete_max a0 = filter (\a1 -> neq a1 (maximum a0)) a0
+...without example propagation:
+delete_max a0 = filter (\a1 -> neq (maximum a0) a1) a0
+
+Synthesizing list_delete_maxs...
+...with example propagation:
+delete_maxs a0 = map
+(\a1 -> filter (\a2 -> neq (maximum (map (\a3 -> maximum a3) a0)) a2) a1)
+a0
+...without example propagation:
+
+Synthesizing list_drop...
+...with example propagation:
+drop a0 a1 = foldr (\a2 a3 a4 -> elimNat (Cons a2 (a3 a0)) (\a6 -> a3 a6) a4)
+(\a5 -> [])
+a1
+a0
+...without example propagation:
+
+Synthesizing list_dupli...
+...with example propagation:
+dupli a0 = foldr (\a1 a2 -> Cons a1 (Cons a1 a2)) [] a0
+...without example propagation:
+dupli a0 = foldr (\a1 a2 -> Cons a1 (Cons a1 a2)) [] a0
+
+Synthesizing list_evens...
+...with example propagation:
+evens a0 = filter (\a1 -> even a1) a0
+...without example propagation:
+evens a0 = filter (\a1 -> even a1) a0
+
+Synthesizing list_even_parity...
+...with example propagation:
+even_parity a0 = foldr (\a1 a2 -> elimBool a1 (elimBool True False a1) a2) True
+a0
+...without example propagation:
+even_parity a0 = foldr (\a1 a2 -> elimBool a2 (elimBool a1 False a2) a1) True a0
+
+Synthesizing list_filter...
+...with example propagation:
+filter a0 a1 = foldr (\a2 a3 -> elimBool a3 (Cons a2 a3) (a0 a2)) [] a1
+...without example propagation:
+filter a0 a1 = foldr (\a2 a3 -> elimBool a3 (Cons a2 a3) (a0 a2)) [] a1
+
+Synthesizing list_flatten...
+...with example propagation:
+concat a0 = foldr (\a1 a2 -> append a1 a2) [] a0
+...without example propagation:
+concat a0 = foldr (\a1 a2 -> append a1 a2) [] a0
+
+Synthesizing list_fold...
+...with example propagation:
+fold a0 a1 a2 = foldr (\a3 a4 -> a0 a3 a4) a1 a2
+...without example propagation:
+fold a0 a1 a2 = foldr (\a3 a4 -> a0 a3 a4) a1 a2
+
+Synthesizing list_head...
+...with example propagation:
+head a0 = elimList Nothing (\a1 a2 -> Just a1) a0
+...without example propagation:
+head a0 = foldr (\a1 a2 -> Just a1) Nothing a0
+
+Synthesizing list_inc...
+...with example propagation:
+inc a0 = foldr (\a1 a2 -> Cons (Succ a1) a2) [] a0
+...without example propagation:
+inc a0 = foldr (\a1 a2 -> Cons (Succ a1) a2) [] a0
+
+Synthesizing list_incs...
+...with example propagation:
+incs a0 = map (\a1 -> map (\a2 -> Succ a2) a1) a0
+...without example propagation:
+incs a0 = map (\a1 -> map (\a2 -> Succ a2) a1) a0
+
+Synthesizing list_index...
+...with example propagation:
+index a0 a1 = foldr (\a2 a3 a4 -> elimNat (Just a2) (\a6 -> a3 a6) a4)
+(\a5 -> Nothing)
+a1
+a0
+...without example propagation:
+index a0 a1 = foldr (\a2 a3 a4 -> elimNat (Just a2) (\a6 -> a3 a6) a4)
+(\a5 -> Nothing)
+a1
+a0
+
+Synthesizing list_init...
+...with example propagation:
+init a0 = foldr (\a1 a2 -> Just (elimMaybe [] (\a3 -> Cons a1 a3) a2)) Nothing
+a0
+...without example propagation:
+init a0 = foldr (\a1 a2 -> Just (elimMaybe [] (\a3 -> Cons a1 a3) a2)) Nothing
+a0
+
+Synthesizing list_last...
+...with example propagation:
+last a0 = foldr (\a1 a2 -> elimMaybe (Just a1) (\a3 -> a2) a2) Nothing a0
+...without example propagation:
+last a0 = foldr (\a1 a2 -> elimMaybe (Just a1) (\a3 -> a2) a2) Nothing a0
+
+Synthesizing list_length...
+...with example propagation:
+length a0 = foldr (\a1 a2 -> Succ a2) 0 a0
+...without example propagation:
+length a0 = foldr (\a1 a2 -> Succ a2) 0 a0
+
+Synthesizing list_map...
+...with example propagation:
+map a0 a1 = foldr (\a2 a3 -> Cons (a0 a2) a3) [] a1
+...without example propagation:
+map a0 a1 = foldr (\a2 a3 -> Cons (a0 a2) a3) [] a1
+
+Synthesizing list_maximum...
+...with example propagation:
+maximum a0 = foldr (\a1 a2 -> elimBool a2 a1 (leq a2 a1)) 0 a0
+...without example propagation:
+maximum a0 = foldr (\a1 a2 -> elimBool a2 a1 (leq a2 a1)) 0 a0
+
+Synthesizing list_member...
+...with example propagation:
+member a0 a1 = foldr (\a2 a3 -> elimBool a3 True (eq a0 a2)) False a1
+...without example propagation:
+member a0 a1 = foldr (\a2 a3 -> eq a0 (elimBool a2 a0 a3)) False a1
+
+Synthesizing list_nub...
+...with example propagation:
+nub a0 = foldr (\a1 a2 -> Cons a1 (filter (\a3 -> neq a3 a1) a2)) a0 a0
+...without example propagation:
+nub a0 = foldr (\a1 a2 -> Cons a1 (filter (\a3 -> neq a3 a1) a2)) [] a0
+
+Synthesizing list_reverse...
+...with example propagation:
+reverse a0 = foldr (\a1 a2 -> foldr (\a3 a4 -> Cons a3 a4) [a1] a2) [] a0
+...without example propagation:
+reverse a0 = foldr (\a1 a2 -> foldr (\a3 a4 -> Cons a3 a4) [a1] a2) [] a0
+
+Synthesizing list_set_insert...
+...with example propagation:
+...without example propagation:
+
+Synthesizing list_shiftl...
+...with example propagation:
+shiftl a0 = elimList [] (\a1 a2 -> reverse (Cons a1 (reverse a2))) a0
+...without example propagation:
+shiftl a0 = reverse (elimList a0 (\a1 a2 -> Cons a1 (reverse a2)) a0)
+
+Synthesizing list_shiftr...
+...with example propagation:
+shiftr a0 = elimList [] (\a1 a2 -> Cons a1 (reverse a2)) (reverse a0)
+...without example propagation:
+shiftr a0 = elimList a0 (\a1 a2 -> Cons a1 (reverse a2)) (reverse a0)
+
+Synthesizing list_snoc...
+...with example propagation:
+snoc a0 a1 = foldr (\a2 a3 -> Cons a2 a3) [a1] a0
+...without example propagation:
+snoc a0 a1 = foldr (\a2 a3 -> Cons a2 a3) [a1] a0
+
+Synthesizing list_sum...
+...with example propagation:
+sum a0 = foldr (\a1 a2 -> plus a2 a1) 0 a0
+...without example propagation:
+sum a0 = foldr (\a1 a2 -> plus a1 a2) 0 a0
+
+Synthesizing list_sums...
+...with example propagation:
+sums a0 = map (\a1 -> foldr (\a2 a3 -> plus a3 a2) 0 a1) a0
+...without example propagation:
+sums a0 = map (\a1 -> foldr (\a2 a3 -> plus a2 a3) 0 a1) a0
+
+Synthesizing list_swap...
+...with example propagation:
+...without example propagation:
+
+Synthesizing list_tail...
+...with example propagation:
+tail a0 = elimList Nothing (\a1 a2 -> Just a2) a0
+...without example propagation:
+tail a0 = elimList Nothing (\a1 a2 -> Just a2) a0
+
+Synthesizing list_take...
+...with example propagation:
+take a0 a1 = foldr (\a2 a3 a4 -> elimNat [] (\a6 -> Cons a2 (a3 a6)) a4)
+(\a5 -> [])
+a1
+a0
+...without example propagation:
+
+Synthesizing list_to_set...
+...with example propagation:
+to_set a0 = foldr (\a1 a2 -> set_insert a1 a2) [] a0
+...without example propagation:
+to_set a0 = foldr (\a1 a2 -> set_insert a1 a2) [] a0
+
+Synthesizing tree_cons...
+...with example propagation:
+cons a0 a1 = mapTree (\a2 -> Cons a0 a2) a1
+...without example propagation:
+cons a0 a1 = mapTree (\a2 -> Cons a0 a2) a1
+
+Synthesizing tree_flatten...
+...with example propagation:
+flatten a0 = foldTree [] (\a1 a2 a3 -> append a1 (append a2 a3)) a0
+...without example propagation:
+flatten a0 = foldTree [] (\a1 a2 a3 -> append a1 (append a2 a3)) a0
+
+Synthesizing tree_height...
+...with example propagation:
+height a0 = foldTree 0 (\a1 a2 a3 -> Succ (max a3 a1)) a0
+...without example propagation:
+height a0 = foldTree 0 (\a1 a2 a3 -> Succ (max a3 a1)) a0
+
+Synthesizing tree_inc...
+...with example propagation:
+inc a0 = mapTree (\a1 -> Succ a1) a0
+...without example propagation:
+inc a0 = mapTree (\a1 -> Succ a1) a0
+
+Synthesizing tree_inorder...
+...with example propagation:
+inorder a0 = foldTree [] (\a1 a2 a3 -> append a1 (Cons a2 a3)) a0
+...without example propagation:
+inorder a0 = foldTree [] (\a1 a2 a3 -> append a1 (Cons a2 a3)) a0
+
+Synthesizing tree_insert...
+...with example propagation:
+...without example propagation:
+
+Synthesizing tree_leaves...
+...with example propagation:
+leaves a0 = foldTree 1 (\a1 a2 a3 -> plus a1 a3) a0
+...without example propagation:
+leaves a0 = foldTree 1 (\a1 a2 a3 -> plus a1 a3) a0
+
+Synthesizing tree_level...
+...with example propagation:
+...without example propagation:
+
+Synthesizing tree_map...
+...with example propagation:
+map a0 a1 = foldTree Leaf (\a2 a3 a4 -> Node a2 (a0 a3) a4) a1
+...without example propagation:
+map a0 a1 = foldTree Leaf (\a2 a3 a4 -> Node a2 (a0 a3) a4) a1
+
+Synthesizing tree_maximum...
+...with example propagation:
+maximum a0 = foldTree 0 (\a1 a2 a3 -> max a2 (max a3 a1)) a0
+...without example propagation:
+maximum a0 = foldTree 0 (\a1 a2 a3 -> max a3 (max a2 a1)) a0
+
+Synthesizing tree_member...
+...with example propagation:
+member a0 a1 = foldTree False
+(\a2 a3 a4 -> elimBool (elimBool a2 True (eq a3 a0)) True a4)
+a1
+...without example propagation:
+
+Synthesizing tree_postorder...
+...with example propagation:
+postorder a0 = foldTree [] (\a1 a2 a3 -> append a1 (append a3 [a2])) a0
+...without example propagation:
+postorder a0 = foldTree [] (\a1 a2 a3 -> append a1 (append a3 [a2])) a0
+
+Synthesizing tree_preorder...
+...with example propagation:
+preorder a0 = foldTree [] (\a1 a2 a3 -> Cons a2 (append a1 a3)) a0
+...without example propagation:
+preorder a0 = foldTree [] (\a1 a2 a3 -> Cons a2 (append a1 a3)) a0
+
+Synthesizing tree_search...
+...with example propagation:
+search a0 a1 = foldTree False
+(\a2 a3 a4 -> elimBool (elimBool a2 True (elem a0 a3)) True a4)
+a1
+...without example propagation:
+search a0 a1 = foldTree False
+(\a2 a3 a4 -> elimBool (elem a0 a3) True (elimBool a4 True a2))
+a1
+
+Synthesizing tree_select...
+...with example propagation:
+select a0 a1 = foldTree []
+(\a2 a3 a4 -> append a2 (elimBool a4 (Cons a3 a4) (a0 a3)))
+a1
+...without example propagation:
+select a0 a1 = foldTree []
+(\a2 a3 a4 -> elimBool a4 (Cons a3 (append a4 a2)) (a0 a3))
+a1
+
+Synthesizing tree_size...
+...with example propagation:
+size a0 = foldTree 0 (\a1 a2 a3 -> Succ (foldrNat a3 (\a4 -> Succ a4) a1)) a0
+...without example propagation:
+size a0 = foldTree 0 (\a1 a2 a3 -> foldrNat (Succ a1) (\a4 -> Succ a4) a3) a0
+
+Synthesizing tree_snoc...
+...with example propagation:
+snoc a0 a1 = mapTree (\a2 -> foldr (\a3 a4 -> Cons a3 a4) [a0] a2) a1
+...without example propagation:
+snoc a0 a1 = mapTree (\a2 -> foldr (\a3 a4 -> Cons a3 a4) [a0] a2) a1
+
+Synthesizing tree_sum...
+...with example propagation:
+sum a0 = foldTree 0 (\a1 a2 a3 -> plus a1 (plus a2 a3)) a0
+...without example propagation:
+sum a0 = foldTree 0 (\a1 a2 a3 -> plus a1 (plus a2 a3)) a0
+
+Synthesizing tree_sum_lists...
+...with example propagation:
+sum_lists a0 = mapTree (\a1 -> foldr (\a2 a3 -> plus a3 a2) 0 a1) a0
+...without example propagation:
+sum_lists a0 = mapTree (\a1 -> foldr (\a2 a3 -> plus a2 a3) 0 a1) a0
+
+Synthesizing tree_sum_trees...
+...with example propagation:
+sum_trees a0 = map (\a1 -> foldTree 0 (\a2 a3 a4 -> plus a2 (plus a3 a4)) a1) a0
+...without example propagation:
+
+list\_add~ & Increment each value in a list by $n$ & 4.70 & 5.65 & - & - & \yes\\
+\rowcolor{highlight}
+list\_append~ & Append two lists & 13.35 & 41.36 & \yes & \yes & \yes\\
+list\_cartesian~ & The cartesian product & $\bot$ & $\bot$ & - & - & \yes\\
+\rowcolor{highlight}
+list\_compress~ & Remove consecutive duplicates from a list & $\bot$ & $\bot$ & \yes & \no & -\\
+list\_copy\_first~ & Replace each element in a list with the first & 30.71 & 20.55 & - & - & \yes\\
+\rowcolor{highlight}
+list\_copy\_last~ & Replace each element in a list with the last & 14.89 & 28.00 & - & - & \yes\\
+list\_delete\_max~ & Remove the largest numbers from a list & 16.05 & 31.95 & - & - & \yes\\
+\rowcolor{highlight}
+list\_delete\_maxs* & Remove the largest numbers from a list of lists & 1875.43 & $\bot$ & - & - & \yes\\
+list\_drop\indexed & All but the first $n$ elements of a list & 554.96 & $\bot$ & \yes & \yes & -\\
+\rowcolor{highlight}
+list\_dupli~ & Duplicate each element in a list & 6.43 & 7.60 & \yes & \yes & \yes\\
+list\_evens~ & Remove any odd numbers from a list & 1.84 & 2.62 & - & - & \yes\\
+\rowcolor{highlight}
+list\_even\_parity~ & Whether a list has an odd number of $Trues$ & 42.72 & 201.73 & \yes & \no & -\\
+list\_filter~ & The elements in a list that satisfy $p$ & 80.25 & 162.70 & \yes & \yes & -\\
+\rowcolor{highlight}
+list\_flatten~ & Flatten a list of lists & 7.54 & 8.12 & \yes & \yes & \yes\\
+list\_fold~ & A catamorphism over a list & 9.48 & 6.43 & \yes & \yes & -\\
+\rowcolor{highlight}
+list\_head\total & The first element of a list & 1.40 & 2.20 & \yes & \yes & -\\
+list\_inc~ & Increment each value in a list by one & 5.38 & 24.36 & \yes & \yes & -\\
+\rowcolor{highlight}
+list\_incs~ & Increment each value in a list of lists by one & 12.79 & 19.73 & - & - & \yes\\
+list\_index\indexed & Index a list starting at zero & 79.01 & 2956.53 & \yes & \yes & -\\
+\rowcolor{highlight}
+list\_init\total & All but the last element of a list & 115.59 & 453.28 & - & - & \yes\\
+list\_last\total & The last element of a list & 9.63 & 15.14 & \yes & \yes & \yes\\
+\rowcolor{highlight}
+list\_length~ & The number of elements in a list & 1.33 & 2.16 & \yes & \yes & \yes\\
+list\_map~ & Map a function over a list & 2.82 & 4.75 & \yes & \yes & -\\
+\rowcolor{highlight}
+list\_maximum~ & The largest number in a list & 120.38 & 231.44 & - & - & \yes\\
+list\_member~ & Whether a number occurs in a list & 212.45 & 1145.07 & - & - & \yes\\
+\rowcolor{highlight}
+list\_nub~ & Remove duplicates from a list & 450.56 & 9245.26 & - & - & \yes\\
+list\_reverse* & Reverse a list & 131.04 & 574.82 & \yes & \yes & -\\
+\rowcolor{highlight}
+list\_set\_insert~ & Insert an element in a set & $\bot$ & $\bot$ & \yes & \yes & -\\
+list\_shiftl~ & Shift all elements in a list to the left & 723.97 & 525.29 & - & - & \yes\\
+\rowcolor{highlight}
+list\_shiftr~ & Shift all elements in a list to the right & 369.27 & 620.67 & - & - & \yes\\
+list\_snoc~ & Add an element to the end of a list & 6.77 & 55.76 & \yes & \yes & \yes\\
+\rowcolor{highlight}
+list\_sum~ & The sum of all numbers in a list & 4.36 & 17.05 & \yes & \yes & \yes\\
+list\_sums~ & The sum of each nested list in a list of lists & 69.71 & 677.12 & - & - & \yes\\
+\rowcolor{highlight}
+list\_swap* & Swap the elements in a list pairwise & - & - & \yes & \yes & -\\
+list\_tail\total & All but the first element of a list & 1.65 & 5.43 & \yes & \yes & -\\
+\rowcolor{highlight}
+list\_take\indexed & The first $n$ elements of a list & 462.50 & $\bot$ & \yes & \yes & -\\
+list\_to\_set~ & Sort a list, removing duplicates & 37.06 & 41.18 & \yes & \yes & -\\
+\rowcolor{highlight}
+tree\_cons~ & Add an element to the front of each node in a tree of lists & 3.38 & 5.08 & - & - & \yes\\
+tree\_flatten~ & Flatten a tree of lists into a list & 68.34 & 72.29 & - & - & \yes\\
+\rowcolor{highlight}
+tree\_height~ & The height of a tree & 7.01 & 34.89 & - & - & \yes\\
+tree\_inc~ & Increment each element in a tree by one & 1.40 & 2.21 & - & - & \yes\\
+\rowcolor{highlight}
+tree\_inorder~ & Inorder traversal of a tree & 15.77 & 18.28 & \yes & \yes & \yes\\
+tree\_insert~ & Insert an element in a binary tree & $\bot$ & $\bot$ & \yes & \no & -\\
+\rowcolor{highlight}
+tree\_leaves~ & The number of leaves in a tree & 14.77 & 45.67 & \yes & \yes & \yes\\
+tree\_level\indexed & The number of nodes at depth $n$ & $\bot$ & $\bot$ & \yes & \no & -\\
+\rowcolor{highlight}
+tree\_map~ & Map a function over a tree & 3.38 & 11.77 & \yes & \yes & -\\
+tree\_maximum~ & The largest number in a tree & 25.02 & 114.68 & - & - & \yes\\
+\rowcolor{highlight}
+tree\_member~ & Whether a number occurs in a tree & 907.81 & $\bot$ & - & - & \yes\\
+tree\_postorder~ & Postorder traversal of a tree & 19.50 & 44.79 & \yes & \no & -\\
+\rowcolor{highlight}
+tree\_preorder~ & Preorder traversal of a tree & 9.09 & 21.10 & \yes & \yes & -\\
+tree\_search~ & Whether a number occurs in a tree of lists & 1218.10 & 5253.07 & - & - & \yes\\
+\rowcolor{highlight}
+tree\_select~ & All nodes in a tree that satisfy $p$ & 652.12 & 1268.76 & - & - & \yes\\
+tree\_size~ & The number of nodes in a tree & 31.48 & 252.63 & \yes & \yes & \yes\\
+\rowcolor{highlight}
+tree\_snoc~ & Add an element to the end of each node in a tree of lists & 57.13 & 2156.82 & - & - & \yes\\
+tree\_sum~ & The sum of all nodes in a tree & 18.21 & 89.11 & - & - & \yes\\
+\rowcolor{highlight}
+tree\_sum\_lists~ & The sum of each list in a tree of lists & 19.32 & 285.03 & - & - & \yes\\
+tree\_sum\_trees~ & The sum of each tree in a list of trees & 1000.26 & $\bot$ & - & - & \yes\
