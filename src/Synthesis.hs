@@ -66,14 +66,18 @@ maxDisjunctionWeight = 4
 
 -- }}}
 
-synth :: Defs Unit -> Synth Fillings
-synth d = init d >> go where
-  go :: Synth Fillings
-  go = do
-    st <- get
-    if final st
-      then use fillings
-      else step mempty >> go
+synth :: Defs Unit -> Synth (Term Hole, Fillings)
+synth d = do
+  e  <- init d
+  hf <- go
+  return (e, hf)
+  where
+    go :: Synth Fillings
+    go = do
+      st <- get
+      if final st
+        then use fillings
+        else step mempty >> go
 
 final :: SynState -> Bool
 final = null . view contexts

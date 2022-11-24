@@ -9,7 +9,7 @@ module Language.Defs
   , Defs(..)
   , signatures, bindings, datatypes, imports, pragmas, asserts
   , fromDefs
-  , recDefs, relBinds
+  , recDefs, relevant
   , evalAssert, unevalAssert
   ) where
 
@@ -131,11 +131,8 @@ recDefs (Defs ds) = Defs $ ds <&> \case
   Binding b -> Binding $ recBinding b
   x -> x
 
-relBinds :: Defs Unit -> [Binding Hole]
-relBinds (Defs ds) = bs' <&> uncurry MkBinding
-  where
-    bs = [ (x, e) | Binding (MkBinding x e) <- ds, isNothing (holeFree e)]
-    bs' = evalState (forOf (each . _2 . holes) bs $ const fresh) 0
+relevant :: Term Hole -> [Binding Hole]
+relevant (Lets xs _) = [ MkBinding x e | (x, e) <- xs, isNothing (holeFree e) ]
 
 -- TODO: type checking and imports
 fromDefs :: Defs Void -> Env

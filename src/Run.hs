@@ -40,7 +40,7 @@ synthesize file opts = do
   timed syn >>= \case
     Nothing -> logInfo "Synthesis failed: Timeout"
     Just Nothing -> logInfo "Synthesis failed: Exhaustive"
-    Just (Just (n, hf)) -> do
+    Just (Just (n, (expr, hf))) -> do
       logInfo "Solution found!"
       logInfo ""
       logInfo . display $ "Depth:" <+> pretty (fromIntegral n :: Int)
@@ -49,7 +49,7 @@ synthesize file opts = do
         (Map.assocs hf <&> \(h, e) -> pretty h <> ":" <+> pretty e)
       logInfo ""
       logInfo . display . nest 2 . vsep $ "Result:" :
-        ( relBinds problem <&> \(MkBinding x e) ->
+        ( relevant expr <&> \(MkBinding x e) ->
           pretty $ MkBinding x (fill (normalizeFilling hf) e)
         )
       logInfo ""

@@ -61,8 +61,8 @@ single :: String -> Config -> Int -> Env -> Defs Unit -> Bool ->
 single a cfg t p d b = timeout t (syn `deepseq` return syn) >>= \case
   Nothing -> return Nothing
   Just Nothing -> return $ Just Nothing
-  Just (Just (_, hf)) -> do
-    for_ (relBinds d) \(MkBinding x e) -> do
+  Just (Just (_, (expr, hf))) -> do
+    for_ (relevant expr) \(MkBinding x e) -> do
       print . pretty $ MkBinding x (fill (normalizeFilling hf) e)
     let name = (if b then "(yes) " else "(no) ") <> a
     withConfig cfg $ do

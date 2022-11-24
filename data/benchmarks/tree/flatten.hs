@@ -1,5 +1,6 @@
 {-# INCLUDE map, filter, foldl, foldr, elimList #-}
 {-# INCLUDE mapTree, foldTree #-}
+{-# INCLUDE append #-}
 
 {-# DESC "Flatten a tree of lists into a list" #-}
 flatten :: Tree (List a) -> List a
