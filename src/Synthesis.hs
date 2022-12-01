@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Synthesis (synth, runSynth) where
+module Synthesis (synth, runSynth, Fillings) where
 
 import Import
 import Options (SynOptions(..), synPropagate)

@@ -25,7 +25,6 @@ import System.IO
 import Control.Monad.Heap hiding (Leaf)
 import System.Timeout
 import Text.Printf
-import RIO.List (cycle)
 import qualified RIO.Text as Text
 import qualified RIO.Text.Partial as Text
 import qualified RIO.Map as Map
@@ -43,8 +42,8 @@ removeMaybes = \case
     ys -> Just $ Node x ys
   Leaf l -> Leaf <$> l
 
-trySyn :: Bool -> Env -> Defs Unit -> _
-trySyn b m = best . runSearch . runSynth (SynOptions b) m . synth
+trySyn :: Bool -> Env -> Defs Unit -> Maybe (Term Hole, Fillings)
+trySyn b m = fmap snd . best . runSearch . runSynth (SynOptions b) m . synth
 
 allFiles :: MonadIO m => FilePath -> m [(String, Text)]
 allFiles p = do
@@ -61,7 +60,7 @@ single :: String -> Config -> Int -> Env -> Defs Unit -> Bool ->
 single a cfg t p d b = timeout t (syn `deepseq` return syn) >>= \case
   Nothing -> return Nothing
   Just Nothing -> return $ Just Nothing
-  Just (Just (_, (expr, hf))) -> do
+  Just (Just (expr, hf)) -> do
     for_ (relevant expr) \(MkBinding x e) -> do
       print . pretty $ MkBinding x (fill (normalizeFilling hf) e)
     let name = (if b then "(yes) " else "(no) ") <> a
@@ -80,7 +79,7 @@ main = do
   cfg <- execParser $ info (config def) briefDesc
   pre <- readFileUtf8 "data/prelude.hs"
   let p = maybe undefined (fromDefs . recDefs) $ lexParse parser pre
-  benchInfo <- readFileUtf8 "data/benchmark"
+  benchInfo <- readFileUtf8 "data/benchmarks/.info"
   let
     m = Map.fromList $ (Text.words <$> Text.lines benchInfo) <&> \case
       x:xs -> (x, xs)
@@ -90,7 +89,6 @@ main = do
   xs <- for (reverse ts) \(a, x) -> do
     let d = fromMaybe undefined $ lexParse parser x
     let t = 10_000_000
-    -- let t = 5_000_000
     putStrLn ""
     putStrLn $ "Synthesizing " <> a <> "..."
     putStrLn "...with example propagation:"
@@ -98,11 +96,10 @@ main = do
     putStrLn "...without example propagation:"
     r1 <- single a cfg t p d False
     return (format (fromString a) d r0 r1 m, r0, r1)
-  let highlight = zipWith (<>) $ cycle ["", "\\rowcolor{highlight}\n"]
   let ls = view _1 <$> xs
   let rs = concatMap (\(_,a,b) -> mapMaybe join [a,b]) xs
   putStrLn ""
-  putStrLn . Text.unpack . Text.concat . highlight $ ls
+  putStrLn . Text.unpack . Text.concat $ ls
   withConfig cfg $ report rs
 
 format
@@ -112,17 +109,18 @@ format
   -> Maybe (Maybe Report)
   -> Map Text [Text]
   -> Text
-format s d r0 r1 m = Text.intercalate " & "
-  [ Text.replace "_" "\\_" s <> tag
-  , Text.replace "`" "$" desc
-  , time r0
-  , time r1
-  , myth
-  , smyth
-  , lam
-  ] <> "\\\\\n"
-    where
-    desc = mconcat [x | Desc x <- pragmas d ]
-    time = maybe "$\\bot$" (maybe "-" $ Text.pack . printf "%.2f" . mean)
-    mean = (1000*) . estPoint . anMean . reportAnalysis
-    [tag, myth, smyth, lam] = fromMaybe undefined $ Map.lookup s m
+format s d r0 r1 m = case Map.lookup s m of
+  Just [tag, myth, smyth, lam] -> Text.intercalate " & "
+    [ Text.replace "_" "\\_" s <> tag
+    , Text.replace "`" "$" desc
+    , time r0
+    , time r1
+    , myth
+    , smyth
+    , lam
+    ] <> "\\\\\n"
+      where
+      desc = mconcat [x | Desc x <- pragmas d ]
+      time = maybe "$\\bot$" (maybe "-" $ Text.pack . printf "%.2f" . mean)
+      mean = (1000*) . estPoint . anMean . reportAnalysis
+  _ -> error "Missing formatting info"
