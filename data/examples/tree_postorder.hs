@@ -1,5 +1,4 @@
--- {-# INCLUDE foldTree, append #-}
-{-# INCLUDE foldTree, foldList #-}
+{-# INCLUDE foldTree, foldr #-}
 
 postorder :: Tree a -> List a
 postorder = _

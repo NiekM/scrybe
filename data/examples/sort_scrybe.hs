@@ -1,4 +1,4 @@
-{-# INCLUDE foldList #-}
+{-# INCLUDE foldr #-}
 
 insert :: Nat -> List Nat -> List Nat
 insert n = paraList [n] \x xs r -> case leq n x of

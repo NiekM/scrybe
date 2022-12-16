@@ -1,12 +1,7 @@
 {-# INCLUDE elimList, elimBool, eq #-}
--- {-# INCLUDE elimBool, eq #-}
 
 compress :: List Nat -> List Nat
--- compress = foldList [] (\x -> elimList [x] (\y ys -> elimBool (Cons x (Cons y ys)) (Cons y ys) (eq x y)))
--- compress = foldList [] (\x -> elimList [x] (\y ys -> elimBool (Cons x (Cons y ys)) (Cons y ys) (eq x y)))
--- compress = _
-compress = foldList _ _
--- compress xs = foldList [] (\x r -> elimList [x] _ r) xs
+compress = foldr _ _
 
 assert compress [] <== []
 assert compress [0] <== [0]

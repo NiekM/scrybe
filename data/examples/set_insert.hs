@@ -1,17 +1,7 @@
 {-# INCLUDE paraList, elimOrd, compareNat #-}
--- {-# INCLUDE elimOrd, compareNat #-}
--- {-# INCLUDE set_insert #-}
-
--- NOTE: using compareNat and elimOrd is considerably slower
--- {-# INCLUDE paraList, elimOrd, compareNat #-}
 
 insert :: Nat -> List Nat -> List Nat
 insert n = _
--- insert n = paraList _ _
--- insert n = paraList _ \x xs r -> case compareNat n x of
---   LT -> _
---   EQ -> _
---   GT -> _
 
 assert insert 0 []     <== [0]
 assert insert 1 []     <== [1]

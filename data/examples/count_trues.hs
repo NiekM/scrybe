@@ -1,5 +1,4 @@
--- {-# INCLUDE sum, map, elimBool #-}
-{-# INCLUDE sumrec, map, elimBool #-}
+{-# INCLUDE sum, map, elimBool #-}
 -- {-# INCLUDE foldr, elimBool #-}
 
 trues :: List Bool -> Nat

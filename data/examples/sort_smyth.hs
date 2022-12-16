@@ -4,7 +4,7 @@ insert n = paraList [n] \x xs r -> case leq n x of
   False -> Cons x _
 
 sort :: List Nat -> List Nat
-sort = foldList [] insert
+sort = foldr insert []
 
 assert sort []        <== []
 assert sort [1]       <== [1]

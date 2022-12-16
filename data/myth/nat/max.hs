@@ -1,6 +1,3 @@
--- {-# INCLUDE compareNat, elimOrd #-}
--- {-# INCLUDE leq, elimBool #-}
-
 {-# INCLUDE leq #-}
 {-# INCLUDE elimBool #-}
 

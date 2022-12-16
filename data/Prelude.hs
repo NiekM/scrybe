@@ -106,6 +106,14 @@ elimNat z s n = case n of
   Zero -> z
   Succ m -> s m
 
+{-# FORBID paraNat _ _ 0 #-}
+{-# FORBID paraNat _ _ (Succ _) #-}
+
+paraNat :: a -> (a -> Nat -> a) -> Nat -> a
+paraNat z s n = case n of
+  Zero -> z
+  Succ m -> s (paraNat z s m) m
+
 {-# FORBID foldrNat _ _ 0 #-}
 {-# FORBID foldrNat _ _ (Succ _) #-}
 

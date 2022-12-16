@@ -1,8 +1,7 @@
-{-# INCLUDE foldList, elimBool #-}
--- {-# INCLUDE foldList, eq, or #-}
--- {-# INCLUDE any, eq #-}
+{-# INCLUDE foldr, elimBool #-}
+-- {-# INCLUDE any #-}
 
-elem :: (a -> a -> Bool) -> Nat -> List Nat -> Bool
+elem :: (a -> a -> Bool) -> a -> List a -> Bool
 elem = _
 
 assert elem eq 0 [] <== False

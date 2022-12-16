@@ -1,4 +1,4 @@
-{-# INCLUDE foldList, insert #-}
+{-# INCLUDE foldr, insert #-}
 
 sort :: List Nat -> List Nat
 sort = _

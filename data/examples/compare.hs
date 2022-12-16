@@ -1,10 +1,7 @@
--- {-# INCLUDE foldNatIndexed, elimNat #-}
 {-# INCLUDE foldrNat :: (Nat -> b) -> ((Nat -> b) -> Nat -> b) -> Nat -> Nat -> b #-}
 {-# INCLUDE elimNat #-}
 
--- NOTE: it works without sketch, but is very slow!
 compare :: Nat -> Nat -> Ord
--- compare = foldNat _ _
 compare = _
 
 assert compare 0 0 <== EQ

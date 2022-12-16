@@ -1,7 +1,7 @@
 {-# INCLUDE reverse, eqList #-}
 
 palindrome :: List Nat -> Bool
-palindrome x = _ --eqList _ _
+palindrome x = _
 
 assert palindrome [] <== True
 assert palindrome [0] <== True
