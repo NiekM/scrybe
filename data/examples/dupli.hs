@@ -3,6 +3,8 @@
 -- {-# INCLUDE concatMap #-}
 -- {-# INCLUDE concat, map #-}
 -- {-# INCLUDE interleave #-}
+-- {-# INCLUDE paraList #-}
+-- {-# INCLUDE multi #-}
 
 dupli :: List a -> List a
 dupli = _

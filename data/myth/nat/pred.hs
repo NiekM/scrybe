@@ -1,5 +1,3 @@
--- {-# INCLUDE elimNat #-}
-
 {-# INCLUDE elimNat #-}
 
 {-# DESC "The predecessor of a natural number." #-}

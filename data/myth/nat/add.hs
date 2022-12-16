@@ -1,5 +1,3 @@
--- {-# INCLUDE foldNat #-}
-
 {-# INCLUDE foldrNat #-}
 
 {-# DESC "Add two natural numbers." #-}

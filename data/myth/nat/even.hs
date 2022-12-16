@@ -1,5 +1,3 @@
--- {-# INCLUDE foldNat, elimBool #-}
-
 {-# INCLUDE foldrNat, elimBool #-}
 
 {-# DESC "Whether a natural number is even." #-}

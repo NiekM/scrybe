@@ -399,6 +399,15 @@ nub = foldr set_insert []
 eqList :: List Nat -> List Nat -> Bool
 eqList = foldr (\x r -> elimList False (\y ys -> and (eq x y) (r ys))) (elimList True (\y ys -> False))
 
+replicate :: Nat -> a -> List a
+replicate n x = foldrNat [] (Cons x) n
+
+dupli :: List a -> List a
+dupli = concatMap (replicate 2)
+
+multi :: Nat -> List a -> List a
+multi n = concatMap (replicate n)
+
 -- || Products
 
 data Pair a b = Pair a b
@@ -430,14 +439,21 @@ interleave xs ys = case xs of
   Nil -> ys
   Cons z zs -> Cons z (interleave ys zs)
 
+interleave' :: List a -> List a -> List a
+interleave' xs ys = case xs of
+  Nil -> Nil
+  Cons z zs -> case ys of
+    Nil -> Nil
+    Cons w ws -> Cons z (Cons w (interleave' zs ws))
+
 zipWith :: (a -> b -> c) -> List a -> List b -> List c
 zipWith f xs ys = map (uncurry f) (zip xs ys)
 
-unfoldList :: (b -> Maybe (Pair a b)) -> b -> List a
-unfoldList f x = case f x of
+unfoldr :: (b -> Maybe (Pair a b)) -> b -> List a
+unfoldr f x = case f x of
   Nothing -> Nil
   Just y -> case y of
-    Pair a r -> Cons a (unfoldList f r)
+    Pair a r -> Cons a (unfoldr f r)
 
 -- || Coproducts
 

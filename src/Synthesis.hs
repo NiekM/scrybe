@@ -216,11 +216,9 @@ checkBindings defs = do
     expr = Lets (bindings defs <&> \(MkBinding a x) -> (a, x)) (Hole Unit)
 
 updateConstraints :: [[Constraints]] -> Synth ()
-updateConstraints xs = do
-  let zs = mapMaybe mergeConstraints xs
-  let ys = nubOrd zs
-  guard . not . null $ ys
-  assign constraints $ Disjunction . fmap Pure $ ys
+updateConstraints xs = case nubOrd (mapMaybe mergeConstraints xs) of
+  [] -> fail "Synthesis fails"
+  ys -> assign constraints $ Disjunction . fmap Pure $ ys
 
 findBlocking :: Synth (Scope, Hole)
 findBlocking = do
