@@ -41,17 +41,21 @@ synthesize file opts = do
     Nothing -> logInfo "Synthesis failed: Timeout"
     Just Nothing -> logInfo "Synthesis failed: Exhaustive"
     Just (Just (n, (expr, hf))) -> do
+      let
+        exprs = relevant expr <&> \(MkBinding x e) ->
+          MkBinding x (fill (normalizeFilling hf) e)
+        unreachable = exprs >>= \(MkBinding _ e) -> toListOf holes e
       logInfo "Solution found!"
       logInfo ""
       logInfo . display $ "Depth:" <+> pretty (fromIntegral n :: Int)
+      unless (null unreachable) do
+        logInfo ""
+        logInfo . display $ "Unreachable:" <+> pretty unreachable
       logInfo ""
       logInfo . display . nest 2 . vsep $ "Hole fillings:" :
         (Map.assocs hf <&> \(h, e) -> pretty h <> ":" <+> pretty e)
       logInfo ""
-      logInfo . display . nest 2 . vsep $ "Result:" :
-        ( relevant expr <&> \(MkBinding x e) ->
-          pretty $ MkBinding x (fill (normalizeFilling hf) e)
-        )
+      logInfo . display . nest 2 . vsep $ "Result:" : fmap pretty exprs
       logInfo ""
 
 live :: String -> RIO Application ()

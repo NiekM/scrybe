@@ -80,7 +80,16 @@ synth d = do
         else step mempty >> go
 
 final :: SynState -> Bool
-final = null . view contexts
+-- final = _noHoles
+final = noConstraints
+
+noConstraints :: SynState -> Bool
+noConstraints s = case view constraints s of
+  Disjunction [Pure x] | null x -> True
+  _ -> False
+
+_noHoles :: SynState -> Bool
+_noHoles = null . view contexts
 
 init :: Defs Unit -> Synth (Term Hole)
 init defs = do
