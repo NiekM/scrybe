@@ -43,7 +43,7 @@ runSynth :: SynOptions -> Env -> Synth a -> Nondet a
 runSynth opts m x = view _1 <$> runRWST x m (mkSynState opts)
 
 liftInfer :: Infer a -> Synth a
-liftInfer = mapRWST mfold . zoom freshFree
+liftInfer = mapRWST (maybe (error "Type error") return) . zoom freshFree
 
 liftUneval :: Int -> Uneval a -> Synth (Maybe a)
 liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
@@ -95,8 +95,9 @@ init :: Defs Unit -> Synth (Term Hole)
 init defs = do
   assign examples $ asserts defs
 
-  incl     <- liftInfer $ checkIncluded defs
-  expr     <- liftInfer $ checkBindings defs
+  incl         <- liftInfer $ checkIncluded defs
+  (sigs, expr) <- liftInfer $ checkBindings defs
+  liftInfer $ checkAsserts (Map.fromList incl <> sigs) defs
   expanded <- zoom freshVar  $ expand  expr
   (e, ctx) <- zoom freshHole $ extract expanded
 
@@ -164,7 +165,8 @@ step hf = do
 
 refinements :: Hole -> Synth (Term Hole)
 refinements h = do
-  g@(Goal ctx t) <- mfold . Map.lookup h =<< use contexts
+  g@(Goal ctx t) <- maybe (error "Missing goal") return
+    . Map.lookup h =<< use contexts
 
   (fun, p)  <- choices g
   Args ts u <- zoom freshFree $ instantiateFresh p
@@ -206,14 +208,14 @@ checkIncluded defs = do
 
 -- Compute a sketch from a set of bindings with a single hole at the end,
 -- then type check
-checkBindings :: Defs Unit -> Infer (Term Goal)
+checkBindings :: Defs Unit -> Infer (Map Var Poly, Term Goal)
 checkBindings defs = do
   (_, a) <- infer mempty expr
   case a of
     x@(Lets _ (Hole (Goal cs _))) -> do
       let funs = cs <&> \(Poly _ t) -> t
       th <- failMaybe . unifies $ Map.intersectionWith (,) funs sigs
-      return $ over holes
+      return  . (poly <$> sigs,) $ over holes
         ( over goalType freezeAll
         . over goalCtx (freezeUnbound . instantiate th <$>)
         . subst th
@@ -223,6 +225,19 @@ checkBindings defs = do
     sigs = Map.fromList $ signatures defs <&>
       \(MkSignature a (Poly _ t)) -> (a, t)
     expr = Lets (bindings defs <&> \(MkBinding a x) -> (a, x)) (Hole Unit)
+
+checkAsserts :: Map Var Poly -> Defs Unit -> Infer ()
+checkAsserts env defs = for_ (asserts defs)
+  \(MkAssert expr (Lams vals ex)) -> do
+    Args ts t <- fst <$> infer env expr
+    guard $ length vals == length ts
+    let
+      res = ex & cataExpr \case
+        Ctr c -> Ctr c
+        Hole h -> Hole h
+        App f x -> App f x
+        Lam _ _ -> error "Should never happen"
+    checks env $ (res, t) : zip (upcast <$> vals) ts
 
 updateConstraints :: [[Constraints]] -> Synth ()
 updateConstraints xs = case nubOrd (mapMaybe mergeConstraints xs) of

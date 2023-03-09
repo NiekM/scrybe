@@ -1,5 +1,8 @@
 -- | Prelude
 
+-- Useful for defining examples for polymorphic functions
+data Dummy = A | B | C | D | E
+
 -- || Combinators
 
 id :: a -> a

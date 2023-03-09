@@ -26,12 +26,12 @@ eta (Goal ctx (Args ts u)) = do
 expand :: MonadState (Fresh Var) m => Term Goal -> m (Term Goal)
 expand x = forOf holes' x eta
 
-upcast :: Value -> Result
+upcast :: (HasCtr l, HasApp l) => Value -> Expr l
 upcast = cataExpr \case
   Ctr c -> Ctr c
   App f x -> App f x
 
-downcast :: Result -> Maybe Value
+downcast :: Expr l -> Maybe Value
 downcast = cataExpr \case
   Ctr c -> return $ Ctr c
   App f x -> liftM2 App f x

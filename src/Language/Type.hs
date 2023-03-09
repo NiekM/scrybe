@@ -2,7 +2,7 @@ module Language.Type
   ( Unify, Infer
   , runInfer, evalInfer
   , unify, unifies
-  , infer, check
+  , infer, check, checks
   ) where
 
 import Import
@@ -122,3 +122,9 @@ check ts e p = do
   (u, e') <- infer ts e
   th <- failMaybe $ unify (freeze p) u
   return (subst th u, over holes (subst th) e', th)
+
+checks :: Map Var Poly -> [(Term h, Mono)] -> Infer ([(Term Goal, Mono)], Unify)
+checks ts = flip foldr (return ([], Map.empty)) \(e, t) r -> do
+  (xs, th1) <- r
+  (u, x, th2) <- check ts e (Mono $ subst th1 t)
+  return ((x, u):xs, th1 `compose` th2)
