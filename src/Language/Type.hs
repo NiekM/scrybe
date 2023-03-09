@@ -30,6 +30,7 @@ type Unify = Map Free Mono
 unify :: Mono -> Mono -> Maybe Unify
 unify t u = case (t, u) of
   (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
+  (Arr t1 t2, Arr u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
   (Ctr  a, Ctr  b) | a == b -> return Map.empty
   (Var a, _) | occurs a u -> return $ Map.singleton a u

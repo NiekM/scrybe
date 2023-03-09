@@ -2,7 +2,7 @@
 
 module Language.Syntax.Expr
   ( Level'(..)
-  , Expr'(.., Arr, Arrs, Args, Case, Lets, Apps, Lams, Top, Scoped)
+  , Expr'(.., Arrs, Args, Case, Lets, Apps, Lams, Top, Scoped)
   , Expr, Mono, Term, Result, Value, Example, Indet
   , Hole', HasHole, HasVar, HasCtr, HasApp
   , apps, lams, arrs
@@ -37,7 +37,7 @@ data Level' a
 
 type Level = Level' Type
 
-data EXPR = CTR | VAR | APP | LAM | LET | ELIM | FIX | PRJ
+data EXPR = CTR | VAR | APP | ARR | LAM | LET | ELIM | FIX | PRJ
 
 class IsExpr (l :: Level) where
   type Hole' l :: Maybe Type
@@ -51,14 +51,13 @@ type HAS (c :: EXPR) (l :: Level) = Elem c (Ctrs' l)
 type HasHole l h = Hole' l ~ 'Just h
 type HasCtr  l   = HAS 'CTR l
 type HasApp  l   = HAS 'APP l
+type HasArr  l   = HAS 'ARR l
 type HasElim l   = HAS 'ELIM l
 type HasFix  l   = HAS 'FIX l
 type HasPrj  l   = HAS 'PRJ l
 type HasVar  l v = (HAS 'VAR l, Var' l ~ 'Just v)
 type HasLam  l v = (HAS 'LAM l, Var' l ~ 'Just v)
 type HasLet  l v = (HAS 'LET l, Var' l ~ 'Just v)
-
-type HasArr l = (HasCtr l, HasApp l)
 
 -- }}}
 
@@ -77,6 +76,7 @@ data Expr' (r :: Func) (l :: Level) where
   Ctr  :: HasCtr  l   => Ctr -> Expr' r l
   Var  :: HasVar  l v => v -> Expr' r l
   App  :: HasApp  l   => Rec r l -> Rec r l -> Expr' r l
+  Arr  :: HasArr  l   => Rec r l -> Rec r l -> Expr' r l
   Lam  :: HasLam  l v => v -> Rec r l -> Expr' r l
   Let  :: HasLet  l v => v -> Rec r l -> Rec r l -> Expr' r l
   Elim :: HasElim l   => [(Ctr, Rec r l)] -> Expr' r l
@@ -99,7 +99,7 @@ type Base a = Expr' ('Base a)
 type Mono = Expr 'Type
 instance IsExpr 'Type where
   type Var'  'Type = 'Just Free
-  type Ctrs' 'Type = ['VAR, 'CTR, 'APP]
+  type Ctrs' 'Type = ['VAR, 'CTR, 'APP, 'ARR]
 
 -- | Term level expressions generic in the hole type.
 type Term h = Expr ('Term h)
@@ -154,6 +154,7 @@ instance (Consts NFData l, NFData (Rec r l)) => NFData (Expr' r l) where
     Ctr c -> rnf c
     Var v -> rnf v
     App f x -> rnf f `seq` rnf x
+    Arr t u -> rnf t `seq` rnf u
     Lam a x -> rnf a `seq` rnf x
     Let a x y -> rnf a `seq` rnf x `seq` rnf y
     Elim xs -> rnf xs
@@ -170,6 +171,7 @@ rec go = \case
   Ctr c -> pure $ Ctr c
   Var v -> pure $ Var v
   App f x -> App <$> go f <*> go x
+  Arr t u -> Arr <$> go t <*> go u
   Lam a x -> Lam a <$> go x
   Let a x y -> Let a <$> go x <*> go y
   Elim xs -> Elim <$> traverse (traverse go) xs
@@ -201,13 +203,11 @@ free g = cataExpr \case
   Ctr c -> pure $ Ctr c
   Var v -> Var <$> g v
   App f x -> App <$> f <*> x
+  Arr t u -> Arr <$> t <*> u
 
 -- }}}
 
 -- Smart constructors {{{
-
-pattern Arr :: HasCtr l => HasArr l => Expr l -> Expr l -> Expr l
-pattern Arr t u = App (App (Ctr "->") t) u
 
 pattern Case :: () => (HasApp l, HasElim l) =>
   Expr l -> [(Ctr, Expr l)] -> Expr l
@@ -314,6 +314,7 @@ pExpr p i = \case
   Var x -> pretty x
   Ctr c -> pretty c
   App f x -> prettyParen (i > 2) $ Pretty.sep [p 2 f, p 3 x]
+  Arr t u -> prettyParen (i > 1) $ Pretty.sep [p 2 t, "->", p 1 u]
   Lam a x -> prettyParen (i > 0) $ "\\" <> pretty a <+> "->" <+> p 0 x
   Let a x y -> "let" <+> pretty a <+> "=" <+> p 0 x <+> "in" <+> p 0 y
   Elim xs -> prettyParen (i > 0) $ "\\case" <+> mconcat
@@ -325,6 +326,9 @@ pExpr p i = \case
 
 type Sugar l ann =
   (Int -> Expr l -> Doc ann) -> Int -> Expr l -> Maybe (Doc ann)
+
+none :: Sugar l ann
+none _ _ _ = Nothing
 
 orTry :: Sugar l ann -> Sugar l ann -> Sugar l ann
 orTry x y p i e = maybe (y p i e) return $ x p i e
@@ -339,11 +343,6 @@ sTerm p i = \case
   Case x xs -> Just . prettyParen (i > 0) $ "case" <+> p 0 x <+> "of" <+>
     mconcat (List.intersperse "; " $ xs <&> \(c, Lams as b) ->
       Pretty.sep (pretty c : fmap pretty as) <+> "->" <+> p 0 b)
-  _ -> Nothing
-
-sArr :: HasCtr l => Sugar l ann
-sArr p i = \case
-  Arr t u -> Just . prettyParen (i > 1) $ Pretty.sep [p 2 t, "->", p 1 u]
   _ -> Nothing
 
 sLit :: HasCtr l => Sugar l ann
@@ -378,7 +377,7 @@ instance Pretty h => Pretty (Term h) where
   pretty = withSugar (sLit `orTry` sTerm)
 
 instance Pretty Mono where
-  pretty = withSugar sArr
+  pretty = withSugar none
 
 instance Pretty Value where
   pretty = withSugar sLit
