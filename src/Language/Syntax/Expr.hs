@@ -81,7 +81,7 @@ data Expr' (r :: Func) (l :: Level) where
   Let  :: HasLet  l v => v -> Rec r l -> Rec r l -> Expr' r l
   Elim :: HasElim l   => [(Ctr, Rec r l)] -> Expr' r l
   Fix  :: HasFix  l   => Expr' r l
-  Prj  :: HasPrj  l   => Ctr -> Int -> Expr' r l
+  Prj  :: HasPrj  l   => Ctr -> Int -> Rec r l -> Expr' r l
 
 data Func' a = Fixed | Base a
   deriving (Eq, Ord, Show, Read)
@@ -159,7 +159,7 @@ instance (Consts NFData l, NFData (Rec r l)) => NFData (Expr' r l) where
     Let a x y -> rnf a `seq` rnf x `seq` rnf y
     Elim xs -> rnf xs
     Fix -> ()
-    Prj c n -> rnf c `seq` rnf n
+    Prj c n e -> rnf c `seq` rnf n `seq` rnf e
 
 -- }}}
 
@@ -176,7 +176,7 @@ rec go = \case
   Let a x y -> Let a <$> go x <*> go y
   Elim xs -> Elim <$> traverse (traverse go) xs
   Fix -> pure Fix
-  Prj c i -> pure $ Prj c i
+  Prj c i e -> Prj c i <$> go e
 
 cataExpr :: (Base c l -> c) -> Expr l -> c
 cataExpr g = g . over rec (cataExpr g)
@@ -320,7 +320,8 @@ pExpr p i = \case
   Elim xs -> prettyParen (i > 0) $ "\\case" <+> mconcat
     (List.intersperse "; " $ xs <&> \(c, b) -> pretty c <+> "->" <+> p 0 b)
   Fix -> "fix"
-  Prj c n -> pretty c <> Pretty.dot <> pretty n
+  Prj c n e -> prettyParen (i > 2) $ Pretty.sep
+    [pretty c <> Pretty.dot <> pretty n, p 3 e]
 
 -- Syntax sugar {{{
 

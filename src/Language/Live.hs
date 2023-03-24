@@ -70,11 +70,6 @@ evalApp f x = case f of
     | Apps (Ctr c) as <- x
     , Just (Lams bs y) <- lookup c xs
     -> eval (Map.fromList (zip bs as) <> m) y
-  -- NOTE: not sure if this is necessary, but simplifying away projections when
-  -- possible leads to more readible unevaluation results.
-  Prj c n -> resume mempty x >>= \case
-    Apps (Ctr d) as | c == d, Just y <- preview (ix (n - 1)) as -> return y
-    _ -> return $ App (Prj c n) x
   r -> return $ App r x
 
 normalizeFilling :: Map Hole (Term Hole) -> Map Hole (Term Hole)
@@ -92,9 +87,11 @@ resume hf = cataExpr \case
     g <- f
     y <- x
     evalApp g y
-  Ctr c   -> return $ Ctr c
-  Fix     -> return Fix
-  Prj c n -> return $ Prj c n
+  Ctr c -> return $ Ctr c
+  Fix   -> return Fix
+  Prj c n e -> e >>= \case
+    Apps (Ctr d) as | c == d, Just y <- preview (ix (n - 1)) as -> return y
+    x -> return $ Prj c n x
   -- Indeterminate results
   Scoped m (Hole h)
     | Just x <- Map.lookup h hf
@@ -174,7 +171,7 @@ uneval = curry \case
   (Apps (Scoped m (Hole h)) (mapM downcast -> Just vs), ex) -> do
     let ex' = foldr (\v -> ExFun . Map.singleton v) ex vs
     return $ constr m h ex'
-  (App (Prj c n) r, ex) -> do
+  (Prj c n r, ex) -> do
     burnFuel
     ar <- ctrArity c
     uneval r . ExCtr c $ replicate ar ExTop & ix (n - 1) .~ ex
@@ -182,7 +179,7 @@ uneval = curry \case
     disj <$> for xs \(c, e) -> do
       ar <- ctrArity c
       scrut <- uneval r . ExCtr c $ replicate ar ExTop
-      let prjs = [App (Prj c n) r | n <- [1..ar]]
+      let prjs = [Prj c n r | n <- [1..ar]]
       e' <- liftEval (eval m e)
       arm <- liftEval (resume mempty (apps e' (prjs ++ rs))) >>= flip uneval ex
       return $ scrut `and` arm
