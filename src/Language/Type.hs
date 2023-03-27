@@ -29,10 +29,9 @@ type Unify = Map Free Mono
 -- they are equivalent.
 unify :: Mono -> Mono -> Maybe Unify
 unify t u = case (t, u) of
-  (App t1 t2, App u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Arr t1 t2, Arr u1 u2) -> unifies [(t1, u1), (t2, u2)]
   (Var  a, Var  b) | a == b -> return Map.empty
-  (Ctr  a, Ctr  b) | a == b -> return Map.empty
+  (Ctr c xs, Ctr d ys) | c == d, length xs == length ys -> unifies (zip xs ys)
   (Var a, _) | occurs a u -> return $ Map.singleton a u
   (_, Var a) | occurs a t -> return $ Map.singleton a t
   _ -> fail "Unification failed"
@@ -66,10 +65,18 @@ infer ts expr = do
     Hole _ -> do
       g <- Var <$> fresh
       return (g, Hole (Goal loc g), Map.empty)
-    Ctr c -> do
+    Ctr c xs -> do
       t <- failMaybe $ Map.lookup c cs
-      u <- instantiateFresh t
-      return (u, Ctr c, Map.empty)
+      Args us u <- instantiateFresh t
+      (vs, ys, th) <-
+        xs & flip foldr (return ([], [], mempty)) \x r -> do
+          (us', xs', th1) <- r
+          (u', x', th2) <- x (subst th1 <$> loc)
+          let th3 = th2 `compose` th1
+          return (u' : us', x' : xs', th3)
+      th' <- failMaybe . unifies $ zip (subst th <$> us) vs
+      let th'' = th' `compose` th
+      return (subst th'' u, Ctr c ys, th'')
     Var a | Just p <- Map.lookup a loc -> do
       t <- instantiateFresh p
       return (t, Var a, Map.empty)

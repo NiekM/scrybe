@@ -17,14 +17,13 @@ instance Arbitrary Mono where
     where
       arg = do
         n <- frequency [(5, return 0), (2, return 1), (1, return 2)]
-        apps
-          <$> oneof
-            [ Ctr . MkCtr . (<> fromString (show n)) <$>
-              elements ["A", "B", "C"]
-            , Var . MkFree . (<> fromString (show n)) <$>
-              elements ["a", "b", "c"]
-            ]
-          <*> vectorOf n arg
+        xs <- vectorOf n arg
+        oneof
+          [ do
+            c <- MkCtr . (<> fromString (show n)) <$> elements ["A", "B", "C"]
+            pure $ Ctr c xs
+          , Var . MkFree <$> elements ["a", "b", "c"]
+          ]
 
 spec :: Spec
 spec = do

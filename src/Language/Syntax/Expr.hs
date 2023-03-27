@@ -4,7 +4,7 @@ module Language.Syntax.Expr
   ( Level'(..)
   , Expr'(.., Arrs, Args, Case, Lets, Apps, Lams, Top, Scoped)
   , Expr, Mono, Term, Result, Value, Example, Indet
-  , Hole', HasHole, HasVar, HasCtr, HasApp
+  , Hole', HasHole, HasVar, HasCtr, HasApp, HasArr
   , apps, lams, arrs
   , rec, fixExpr, cataExpr
   , holes, holes', free, freeVars, extract
@@ -73,7 +73,7 @@ type HasLet  l v = (HAS 'LET l, Var' l ~ 'Just v)
 --
 data Expr' (r :: Func) (l :: Level) where
   Hole :: HasHole l h => h -> Expr' r l
-  Ctr  :: HasCtr  l   => Ctr -> Expr' r l
+  Ctr  :: HasCtr  l   => Ctr -> [Rec r l] -> Expr' r l
   Var  :: HasVar  l v => v -> Expr' r l
   App  :: HasApp  l   => Rec r l -> Rec r l -> Expr' r l
   Arr  :: HasArr  l   => Rec r l -> Rec r l -> Expr' r l
@@ -99,7 +99,7 @@ type Base a = Expr' ('Base a)
 type Mono = Expr 'Type
 instance IsExpr 'Type where
   type Var'  'Type = 'Just Free
-  type Ctrs' 'Type = ['VAR, 'CTR, 'APP, 'ARR]
+  type Ctrs' 'Type = ['VAR, 'CTR, 'ARR]
 
 -- | Term level expressions generic in the hole type.
 type Term h = Expr ('Term h)
@@ -128,7 +128,7 @@ type Scope = Map Var Result
 -- | Values are concrete results, consisting of just constructors.
 type Value = Expr 'Value
 instance IsExpr 'Value where
-  type Ctrs' 'Value = ['CTR, 'APP]
+  type Ctrs' 'Value = '[ 'CTR ]
 
 -- | Examples represent the expected input-output behaviour of a single
 -- execution. Holes represent wildcards (unconstraint output) and variables
@@ -151,7 +151,7 @@ deriving instance (Consts Show l, Show (Rec r l)) => Show (Expr' r l)
 instance (Consts NFData l, NFData (Rec r l)) => NFData (Expr' r l) where
   rnf = \case
     Hole h -> rnf h
-    Ctr c -> rnf c
+    Ctr c xs -> rnf c `seq` rnf xs
     Var v -> rnf v
     App f x -> rnf f `seq` rnf x
     Arr t u -> rnf t `seq` rnf u
@@ -168,7 +168,7 @@ instance (Consts NFData l, NFData (Rec r l)) => NFData (Expr' r l) where
 rec :: Traversal (Expr' r l) (Expr' r' l) (Rec r l) (Rec r' l)
 rec go = \case
   Hole h -> pure $ Hole h
-  Ctr c -> pure $ Ctr c
+  Ctr c xs -> Ctr c <$> traverse go xs
   Var v -> pure $ Var v
   App f x -> App <$> go f <*> go x
   Arr t u -> Arr <$> go t <*> go u
@@ -187,7 +187,7 @@ fixExpr = over rec id
 holes' :: Traversal (Expr ('Term h)) (Expr ('Term h')) h (Expr ('Term h'))
 holes' g = cataExpr \case
   Hole h -> g h
-  Ctr c -> pure $ Ctr c
+  Ctr c xs -> Ctr c <$> sequenceA xs
   Var v -> pure $ Var v
   App f x -> App <$> f <*> x
   Lam a x -> Lam a <$> x
@@ -200,9 +200,8 @@ holes = holes' . fmap (fmap Hole)
 
 free :: Traversal' Mono Free
 free g = cataExpr \case
-  Ctr c -> pure $ Ctr c
+  Ctr c xs -> Ctr c <$> sequenceA xs
   Var v -> Var <$> g v
-  App f x -> App <$> f <*> x
   Arr t u -> Arr <$> t <*> u
 
 -- }}}
@@ -265,26 +264,26 @@ unLams = \case
 pattern Lams :: HasLam l v => [v] -> Expr l -> Expr l
 pattern Lams as x <- (unLams -> (as, x))
 
-nat :: (HasCtr l, HasApp l) => Int -> Expr l
-nat 0 = Ctr "Zero"
-nat n = App (Ctr "Succ") (nat $ n - 1)
+nat :: HasCtr l => Int -> Expr l
+nat 0 = Ctr "Zero" []
+nat n = Ctr "Succ" [nat $ n - 1]
 
 unNat :: HasCtr l => Expr l -> Maybe Int
 unNat = \case
-  Ctr "Zero" -> Just 0
-  App (Ctr "Succ") n -> (1+) <$> unNat n
+  Ctr "Zero" [] -> Just 0
+  Ctr "Succ" [n] -> (1+) <$> unNat n
   _ -> Nothing
 
 pattern Nat :: HasCtr l => Int -> Expr l
 pattern Nat n <- (unNat -> Just n)
 
-list :: (HasCtr l, HasApp l) => [Expr l] -> Expr l
-list = foldr (\x y -> apps (Ctr "Cons") [x, y]) (Ctr "Nil")
+list :: HasCtr l => [Expr l] -> Expr l
+list = foldr (\x y -> Ctr "Cons" [x, y]) (Ctr "Nil" [])
 
 unList :: HasCtr l => Expr l -> Maybe [Expr l]
 unList = \case
-  Ctr "Nil" -> Just []
-  Apps (Ctr "Cons") [x, xs] -> (x:) <$> unList xs
+  Ctr "Nil" [] -> Just []
+  Ctr "Cons" [x, xs] -> (x:) <$> unList xs
   _ -> Nothing
 
 pattern List :: HasCtr l => [Expr l] -> Expr l
@@ -312,7 +311,8 @@ pExpr :: Consts Pretty l =>
 pExpr p i = \case
   Hole h -> Pretty.braces $ pretty h
   Var x -> pretty x
-  Ctr c -> pretty c
+  Ctr c [] -> pretty c
+  Ctr c xs -> prettyParen (i > 2) $ Pretty.sep (pretty c : fmap (p 3) xs)
   App f x -> prettyParen (i > 2) $ Pretty.sep [p 2 f, p 3 x]
   Arr t u -> prettyParen (i > 1) $ Pretty.sep [p 2 t, "->", p 1 u]
   Lam a x -> prettyParen (i > 0) $ "\\" <> pretty a <+> "->" <+> p 0 x

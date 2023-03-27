@@ -118,6 +118,7 @@ init defs = do
 
 step :: Fillings -> Synth ()
 step hf = do
+
   (m, hole) <- findBlocking
   expr      <- refinements hole
 
@@ -172,7 +173,11 @@ refinements h = do
   Args ts u <- zoom freshFree $ instantiateFresh p
   th        <- mfold $ unify u t
 
-  let expr  =  apps fun (Hole . Goal ctx <$> ts)
+  let
+    args = Hole . Goal ctx <$> ts
+    expr = case fun of
+      Left f -> apps (Var f) args
+      Right c -> Ctr c args
   expanded  <- zoom freshVar  $ expand expr
   (e, ctx') <- zoom freshHole $ extract expanded
 
@@ -233,7 +238,7 @@ checkAsserts env defs = for_ (asserts defs)
     guard $ length vals == length ts
     let
       res = ex & cataExpr \case
-        Ctr c -> Ctr c
+        Ctr c xs -> Ctr c xs
         Hole h -> Hole h
         App f x -> App f x
         Lam _ _ -> error "Should never happen"
@@ -258,18 +263,18 @@ addLam = do
   weigh @Dist $ fromIntegral n
   modifying lamCount (+1)
 
-choices :: Goal -> Synth (Term Goal, Poly)
+choices :: Goal -> Synth (Either Var Ctr, Poly)
 choices (Goal ctx t) = do
   ds <- view envDatatypes
   fs <- use included
   mfold $ join
     [ case t of
-        Apps (Ctr d) _ | Just (as, cs) <- Map.lookup d ds -> do
+        Ctr d _ | Just (as, cs) <- Map.lookup d ds -> do
           (c, ts) <- cs
-          return (Ctr c, Poly as . arrs $ ts ++ [apps (Ctr d) (Var <$> as)])
+          return (Right c, Poly as . arrs $ ts ++ [Ctr d (Var <$> as)])
         _ -> []
-    , first Var <$> Map.assocs ctx
-    , first Var <$> fs
+    , first Left <$> Map.assocs ctx
+    , first Left <$> fs
     ]
 
 checkForbidden :: Hole -> Term Hole -> Forbidden -> Possibly Forbidden

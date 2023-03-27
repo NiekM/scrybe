@@ -64,7 +64,7 @@ instance Pretty Datatype where
   pretty (MkDatatype d as cs) =
     "data" <+> sep (pretty d : fmap pretty as) <+>
       ( align . sep . zipWith (<+>) ("=" : List.repeat "|")
-      $ cs <&> \(c, xs) -> pretty (apps (Ctr c) xs)
+      $ cs <&> \(c, xs) -> pretty (Ctr c xs :: Mono)
       )
 
 instance Pretty Signature where
@@ -150,7 +150,7 @@ fromDefs defs = forbEnv
       & over envDatatypes (Map.insert t (as, cs))
       & over envConstructors (Map.union cs')
       where
-        t' = apps (Ctr t) (Var <$> as)
+        t' = Ctr t (Var <$> as)
         cs' = Map.fromList cs <&> \ts -> Poly as $ arrs $ ts ++ [t']
 
     fromBind :: Env -> Binding Void -> Env

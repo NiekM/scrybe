@@ -163,11 +163,10 @@ instance Parse Free where
 class ParseAtom l where
   parseAtom :: Parser (Expr l)
 
-parseNat :: (HasCtr l, HasApp l) => Parser (Expr l)
+parseNat :: HasCtr l => Parser (Expr l)
 parseNat = nat <$> int
 
-parseList :: (HasCtr l, HasApp l) =>
-  Parser (Expr l) -> Parser (Expr l)
+parseList :: HasCtr l => Parser (Expr l) -> Parser (Expr l)
 parseList p = list <$> brackets Square (alt p (sep ","))
 
 parseBranch :: Parse h => Parser (Ctr, Term h)
@@ -196,7 +195,7 @@ instance Parse h => ParseAtom ('Term h) where
     , Hole <$> brackets Curly parser
     , Hole <$ single Underscore <*> parser
     , Var <$> parser
-    , Ctr <$> parser
+    , flip Ctr [] <$> parser
     , Fix <$ key "fix"
     , parseNat
     , parseList parser
@@ -205,12 +204,12 @@ instance Parse h => ParseAtom ('Term h) where
 instance ParseAtom 'Type where
   parseAtom = choice
     [ Var <$> parser
-    , Ctr <$> parser
+    , flip Ctr [] <$> parser
     ]
 
 instance ParseAtom 'Value where
   parseAtom = choice
-    [ Ctr <$> parser
+    [ flip Ctr [] <$> parser
     , parseNat
     , parseList parser
     ]
@@ -221,24 +220,38 @@ instance ParseAtom 'Example where
       <* op "->" <*> parser
     , Hole <$> brackets Curly parser
     , Hole <$ single Underscore <*> parser
-    , Ctr <$> parser
+    , flip Ctr [] <$> parser
     , parseNat
     , parseList parser
     ]
 
-parseApps :: (May Parse (Hole' l), HasApp l, ParseAtom l)
+-- TODO: we can do the parsing much nicer
+parseApps :: (May Parse (Hole' l), HasApp l, HasCtr l, ParseAtom l)
   => Parser (Expr l)
-parseApps = apps <$> atom <*> many atom
-  where atom = brackets Round parseApps <|> parseAtom
+parseApps = apps' <$> atom <*> many atom
+  where
+    apps' :: HasApp l => Expr l -> [Expr l] -> Expr l
+    apps' f xs = case f of
+      Ctr c [] -> Ctr c xs
+      _ -> apps f xs
+    atom = brackets Round parseApps <|> parseAtom
 
 instance Parse h => Parse (Term h) where
   parser = parseApps
 
+parseArrs :: HasArr l => Parser (Expr l) -> Parser (Expr l)
+parseArrs p = arrs <$> alt1 p' (op "->") <|> p'
+  where p' = brackets Round (parseArrs p) <|> p
+
 instance Parse Mono where
-  parser = arrs <$> alt1 (brackets Round parser <|> parseApps) (op "->")
+  parser = parseArrs (parseCtrs parseAtom)
+
+parseCtrs :: HasCtr l => Parser (Expr l) -> Parser (Expr l)
+parseCtrs p = Ctr <$> parser <*> many p' <|> p'
+  where p' = brackets Round (parseCtrs p) <|> p
 
 instance Parse Value where
-  parser = parseApps
+  parser = parseCtrs parseAtom
 
 instance Parse Example where
   parser = parseApps

@@ -66,17 +66,17 @@ instance Subst Goal where
 -- constructors of the same name.
 freeze :: Poly -> Mono
 freeze (Poly as t) = flip cataExpr t \case
-  Var v | v `elem` as, MkFree c <- v -> Ctr (MkCtr c)
+  Var v | v `elem` as, MkFree c <- v -> Ctr (MkCtr c) []
   e -> fixExpr e
 
 freezeUnbound :: Poly -> Poly
 freezeUnbound (Poly as t) = Poly as $ flip cataExpr t \case
-  Var v | v `notElem` as, MkFree c <- v -> Ctr (MkCtr c)
+  Var v | v `notElem` as, MkFree c <- v -> Ctr (MkCtr c) []
   e -> fixExpr e
 
 freezeAll :: Mono -> Mono
 freezeAll = cataExpr \case
-  Var (MkFree c) -> Ctr (MkCtr c)
+  Var (MkFree c) -> Ctr (MkCtr c) []
   e -> fixExpr e
 
 -- TODO: instantiation should also be able to introduce new type variables,
@@ -101,5 +101,6 @@ instantiateFresh p = do
 -- | The number of applications in a type.
 typeSize :: Mono -> Int
 typeSize = cataExpr \case
-  App f a -> 1 + f + a
+  Arr f a -> 1 + f + a
+  Ctr _ xs -> 1 + sum xs
   _ -> 0

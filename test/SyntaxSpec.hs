@@ -15,8 +15,8 @@ import qualified RIO.Map as Map
 instance Arbitrary Value where
   arbitrary = do
     n <- frequency [(5, return 0), (2, return 1), (1, return 2)]
-    apps
-      <$> (Ctr . MkCtr . (<> fromString (show n)) <$> elements ["A", "B", "C"])
+    Ctr
+      <$> (MkCtr . (<> fromString (show n)) <$> elements ["A", "B", "C"])
       <*> vector n
 
 instance Arbitrary Example where
@@ -26,8 +26,8 @@ instance Arbitrary Example where
     where
       output = do
         n <- frequency [(5, return 0), (2, return 1), (1, return 2)]
-        apps
-          <$> (Ctr . MkCtr . (<> fromString (show n)) <$>
+        Ctr
+          <$> (MkCtr . (<> fromString (show n)) <$>
             elements ["A", "B", "C"])
           <*> vectorOf n (oneof [output, return $ Hole Unit])
 

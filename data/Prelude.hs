@@ -101,6 +101,9 @@ elimMaybe n j m = case m of
 
 data Nat = Zero | Succ Nat
 
+succ :: Nat -> Nat
+succ n = Succ n
+
 {-# FORBID elimNat _ _ 0 #-}
 {-# FORBID elimNat _ _ (Succ _) #-}
 
@@ -149,7 +152,7 @@ odd = foldlNat not False
 {-# FORBID plus _ (Succ _) #-}
 
 plus :: Nat -> Nat -> Nat
-plus n = foldrNat n Succ
+plus n = foldrNat n succ
 
 {-# FORBID mult _ 1 #-}
 {-# FORBID mult 1 _ #-}
@@ -214,6 +217,9 @@ double n = case n of
 -- || Lists
 
 data List a = Nil | Cons a (List a)
+
+cons :: a -> List a -> List a
+cons x xs = Cons x xs
 
 {-# FORBID elimList _ _ [] #-}
 {-# FORBID elimList _ _ (Cons _ _) #-}
@@ -283,7 +289,7 @@ foldl f acc l = case l of
 {-# FORBID map _ (map _ _) #-}
 
 map :: (a -> b) -> List a -> List b
-map f = foldr (\x -> Cons (f x)) []
+map f = foldr (\x -> cons (f x)) []
 
 {-# FORBID filter _ Nil #-}
 {-# FORBID filter _ (Cons _ _) #-}
@@ -299,13 +305,13 @@ filter p = foldr (\x r -> elimBool r (Cons x r) (p x)) []
 {-# FORBID append (Cons _ _) _ #-}
 
 append :: List a -> List a -> List a
-append xs ys = foldr Cons ys xs
+append xs ys = foldr cons ys xs
 
 {-# FORBID snoc Nil _ #-}
 {-# FORBID snoc (Cons _ _) _ #-}
 
 snoc :: List a -> a -> List a
-snoc xs x = foldr Cons [x] xs
+snoc xs x = foldr cons [x] xs
 
 {-# FORBID reverse (reverse _) #-}
 
@@ -411,7 +417,7 @@ eqList :: List Nat -> List Nat -> Bool
 eqList = foldr (\x r -> elimList False (\y ys -> and (eq x y) (r ys))) (elimList True (\y ys -> False))
 
 replicate :: Nat -> a -> List a
-replicate n x = foldrNat [] (Cons x) n
+replicate n x = foldrNat [] (cons x) n
 
 dupli :: List a -> List a
 dupli = concatMap (replicate 2)

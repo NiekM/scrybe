@@ -26,15 +26,12 @@ eta (Goal ctx (Args ts u)) = do
 expand :: MonadState (Fresh Var) m => Term Goal -> m (Term Goal)
 expand x = forOf holes' x eta
 
-upcast :: (HasCtr l, HasApp l) => Value -> Expr l
-upcast = cataExpr \case
-  Ctr c -> Ctr c
-  App f x -> App f x
+upcast :: HasCtr l => Value -> Expr l
+upcast = cataExpr \(Ctr c xs) -> Ctr c xs
 
 downcast :: Expr l -> Maybe Value
 downcast = cataExpr \case
-  Ctr c -> return $ Ctr c
-  App f x -> liftM2 App f x
+  Ctr c xs -> Ctr c <$> sequence xs
   _ -> Nothing
 
 match :: Term Hole -> Term Unit -> Maybe (Map Hole (Term Unit))
@@ -42,17 +39,10 @@ match = curry \case
   (_, Hole _) -> Just mempty
   (Hole h, e) -> Just $ Map.singleton h e
   (Var x, Var y) | x == y -> Just mempty
-  (Ctr c, Ctr d) | c == d -> Just mempty
+  (Ctr c xs, Ctr d ys) | c == d -> Map.unions <$> zipWithM match xs ys
   (App f x, App g y) -> liftM2 (<>) (match f g) (match x y)
   (Lam a x, Lam b y) -> match x (replace (Map.singleton b $ Var a) y)
   _ -> Nothing
-
-consistent :: Value -> Example -> Bool
-consistent = curry \case
-  (_, Hole _) -> True
-  (Ctr c, Ctr d) -> c == d
-  (App f x, App g y) -> consistent f g && consistent x y
-  _ -> False
 
 -- Merged examples {{{
 
@@ -78,7 +68,7 @@ instance PartialMonoid Ex where
 toEx :: Example -> Ex
 toEx = \case
   Top -> ExTop
-  Apps (Ctr c) xs -> ExCtr c (toEx <$> xs)
+  Ctr c xs -> ExCtr c (toEx <$> xs)
   Lam v x -> ExFun (Map.singleton v $ toEx x)
   _ -> error "Incorrect example"
 
@@ -88,7 +78,7 @@ fromExamples = pfoldMap' toEx
 fromEx :: Ex -> [Example]
 fromEx = \case
   ExTop -> [Top]
-  ExCtr c xs -> apps (Ctr c) <$> for xs fromEx
+  ExCtr c xs -> Ctr c <$> for xs fromEx
   ExFun fs -> Map.assocs fs >>= \(v, x) -> Lam v <$> fromEx x
 
 instance Pretty Ex where

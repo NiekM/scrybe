@@ -56,7 +56,7 @@ eval loc = \case
   Let a x y -> do
     x' <- eval loc x
     eval (Map.insert a x' loc) y
-  Ctr c -> return $ Ctr c
+  Ctr c xs -> Ctr c <$> traverse (eval loc) xs
   Fix -> return Fix
   -- Indeterminate results
   Indet i -> return $ Scoped loc i
@@ -67,7 +67,7 @@ evalApp f x = case f of
     evalApp (Scoped (Map.insert g f m) e) x
   Scoped m (Lam a y) -> eval (Map.insert a x m) y
   Scoped m (Elim xs)
-    | Apps (Ctr c) as <- x
+    | Ctr c as <- x
     , Just (Lams bs y) <- lookup c xs
     -> eval (Map.fromList (zip bs as) <> m) y
   r -> return $ App r x
@@ -87,10 +87,10 @@ resume hf = cataExpr \case
     g <- f
     y <- x
     evalApp g y
-  Ctr c -> return $ Ctr c
+  Ctr c xs -> Ctr c <$> sequenceA xs
   Fix   -> return Fix
   Prj c n e -> e >>= \case
-    Apps (Ctr d) as | c == d, Just y <- preview (ix (n - 1)) as -> return y
+    Ctr d as | c == d, Just y <- preview (ix (n - 1)) as -> return y
     x -> return $ Prj c n x
   -- Indeterminate results
   Scoped m (Hole h)
@@ -104,6 +104,7 @@ blocking :: Result -> Maybe (Scope, Hole)
 blocking = cataExpr \case
   Scoped m (Hole h) -> Just (m, h)
   App f x -> f <|> x
+  Ctr _ xs -> foldr (<|>) Nothing xs
   _ -> Nothing
 
 scrutinizedHole :: Result -> Maybe Hole
@@ -112,6 +113,7 @@ scrutinizedHole = \case
     | Just (_, h) <- blocking r
     -> Just h
   App f x -> scrutinizedHole f <|> scrutinizedHole x
+  Ctr _ xs -> foldr (<|>) Nothing (scrutinizedHole <$> xs)
   _ -> Nothing
 
 recVar :: Var -> Scope -> Bool
@@ -159,10 +161,7 @@ uneval = curry \case
   (_, ExTop) -> return top
   -- Constructors are handled as opaque functions and their unevaluation is
   -- extensional in the sense that only their arguments are compared.
-  (r@(Apps (Ctr _) _), ExFun ys)
-    -> conj <$> for (Map.assocs ys) \(v, ex) ->
-      uneval (App r (upcast v)) ex
-  (Apps (Ctr c) xs, ExCtr d ys)
+  (Ctr c xs, ExCtr d ys)
     | c == d, length xs == length ys
     -> conj <$> zipWithM uneval xs ys
   -- Holes are simply added to the environment, with their arguments as inputs.
