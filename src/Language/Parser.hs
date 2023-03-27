@@ -2,7 +2,7 @@ module Language.Parser (Parse(..), lexParse) where
 
 import Import hiding (some, many, lift, bracket)
 import RIO.Partial (read)
-import Language.Syntax
+import Language.Syntax hiding (Position)
 import Language.Defs
 import Text.Megaparsec
 import Text.Megaparsec.Char

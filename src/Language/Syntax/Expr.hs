@@ -3,7 +3,7 @@
 module Language.Syntax.Expr
   ( Level'(..)
   , Expr'(.., Arrs, Args, Case, Lets, Apps, Lams, Top, Scoped)
-  , Expr, Mono, Term, Result, Value, Example, Indet
+  , Expr, Mono, Term, Result, Value, Example, Indet, Position
   , Hole', HasHole, HasVar, HasCtr, HasApp, HasArr
   , apps, lams, arrs
   , rec, fixExpr, cataExpr
@@ -11,6 +11,7 @@ module Language.Syntax.Expr
   , fill, replace, holeFree, magic
   , Scope
   , nat, list
+  , index
   ) where
 
 import RIO
@@ -33,6 +34,7 @@ data Level' a
   | Ind     -- ^ Indeterminate results
   | Value   -- ^ Concrete values
   | Example -- ^ Input-output examples
+  | Pos     -- ^ Position in input constraints
   deriving (Eq, Ord, Show, Read)
 
 type Level = Level' Type
@@ -138,6 +140,14 @@ instance IsExpr 'Example where
   type Hole' 'Example = 'Just Unit
   type Var'  'Example = 'Just Value
   type Ctrs' 'Example = ['CTR, 'APP, 'LAM]
+
+-- | Examples represent the expected input-output behaviour of a single
+-- execution. Holes represent wildcards (unconstraint output) and variables
+-- are used to represent concrete input values.
+type Position = Expr 'Pos
+instance IsExpr 'Pos where
+  type Var'  'Pos = 'Just Var
+  type Ctrs' 'Pos = ['VAR, 'PRJ]
 
 -- Instances {{{
 
@@ -297,6 +307,23 @@ pattern Top = Hole Unit
 pattern Scoped :: Scope -> Indet -> Expr' r 'Det
 pattern Scoped m e = Hole (m, e)
 
+index :: HasPrj l => Int -> Expr l -> Expr l
+index 0 = Prj "Cons" 0
+index n = index (n - 1) . Prj "Cons" 1
+
+unIndex :: Expr l -> Maybe (Int, Expr l)
+unIndex = \case
+  Prj "Cons" 0 e -> go 0 e
+  _ -> Nothing
+  where
+    go :: Int -> Expr l -> Maybe (Int, Expr l)
+    go n = \case
+      Prj "Cons" 1 e -> go (n + 1) e
+      e -> Just (n, e)
+
+pattern Index :: Int -> Expr l -> Expr l
+pattern Index n e <- (unIndex -> Just (n, e))
+
 -- }}}
 
 -- Pretty printing {{{
@@ -365,6 +392,11 @@ sExample p i = \case
     "\\" <> Pretty.sep (withSugarPrec sLit 3 <$> v:vs) <+> "->" <+> p 0 x
   _ -> Nothing
 
+sIndex :: Sugar l ann
+sIndex p i = \case
+  Index n e -> Just (p i e <> Pretty.dot <> pretty n)
+  _ -> Nothing
+
 withSugarPrec :: Consts Pretty l => Sugar l ann -> Int -> Expr l -> Doc ann
 withSugarPrec s n t = fromMaybe (pExpr go n t) (s go n t)
   where go = withSugarPrec s
@@ -388,6 +420,9 @@ instance Pretty Example where
 
 instance Pretty Result where
   pretty = withSugar (sLit `orTry` sRes)
+
+instance Pretty Position where
+  pretty = withSugar sIndex
 
 instance (Pretty a, Consts Pretty l) => Pretty (Base a l) where
   pretty = pExpr (const pretty) 0
