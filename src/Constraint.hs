@@ -76,14 +76,16 @@ checkNorm (Norm as xs) = do
   return $ Norm as $ m <&> \(is, (o, ps)) -> (InOut is o, ps)
 
 instance Pretty InOut where
-  pretty (InOut is o) = Pretty.hsep (pretty <$> is) <+> "->" <+> pretty o
+  pretty (InOut is o) =
+    Pretty.hsep (prettyValuePrec 3 <$> is) <+> "->" <+> pretty o
 
 instance Pretty Cstr where
-  pretty (Cstr as xs) =
-    Pretty.vsep (Pretty.hsep (pretty <$> as) : fmap pretty xs)
+  pretty (Cstr as xs) = Pretty.align . Pretty.vsep $
+    Pretty.hsep (pretty <$> as) : fmap pretty xs
 
 instance Pretty Norm where
-  pretty (Norm as xs) = Pretty.vsep (Pretty.hsep (pretty <$> as) : fmap p xs)
+  pretty (Norm as xs) = Pretty.align . Pretty.vsep $
+    Pretty.hsep (pretty <$> as) : fmap p xs
     where p (io, ps) = pretty io <+> Pretty.list (pretty <$> ps)
 
 -- TODO: how to represent recursive constraints?

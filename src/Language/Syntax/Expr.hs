@@ -12,6 +12,7 @@ module Language.Syntax.Expr
   , Scope
   , nat, list
   , index
+  , prettyValuePrec
   ) where
 
 import RIO
@@ -411,6 +412,9 @@ instance Pretty h => Pretty (Term h) where
 
 instance Pretty Mono where
   pretty = withSugar none
+
+prettyValuePrec :: Int -> Value -> Doc ann
+prettyValuePrec = withSugarPrec sLit
 
 instance Pretty Value where
   pretty = withSugar sLit

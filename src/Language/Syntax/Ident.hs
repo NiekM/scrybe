@@ -21,3 +21,9 @@ newtype Var = MkVar Text
 newtype Ctr = MkCtr Text
   deriving stock (Eq, Ord, Read, Show)
   deriving newtype (IsString, Pretty, NFData)
+
+-- Unification variables
+newtype Uni = MkUni Text
+  deriving stock (Eq, Ord, Read, Show)
+  deriving newtype (IsString, Pretty, NFData)
+  deriving Count via TextVar "*"
