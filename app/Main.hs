@@ -51,6 +51,26 @@ runApp run = do
             <> value True
             <> help "Whether to prune using example propagation"
             )
+          <*> option auto
+            ( long "parametric"
+            <> value True
+            <> help "Whether to use parametric reasoning"
+            )
+          <*> option auto
+            ( long "partial"
+            <> value True
+            <> help "Whether to allow partial solutions"
+            )
+          <*> option auto
+            ( long "fuel"
+            <> value 32
+            <> help "The amount of fuel used for example propagation"
+            )
+          <*> option auto
+            ( long "disjunctions"
+            <> value 32
+            <> help "The amount of disjunctions allowed in constraints"
+            )
         )
       addCommand "live" "Live evaluate an expression" Live $
         strArgument ( metavar "EXPR"

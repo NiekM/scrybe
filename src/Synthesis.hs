@@ -4,7 +4,9 @@ module Synthesis (synth, runSynth, Fillings) where
 
 import Import
 import Data.List (unzip)
-import Options (SynOptions(..), synPropagate)
+import Options
+  ( SynOptions(..)
+  , synPropagate, synParametric, synPartial, synFuel, synDisjunctions)
 import Utils.Weighted
 import Language
 import Constraint
@@ -54,12 +56,6 @@ liftUneval fuel x = ask <&> \e -> view _1 <$> runRWST x e fuel
 
 -- Options {{{
 
-unevalFuel :: Int
-unevalFuel = 32
-
-maxDisjunctions :: Int
-maxDisjunctions = 32
-
 noFuelWeight :: Dist
 noFuelWeight = 1
 
@@ -76,22 +72,23 @@ synth d = do
   where
     go :: Synth Fillings
     go = do
-      st <- get
-      if final st
+      done <- final
+      if done
         then use fillings
         else step mempty >> go
 
-final :: SynState -> Bool
--- final = _noHoles
-final = noConstraints
+final :: Synth Bool
+final = do
+  partial <- use $ options . synPartial
+  if partial then noConstraints else noHoles
 
-noConstraints :: SynState -> Bool
-noConstraints s = case view constraints s of
+noConstraints :: Synth Bool
+noConstraints = use constraints <&> \case
   Disjunction [Pure x] | null x -> True
   _ -> False
 
-_noHoles :: SynState -> Bool
-_noHoles = null . view contexts
+noHoles :: Synth Bool
+noHoles = use contexts <&> null
 
 init :: Defs Unit -> Synth (Term Hole)
 init defs = do
@@ -137,6 +134,8 @@ step hf = do
   cs <- use constraints
   ctxs <- use contexts
   propagate <- use $ options . synPropagate
+  unevalFuel <- use $ options . synFuel
+  maxDisjunctions <- use $ options . synDisjunctions
 
   let hf' = hf <> new
 
@@ -280,7 +279,7 @@ joinCstrs (Cstr as xs : cs) = Cstr as (xs ++ concatMap io cs)
 
 updateConstraints :: [[Constraints]] -> Synth ()
 updateConstraints xs = do
-  let parametric = True
+  parametric <- use $ options . synParametric
   let ys = nubOrd (mapMaybe mergeConstraints xs)
   if
     | null xs -> fail "No possible constraints"

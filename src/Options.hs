@@ -17,14 +17,15 @@ makeLenses ''Options
 class HasOptions env where
   optionsL :: Lens' env Options
 
-newtype SynOptions = SynOptions
+data SynOptions = SynOptions
   { _synPropagate :: Bool
+  , _synParametric :: Bool
+  , _synPartial :: Bool
+  , _synFuel :: Int
+  , _synDisjunctions :: Int
   }
 
 makeLenses ''SynOptions
-
-defaultOptions :: SynOptions
-defaultOptions = SynOptions True
 
 data Command
   = Synth String SynOptions
