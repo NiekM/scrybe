@@ -21,11 +21,15 @@ data SynOptions = SynOptions
   { _synPropagate :: Bool
   , _synParametric :: Bool
   , _synPartial :: Bool
+  , _synNormalize :: Bool
   , _synFuel :: Int
   , _synDisjunctions :: Int
   }
 
 makeLenses ''SynOptions
+
+defaultOptions :: SynOptions
+defaultOptions = SynOptions True True True True 32 32
 
 data Command
   = Synth String SynOptions

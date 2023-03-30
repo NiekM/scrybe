@@ -6,7 +6,8 @@ import Import
 import Data.List (unzip)
 import Options
   ( SynOptions(..)
-  , synPropagate, synParametric, synPartial, synFuel, synDisjunctions)
+  , synPropagate, synParametric, synPartial, synNormalize
+  , synFuel, synDisjunctions)
 import Utils.Weighted
 import Language
 import Constraint
@@ -192,7 +193,8 @@ refinements h = do
   -- Each new lambda weighs more
   for_ ts \(Args as _) -> for_ as $ const addLam
 
-  updateForbidden h e
+  normalize <- use $ options . synNormalize
+  when normalize $ updateForbidden h e
 
   return e
 

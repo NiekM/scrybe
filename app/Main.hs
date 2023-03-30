@@ -62,6 +62,11 @@ runApp run = do
             <> help "Whether to allow partial solutions"
             )
           <*> option auto
+            ( long "normalize"
+            <> value True
+            <> help "Whether to ignore expressions not in normal form"
+            )
+          <*> option auto
             ( long "fuel"
             <> value 32
             <> help "The amount of fuel used for example propagation"
