@@ -5,9 +5,6 @@ module Synthesis (synth, runSynth, Fillings) where
 import Import
 import Data.List (unzip)
 import Options
-  ( SynOptions(..)
-  , synPropagate, synParametric, synPartial, synNormalize
-  , synFuel, synDisjunctions)
 import Utils.Weighted
 import Language
 import Constraint
@@ -79,17 +76,11 @@ synth d = do
         else step mempty >> go
 
 final :: Synth Bool
-final = do
-  partial <- use $ options . synPartial
-  if partial then noConstraints else noHoles
-
-noConstraints :: Synth Bool
-noConstraints = use constraints <&> \case
-  Disjunction [Pure x] | null x -> True
-  _ -> False
-
-noHoles :: Synth Bool
-noHoles = use contexts <&> null
+final = use (options . synFinal) >>= \case
+  NoHoles -> use contexts <&> null
+  NoConstraints -> use constraints <&> \case
+    Disjunction [Pure x] | null x -> True
+    _ -> False
 
 init :: Defs Unit -> Synth (Term Hole)
 init defs = do
@@ -198,6 +189,8 @@ refinements h = do
 
   return e
 
+-- Preprocess {{{
+
 checkIncluded :: Defs Unit -> Infer [(Var, Poly)]
 checkIncluded defs = do
   let fs = [x | Include xs <- pragmas defs, x <- toList xs]
@@ -247,6 +240,10 @@ checkAsserts env defs = for_ (asserts defs)
         Lam _ _ -> error "Should never happen"
     checks env $ (res, t) : zip (upcast <$> vals) ts
 
+-- }}}
+
+-- Parametric reasoning {{{
+
 type Simple = RWST () [(Hole, Cstr)] (Fresh Uni) Maybe
 
 recover :: [(Hole, cstr)] -> Map Hole [cstr]
@@ -278,6 +275,8 @@ joinCstrs :: [Cstr] -> Cstr
 joinCstrs [] = error "Oopsie woopsie"
 joinCstrs (Cstr as xs : cs) = Cstr as (xs ++ concatMap io cs)
   where io (Cstr _ ys) = ys
+
+-- }}}
 
 updateConstraints :: [[Constraints]] -> Synth ()
 updateConstraints xs = do
@@ -331,6 +330,8 @@ choices (Goal ctx t) = do
     , first Left <$> fs
     ]
 
+-- Normalization {{{
+
 checkForbidden :: Hole -> Term Hole -> Forbidden -> Possibly Forbidden
 checkForbidden h e old = case Map.lookup h old of
   Nothing -> Perhaps old
@@ -347,3 +348,5 @@ updateForbidden h e = do
   upd <- mfold . possibly $ checkForbidden h e <$> old
   new <- mapMaybe (match e) . view envForbidden <$> ask
   assign forbidden $ upd <> new
+
+-- }}}

@@ -17,10 +17,13 @@ makeLenses ''Options
 class HasOptions env where
   optionsL :: Lens' env Options
 
+data Final = NoHoles | NoConstraints
+  deriving (Eq, Ord, Read, Show)
+
 data SynOptions = SynOptions
   { _synPropagate :: Bool
   , _synParametric :: Bool
-  , _synPartial :: Bool
+  , _synFinal :: Final
   , _synNormalize :: Bool
   , _synFuel :: Int
   , _synDisjunctions :: Int
@@ -29,7 +32,7 @@ data SynOptions = SynOptions
 makeLenses ''SynOptions
 
 defaultOptions :: SynOptions
-defaultOptions = SynOptions True True True True 32 32
+defaultOptions = SynOptions True True NoConstraints True 32 32
 
 data Command
   = Synth String SynOptions

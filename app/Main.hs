@@ -57,8 +57,8 @@ runApp run = do
             <> help "Whether to use parametric reasoning"
             )
           <*> option auto
-            ( long "partial"
-            <> value True
+            ( long "final"
+            <> value NoConstraints
             <> help "Whether to allow partial solutions"
             )
           <*> option auto
