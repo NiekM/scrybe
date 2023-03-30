@@ -1,20 +1,12 @@
--- {-# INCLUDE foldr, snoc, map #-}
 {-# INCLUDE snoc, map, foldr #-}
 
-reverse :: List a -> List a
-
--- NOTE: this is exhaustive, because reverse cannot be implemented using map
-reverse = map _
-
 -- Whereas this leads to timeout! Because xs could be used in the hole, so we
--- cannot merge the constraints [A] <== [A] and [A,B] <== [B,A]. This seems to
+-- cannot merge the constraints [A] <== [A] and [B,C] <== [C,B]. This seems to
 -- indicate that there are advantages to not always eta-expanding. However,
 -- this has more to do with where exactly xs is allowed to be used, which we
 -- might want to limit in certain situations.
--- reverse xs = _
-
--- We should use parametricity here! That way we can still exhaustively search
--- the second example.
+reverse :: List a -> List a
+reverse xs = _
 
 assert reverse []        <== []
 assert reverse [A]       <== [A]
