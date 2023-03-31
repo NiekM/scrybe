@@ -1,12 +1,11 @@
-module Constraint (module Constraint) where
+module Constraint (Cstr(..), InOut(..), normCstr, checkNorm, minimal) where
 
 import Import
 import Language.Syntax
+import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Prettyprinter as Pretty
-
-type Nat = Natural
 
 newtype Par = Par Var
   deriving (Eq, Ord, Show)
@@ -70,10 +69,27 @@ checkNorm (Norm as xs) = do
     (b, qs) <- y
     guard $ a == b
     let rs = zipWith Set.intersection ps qs
-    guard . not $ any null rs
     return (a, rs)
 
+  guard . not . any null $ view (each . _2 . _2) m
   return $ Norm as $ m <&> \(is, (o, ps)) -> (InOut is o, ps)
+
+restrict :: Set Var -> Cstr -> Cstr
+restrict vs (Cstr as xs) =
+  Cstr (filter (`elem` vs) as) $ xs <&> \(InOut is o) ->
+    InOut [i | (a, i) <- zip as is, a `elem` vs] o
+
+check :: Cstr -> Bool
+check = isJust . checkNorm . normCstr
+
+minimal :: Cstr -> [Set Var]
+minimal cs@(Cstr as _) = go ps
+  where
+    ps = List.sortOn length . Set.toList $ Set.powerSet (Set.fromList as)
+    go [] = []
+    go (x:xs)
+      | check (restrict x cs) = x : go (filter (not . Set.isSubsetOf x) xs)
+      | otherwise = go xs
 
 instance Pretty InOut where
   pretty (InOut is o) =
@@ -96,11 +112,21 @@ a0 = Ctr "A" []
 a1 = Ctr "B" []
 a2 = Ctr "C" []
 
+constant :: Cstr
+constant = Cstr ["xs", "x"] [InOut [list [a0, a1, a2], a0] (nat 1)]
+
 rev :: Cstr
 rev = Cstr ["xs", "x"]
   [ InOut [list [a0, a1, a2], a0] a2
   , InOut [list [a0, a1, a2], a1] a1
   , InOut [list [a0, a1, a2], a2] a0
+  ]
+
+revfoldr :: Cstr
+revfoldr = Cstr ["xs", "x", "r"]
+  [ InOut [list [a0, a1, a2], a0, list [a2, a1]] (list [a2, a1, a0])
+  , InOut [list [a0, a1, a2], a1, list [a2]] (list [a2, a1])
+  , InOut [list [a0, a1, a2], a2, list []] (list [a2])
   ]
 
 test :: Cstr
@@ -129,4 +155,19 @@ testz = Cstr ["x", "y", "z"]
   [ InOut [a0, a1, a1] a1
   , InOut [a1, a0, a1] a1
   , InOut [a1, a1, a0] a0
+  ]
+
+len :: Cstr
+len = Cstr ["xs"]
+  [ InOut [list []] (nat 0)
+  , InOut [list [a0]] (nat 1)
+  , InOut [list [a0, a1]] (nat 2)
+  , InOut [list [a0, a1, a2]] (nat 3)
+  ]
+
+lenfoldr :: Cstr
+lenfoldr = Cstr ["xs", "x", "r"]
+  [ InOut [list [a0], a0, nat 0] (nat 1)
+  , InOut [list [a0, a1], a0, nat 1] (nat 2)
+  , InOut [list [a0, a1, a2], a0, nat 2] (nat 3)
   ]
