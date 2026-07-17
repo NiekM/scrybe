@@ -24,7 +24,6 @@ data Logic a
 
 instance NFData a => NFData (Logic a)
 
--- TODO: check that these instances make sense
 instance Applicative Logic where
   pure = Pure
   Pure f <*> x = f <$> x

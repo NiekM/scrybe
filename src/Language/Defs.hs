@@ -21,8 +21,6 @@ import Language.Syntax
 import Language.Live
 import Prettyprinter
 
--- TODO: move this to its own file
-
 data Signature = MkSignature Var Poly
   deriving (Eq, Ord, Show)
 

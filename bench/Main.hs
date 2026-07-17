@@ -42,7 +42,7 @@ removeMaybes = \case
   Leaf l -> Leaf <$> l
 
 trySyn :: Bool -> Env -> Defs Unit -> Maybe (Term Hole, Fillings)
-trySyn b m = fmap snd . runSearchBest . runSynth (defaultOptions { _synPropagate = b }) m . synth
+trySyn b m = fmap snd . runSearchBest . runSynth (set synPropagate b defaultOptions) m . synth
 
 allFiles :: MonadIO m => FilePath -> m [(String, Text)]
 allFiles p = do

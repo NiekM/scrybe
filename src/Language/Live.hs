@@ -7,11 +7,11 @@ module Language.Live
   , Uneval, runUneval
   , uneval, resumeUneval
   -- Constraints
-  , Constraint, Constraints, mergeConstraints -- TODO: somewhere else?
+  , Constraint, Constraints, mergeConstraints
   , UnevalConstraint(..)
   -- Utils
-  , blocking, scrutinizedHole -- TODO: somewhere else
-  , recVar, normalizeFilling -- TODO: somewhere else?
+  , blocking, scrutinizedHole
+  , recVar, normalizeFilling
   )
   where
 
