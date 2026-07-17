@@ -1,24 +1,23 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Utils.Weighted where
+module Utils.Weighted ( Search, WeightedMonad(..), Dist ) where
 
 import RIO
-import Control.Monad.Heap
+import Control.Monad.Search
 import Control.Monad.RWS
-import Data.Monus
+import Data.Monoid
+import Numeric.Natural
 
-newtype Search c a = Search { runSearch :: Heap c a }
-  deriving newtype (Functor, Applicative, Monad)
-  deriving newtype (Alternative, MonadPlus)
+type Dist = Sum Natural
 
-instance MonadFail (Search c) where
+instance MonadFail (Search Dist) where
   fail _ = mzero
 
-class Monad m => WeightedMonad c m where
-  weigh :: c -> m ()
+class Monad m => WeightedMonad m where
+  weigh :: Dist -> m ()
 
-instance Monus c => WeightedMonad c (Search c) where
-  weigh c = Search $ tell c
+instance WeightedMonad (Search Dist) where
+  weigh = cost'
 
-instance (Monoid w, WeightedMonad c m) => WeightedMonad c (RWST r w s m) where
+instance (Monoid w, WeightedMonad m) => WeightedMonad (RWST r w s m) where
   weigh c = RWST \_r s -> (,s,mempty) <$> weigh c

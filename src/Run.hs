@@ -6,7 +6,7 @@ import Utils.Weighted
 import Language hiding (Assert)
 import Synthesis
 import Prettyprinter hiding (fill)
-import Control.Monad.Heap
+import Control.Monad.Search
 import qualified RIO.Map as Map
 
 parseDefs :: (MonadIO m, MonadFail m, Parse a) => String -> m (Defs a)
@@ -36,18 +36,18 @@ synthesize file opts = do
   logInfo ""
   logInfo . display . indent 2 $ pretty problem
   logInfo ""
-  let syn = best . runSearch . runSynth opts prelude $ synth problem
+  let syn = runSearchBest . runSynth opts prelude $ synth problem
   timed syn >>= \case
     Nothing -> logInfo "Synthesis failed: Timeout"
     Just Nothing -> logInfo "Synthesis failed: Exhaustive"
-    Just (Just (n, (expr, hf))) -> do
+    Just (Just (Sum n, (expr, hf))) -> do
       let
         exprs = relevant expr <&> \(MkBinding x e) ->
           MkBinding x (fill (normalizeFilling hf) e)
         unreachable = exprs >>= \(MkBinding _ e) -> toListOf holes e
       logInfo "Solution found!"
       logInfo ""
-      logInfo . display $ "Depth:" <+> pretty (fromIntegral n :: Int)
+      logInfo . display $ "Depth:" <+> pretty n
       unless (null unreachable) do
         logInfo ""
         logInfo . display $ "Unreachable:" <+> pretty unreachable

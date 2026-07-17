@@ -10,7 +10,6 @@ import Language.Parser
 import Language.Syntax
 import Language.Defs
 import Language.Live
-import Utils.Weighted
 import RIO.FilePath
 import RIO.Directory
 import Criterion
@@ -22,7 +21,7 @@ import Criterion.Report
 import Criterion.Types
 import Statistics.Types
 import System.IO
-import Control.Monad.Heap hiding (Leaf)
+import Control.Monad.Search
 import System.Timeout
 import Text.Printf
 import qualified RIO.Text as Text
@@ -43,7 +42,7 @@ removeMaybes = \case
   Leaf l -> Leaf <$> l
 
 trySyn :: Bool -> Env -> Defs Unit -> Maybe (Term Hole, Fillings)
-trySyn b m = fmap snd . best . runSearch . runSynth (SynOptions b) m . synth
+trySyn b m = fmap snd . runSearchBest . runSynth (defaultOptions { _synPropagate = b }) m . synth
 
 allFiles :: MonadIO m => FilePath -> m [(String, Text)]
 allFiles p = do
@@ -77,7 +76,7 @@ main :: IO ()
 main = do
   let def = defaultConfig { verbosity = Quiet }
   cfg <- execParser $ info (config def) briefDesc
-  pre <- readFileUtf8 "data/prelude.hs"
+  pre <- readFileUtf8 "data/Prelude.hs"
   let p = maybe undefined (fromDefs . recDefs) $ lexParse parser pre
   benchInfo <- readFileUtf8 "data/benchmarks/.info"
   let

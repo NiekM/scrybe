@@ -39,7 +39,7 @@ roundtrip x = case lexParse parser t of
 
 prelude :: Spec
 prelude = do
-  f <- runIO $ readFileUtf8 "data/prelude.hs"
+  f <- runIO $ readFileUtf8 "data/Prelude.hs"
   case lexParse parser f of
     Nothing -> it "parses" False
     Just x -> do

@@ -7,10 +7,9 @@ import Test.Hspec
 import Language.Defs
 import Language.Parser
 import Language.Syntax
-import Utils.Weighted
 import RIO.FilePath
 import RIO.Directory
-import Control.Monad.Heap hiding (Leaf)
+import Control.Monad.Search
 
 data Tree a b = Node a [Tree a b] | Leaf b
   deriving (Eq, Ord, Show, Read)
@@ -35,12 +34,12 @@ specTree :: Env -> FileTree -> Spec
 specTree m = \case
   Node x xs -> describe x . for_ xs $ specTree m
   Leaf (f, x) -> describe f do
-    let syn = best . runSearch . runSynth defaultOptions m $ synth x
+    let syn = runSearchBest . runSynth defaultOptions m $ synth x
     it "synthesizes" . isJust $ syn
 
 spec :: Spec
 spec = do
-  pre <- runIO $ readFileUtf8 "data/prelude.hs"
+  pre <- runIO $ readFileUtf8 "data/Prelude.hs"
   let m = maybe undefined (fromDefs . recDefs) $ lexParse parser pre
   let benchmarks = "data/tests"
   t <- runIO $ getTree benchmarks

@@ -1,0 +1,6 @@
+packages: *
+
+source-repository-package
+  type: git
+  location: https://github.com/NiekM/monus-weighted-search.git
+  tag: 7893654b297925c7c8e8c490b80eba26085e2e03

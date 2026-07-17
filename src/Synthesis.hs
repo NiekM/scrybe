@@ -180,7 +180,7 @@ refinements h = do
     modify (subst th <$>)
 
   -- Weigh 1 for each new hole
-  weigh @Dist $ fromIntegral $ length ts
+  weigh $ fromIntegral $ length ts
   -- Each new lambda weighs more
   for_ ts \(Args as _) -> for_ as $ const addLam
 
@@ -295,8 +295,6 @@ updateConstraints xs = do
         is = case checked of
           Nothing -> ys
           Just e -> map fst . filter (isJust . snd) . zip ys $ sequence <$> e
-        n = length ys - length is
-      when (n > 0) do traceShowM n
       guard . not $ null is
       assign constraints $ Disjunction . fmap Pure $ is
 
@@ -313,7 +311,7 @@ findBlocking = do
 addLam :: Synth ()
 addLam = do
   Sum n <- use lamCount
-  weigh @Dist $ fromIntegral n
+  weigh $ fromIntegral n
   modifying lamCount (+1)
 
 choices :: Goal -> Synth (Either Var Ctr, Poly)

@@ -1,4 +1,4 @@
-cabal-version: 1.12
+cabal-version: >= 1.10
 
 -- This file has been generated from package.yaml by hpack version 0.35.1.
 --
@@ -86,7 +86,7 @@ library
     , containers
     , megaparsec
     , microlens-platform
-    , monus-weighted-search
+    , monad-dijkstra
     , mtl
     , prettyprinter
     , rio >=0.1.12.0
@@ -134,7 +134,7 @@ executable scrybe-exe
     , containers
     , megaparsec
     , microlens-platform
-    , monus-weighted-search
+    , monad-dijkstra
     , mtl
     , optparse-simple
     , prettyprinter
@@ -189,12 +189,13 @@ test-suite scrybe-test
     , hspec
     , megaparsec
     , microlens-platform
-    , monus-weighted-search
+    , monad-dijkstra
     , mtl
     , prettyprinter
     , rio >=0.1.12.0
     , scrybe
     , template-haskell
+  build-tool-depends: hspec-discover:hspec-discover
   default-language: Haskell2010
 
 benchmark scrybe-bench
@@ -240,7 +241,7 @@ benchmark scrybe-bench
     , criterion
     , megaparsec
     , microlens-platform
-    , monus-weighted-search
+    , monad-dijkstra
     , mtl
     , optparse-applicative
     , prettyprinter

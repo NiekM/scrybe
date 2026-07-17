@@ -11,7 +11,7 @@ module Import
   , module Utils.PartialSemigroup
   , module Utils.Type
   , Pretty(..), Doc, (<+>)
-  , Dist
+  , Sum(..)
   , Unit(Unit)
   , Possibly(..), possibly
   , unsnoc
@@ -26,7 +26,7 @@ import Prettyprinter as Pretty
 import Control.Monad.RWS hiding (local, All)
 import Lens.Micro.Platform
 import Data.Functor.Compose
-import Data.Monus.Dist (Dist)
+import Data.Monoid
 import Utils.BoundedLattice
 import Utils.Fresh
 import Utils.Map

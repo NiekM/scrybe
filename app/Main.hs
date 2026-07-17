@@ -27,7 +27,7 @@ runApp run = do
         ( long "prelude"
         <> short 'p'
         <> metavar "PRELUDE"
-        <> value "data/prelude.hs"
+        <> value "data/Prelude.hs"
         <> help "Prelude to use"
         )
       <*> option auto
