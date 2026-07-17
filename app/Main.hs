@@ -52,14 +52,9 @@ runApp run = do
             <> help "Whether to prune using example propagation"
             )
           <*> option auto
-            ( long "parametric"
-            <> value True
-            <> help "Whether to use parametric reasoning"
-            )
-          <*> option auto
             ( long "final"
             <> value NoConstraints
-            <> help "Whether to allow partial solutions"
+            <> help "Whether to allow leftover holes without constraints"
             )
           <*> option auto
             ( long "normalize"

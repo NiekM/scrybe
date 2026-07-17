@@ -1,24 +1,7 @@
 -- | Prelude
 
 -- Useful for defining examples for polymorphic functions
-data Dummy1 = A | B | C | D | E
-data Dummy2 = V | W | X | Y | Z
-
-coerceDummy :: Dummy1 -> Dummy2
-coerceDummy x = case x of
-  A -> V
-  B -> W
-  C -> X
-  D -> Y
-  E -> Z
-
-vowel :: Dummy1 -> Bool
-vowel x = case x of
-  A -> True
-  B -> False
-  C -> False
-  D -> False
-  E -> True
+data Dummy = A | B | C | D | E
 
 -- || Combinators
 

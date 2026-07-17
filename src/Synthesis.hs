@@ -3,11 +3,9 @@
 module Synthesis (synth, runSynth, Fillings) where
 
 import Import
-import Data.List (unzip)
 import Options
 import Utils.Weighted
 import Language
-import Constraint
 import qualified RIO.Map as Map
 
 -- Synthesis Monad {{{
@@ -242,62 +240,11 @@ checkAsserts env defs = for_ (asserts defs)
 
 -- }}}
 
--- Parametric reasoning {{{
-
-type Simple = RWST () [(Hole, Cstr)] (Fresh Uni) Maybe
-
-recover :: [(Hole, cstr)] -> Map Hole [cstr]
-recover = Map.unionsWith (++) . fmap \(h, c) -> Map.singleton h [c]
-
--- simplifyResult :: Result -> Simple Value
--- simplifyResult = \case
---   Ctr c xs -> Ctr c <$> traverse simplifyResult xs
---   -- App f x -> App <$> simplifyResult f <*> simplifyResult x
---   Scoped m (Hole h) -> do
---     MkUni t <- fresh
---     (as, xs) <- unzip <$> simplifyScope m
---     tell [(h, Cstr as [InOut xs (Ctr (MkCtr t) [])])]
---     return $ Ctr (MkCtr t) []
---   r -> error $ "Should not happen: " ++ show (pretty r)
-
-simplifyScope :: Scope -> Simple [(Var, Value)]
-simplifyScope = fmap Map.assocs . traverse (maybe (fail "") return . downcast)
-
-simplifyConstraint :: Constraint -> Simple (Maybe [Cstr])
-simplifyConstraint = fmap (fmap (fmap go . flatten))
-  . traverse (traverseOf (each . _1) simplifyScope . Map.assocs)
-  . traverse (traverse downcast . fromEx)
-  where
-    go (unzip -> (as, is), o) = Cstr as [InOut is o]
-    flatten = concat . traverseOf (each . _2) id
-
-joinCstrs :: [Cstr] -> Cstr
-joinCstrs [] = error "Oopsie woopsie"
-joinCstrs (Cstr as xs : cs) = Cstr as (xs ++ concatMap io cs)
-  where io (Cstr _ ys) = ys
-
--- }}}
-
 updateConstraints :: [[Constraints]] -> Synth ()
 updateConstraints xs = do
-  parametric <- use $ options . synParametric
   let ys = nubOrd (mapMaybe mergeConstraints xs)
   if
     | null xs -> fail "No possible constraints"
-
-    | parametric -> do
-      let
-        cstrs = traverse (traverse simplifyConstraint) ys
-        ws = traverseOf (_1 . each . each) id =<< evalRWST cstrs () 0
-        cs = ws <&> \(x, y) -> x <&> fmap joinCstrs . Map.unionWith (++) (recover y)
-        norm = cs <&> fmap (fmap normCstr)
-        checked = norm <&> fmap (fmap checkNorm)
-        is = case checked of
-          Nothing -> ys
-          Just e -> map fst . filter (isJust . snd) . zip ys $ sequence <$> e
-      guard . not $ null is
-      assign constraints $ Disjunction . fmap Pure $ is
-
     | otherwise -> assign constraints $ Disjunction . fmap Pure $ ys
 
 findBlocking :: Synth (Scope, Hole)

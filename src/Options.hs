@@ -22,7 +22,6 @@ data Final = NoHoles | NoConstraints
 
 data SynOptions = SynOptions
   { _synPropagate :: Bool
-  , _synParametric :: Bool
   , _synFinal :: Final
   , _synNormalize :: Bool
   , _synFuel :: Int
@@ -32,7 +31,7 @@ data SynOptions = SynOptions
 makeLenses ''SynOptions
 
 defaultOptions :: SynOptions
-defaultOptions = SynOptions True True NoConstraints True 32 32
+defaultOptions = SynOptions True NoConstraints True 32 32
 
 data Command
   = Synth String SynOptions
